@@ -95,10 +95,14 @@ export class SharedQueryManager {
 			[repoId]: [...queries, sharedQuery]
 		};
 
-		// Auto-commit if enabled
+		// Auto-commit if enabled (don't fail the create if git operations fail)
 		if (this._autoCommit) {
-			await gitService.stageFile(repo.path, filePath);
-			await gitService.commitChanges(repo.path, `Add query: ${name}`);
+			try {
+				await gitService.stageFile(repo.path, filePath);
+				await gitService.commitChanges(repo.path, `Add query: ${name}`);
+			} catch (error) {
+				console.warn('Auto-commit after create failed:', error);
+			}
 		}
 
 		await this.repoManager.refreshRepoStatus(repoId);
@@ -182,10 +186,14 @@ export class SharedQueryManager {
 			[repoId]: updatedQueries
 		};
 
-		// Auto-commit if enabled
+		// Auto-commit if enabled (don't fail the update if git operations fail)
 		if (this._autoCommit) {
-			await gitService.stageFile(repo.path, updatedQuery.filePath);
-			await gitService.commitChanges(repo.path, `Update query: ${updatedQuery.name}`);
+			try {
+				await gitService.stageFile(repo.path, updatedQuery.filePath);
+				await gitService.commitChanges(repo.path, `Update query: ${updatedQuery.name}`);
+			} catch (error) {
+				console.warn('Auto-commit after update failed:', error);
+			}
 		}
 
 		await this.repoManager.refreshRepoStatus(repoId);
@@ -216,10 +224,14 @@ export class SharedQueryManager {
 			[repoId]: queries.filter((q) => q.id !== queryId)
 		};
 
-		// Auto-commit if enabled
+		// Auto-commit if enabled (don't fail the delete if git operations fail)
 		if (this._autoCommit) {
-			await gitService.stageFile(repo.path, filePath);
-			await gitService.commitChanges(repo.path, `Delete query: ${query.name}`);
+			try {
+				await gitService.stageFile(repo.path, filePath);
+				await gitService.commitChanges(repo.path, `Delete query: ${query.name}`);
+			} catch (error) {
+				console.warn('Auto-commit after delete failed:', error);
+			}
 		}
 
 		await this.repoManager.refreshRepoStatus(repoId);
@@ -275,11 +287,15 @@ export class SharedQueryManager {
 			[repoId]: updatedQueries
 		};
 
-		// Auto-commit if enabled
+		// Auto-commit if enabled (don't fail the move if git operations fail)
 		if (this._autoCommit) {
-			await gitService.stageFile(repo.path, filePath);
-			await gitService.stageFile(repo.path, newFilePath);
-			await gitService.commitChanges(repo.path, `Move query: ${query.name}`);
+			try {
+				await gitService.stageFile(repo.path, filePath);
+				await gitService.stageFile(repo.path, newFilePath);
+				await gitService.commitChanges(repo.path, `Move query: ${query.name}`);
+			} catch (error) {
+				console.warn('Auto-commit after move failed:', error);
+			}
 		}
 
 		await this.repoManager.refreshRepoStatus(repoId);
