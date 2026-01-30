@@ -18,7 +18,6 @@ import type {
 	DisplayAggregate,
 	CanvasSubquery,
 	SubqueryRole,
-	SubqueryInnerState,
 	CanvasCTE,
 	QueryBuilderTable
 } from '$lib/types';
@@ -30,6 +29,34 @@ import {
 	deserializeQueryBuilderState,
 	type SerializableQueryBuilderState
 } from './query-builder-serialization';
+import { applyParsedSqlToState } from './query-builder-parsed-sql';
+import type { ParsedQuery } from '$lib/tutorial/sql-parser';
+import {
+	cloneSubqueries,
+	cloneCtes,
+	findSubqueryById as findSubqueryByIdPure,
+	findParentSubquery as findParentSubqueryPure,
+	updateSubqueryInArray,
+	createSubquery,
+	createCanvasTableForContainer,
+	removeTableFromInnerQuery,
+	toggleColumnInTable,
+	addSelectAggregateToInnerQuery,
+	createCteReferenceTable
+} from './query-builder-subqueries';
+import { createCte, getCteColumns as getCteColumnsPure } from './query-builder-ctes';
+import {
+	createFilter,
+	createGroupBy,
+	createHaving,
+	createOrderBy,
+	createSelectAggregate,
+	createActiveSubquery,
+	setColumnAggregateOnTable,
+	addItemToArray,
+	updateItemInArray,
+	removeItemFromArray
+} from './query-builder-active-context';
 
 /**
  * Generates a unique ID for canvas elements.
@@ -260,55 +287,12 @@ export class QueryBuilderState {
 			orderBy: [...this.orderBy],
 			limit: this.limit,
 			selectAggregates: [...this.selectAggregates],
-			subqueries: this.cloneSubqueries(this.subqueries),
-			ctes: this.cloneCtes(this.ctes)
+			subqueries: cloneSubqueries(this.subqueries),
+			ctes: cloneCtes(this.ctes)
 		};
 	}
 
-	/**
-	 * Deep clone subqueries array for snapshot.
-	 */
-	private cloneSubqueries(subqueries: CanvasSubquery[]): CanvasSubquery[] {
-		return subqueries.map((sq) => ({
-			...sq,
-			position: { ...sq.position },
-			size: { ...sq.size },
-			innerQuery: this.cloneInnerQuery(sq.innerQuery)
-		}));
-	}
-
-	/**
-	 * Deep clone CTEs array for snapshot.
-	 */
-	private cloneCtes(ctes: CanvasCTE[]): CanvasCTE[] {
-		return ctes.map((cte) => ({
-			...cte,
-			position: { ...cte.position },
-			size: { ...cte.size },
-			innerQuery: this.cloneInnerQuery(cte.innerQuery)
-		}));
-	}
-
-	/**
-	 * Deep clone inner query state.
-	 */
-	private cloneInnerQuery(inner: SubqueryInnerState): SubqueryInnerState {
-		return {
-			tables: inner.tables.map((t) => ({
-				...t,
-				selectedColumns: new Set(t.selectedColumns),
-				columnAggregates: new Map(t.columnAggregates)
-			})),
-			joins: [...inner.joins],
-			filters: [...inner.filters],
-			groupBy: [...inner.groupBy],
-			having: [...inner.having],
-			orderBy: [...inner.orderBy],
-			limit: inner.limit,
-			selectAggregates: [...inner.selectAggregates],
-			subqueries: this.cloneSubqueries(inner.subqueries)
-		};
-	}
+	// Clone helpers delegated to query-builder-subqueries.ts
 
 	// === TABLE MANAGEMENT ===
 
@@ -760,109 +744,38 @@ export class QueryBuilderState {
 	}
 
 	// === SUBQUERY MANAGEMENT ===
-
-	/**
-	 * Create an empty inner query state.
-	 */
-	private createEmptyInnerQuery(): SubqueryInnerState {
-		return {
-			tables: [],
-			joins: [],
-			filters: [],
-			groupBy: [],
-			having: [],
-			orderBy: [],
-			limit: null,
-			selectAggregates: [],
-			subqueries: []
-		};
-	}
+	// Core logic delegated to query-builder-subqueries.ts
 
 	/**
 	 * Recursively find a subquery by ID in the subquery tree.
-	 * @param subqueryId - ID of the subquery to find
-	 * @param subqueries - Array of subqueries to search (defaults to top-level)
-	 * @returns The subquery or undefined
 	 */
 	findSubqueryById(
 		subqueryId: string,
 		subqueries: CanvasSubquery[] = this.subqueries
 	): CanvasSubquery | undefined {
-		for (const sq of subqueries) {
-			if (sq.id === subqueryId) return sq;
-			const nested = this.findSubqueryById(subqueryId, sq.innerQuery.subqueries);
-			if (nested) return nested;
-		}
-		return undefined;
-	}
-
-	/**
-	 * Find the parent subquery that contains a given subquery ID.
-	 * @param childId - ID of the child subquery
-	 * @param subqueries - Array to search (defaults to top-level)
-	 * @param parent - Current parent (used in recursion)
-	 * @returns The parent subquery or undefined if childId is at top level
-	 */
-	private findParentSubquery(
-		childId: string,
-		subqueries: CanvasSubquery[] = this.subqueries,
-		parent?: CanvasSubquery
-	): CanvasSubquery | undefined {
-		for (const sq of subqueries) {
-			if (sq.id === childId) return parent;
-			const found = this.findParentSubquery(childId, sq.innerQuery.subqueries, sq);
-			if (found !== undefined) return found;
-		}
-		return undefined;
+		return findSubqueryByIdPure(subqueryId, subqueries);
 	}
 
 	/**
 	 * Recursively update a subquery in the tree.
-	 * @param subqueryId - ID of the subquery to update
-	 * @param updater - Function that returns updated subquery properties
 	 */
 	private updateSubqueryRecursive(
 		subqueryId: string,
 		updater: (sq: CanvasSubquery) => Partial<CanvasSubquery>
 	): void {
-		const updateInArray = (subqueries: CanvasSubquery[]): boolean => {
-			for (let i = 0; i < subqueries.length; i++) {
-				if (subqueries[i].id === subqueryId) {
-					subqueries[i] = { ...subqueries[i], ...updater(subqueries[i]) };
-					return true;
-				}
-				if (updateInArray(subqueries[i].innerQuery.subqueries)) {
-					return true;
-				}
-			}
-			return false;
-		};
-
-		updateInArray(this.subqueries);
-		this.subqueries = [...this.subqueries]; // Trigger reactivity
+		updateSubqueryInArray(this.subqueries, subqueryId, updater);
+		this.subqueries = [...this.subqueries];
 	}
 
 	/**
 	 * Add a subquery to the canvas.
-	 * @param role - The role of the subquery (where, from, select)
-	 * @param position - Position on the canvas
-	 * @param linkedFilterId - Optional filter ID for WHERE subqueries
-	 * @returns The created subquery
 	 */
 	addSubquery(
 		role: SubqueryRole,
 		position: { x: number; y: number },
 		linkedFilterId?: string
 	): CanvasSubquery {
-		const subquery: CanvasSubquery = {
-			id: generateId(),
-			position,
-			size: { width: 300, height: 200 },
-			role,
-			linkedFilterId,
-			innerQuery: this.createEmptyInnerQuery()
-		};
-
+		const subquery = createSubquery(role, position, linkedFilterId);
 		this.subqueries = [...this.subqueries, subquery];
 		this.customSql = null;
 		return subquery;
@@ -871,13 +784,11 @@ export class QueryBuilderState {
 	/**
 	 * Remove a subquery from the canvas (supports nested subqueries).
 	 * Also cleans up any filters linked to this subquery.
-	 * @param subqueryId - ID of the subquery to remove
 	 */
 	removeSubquery(subqueryId: string): void {
 		const subquery = this.findSubqueryById(subqueryId);
 		if (!subquery) return;
 
-		// Clean up linked filter's subquery reference
 		if (subquery.linkedFilterId) {
 			const filter = this.filters.find((f) => f.id === subquery.linkedFilterId);
 			if (filter) {
@@ -885,8 +796,7 @@ export class QueryBuilderState {
 			}
 		}
 
-		// Check if it's a nested subquery
-		const parent = this.findParentSubquery(subqueryId);
+		const parent = findParentSubqueryPure(subqueryId, this.subqueries);
 		if (parent) {
 			parent.innerQuery.subqueries = parent.innerQuery.subqueries.filter(
 				(s) => s.id !== subqueryId
@@ -898,60 +808,30 @@ export class QueryBuilderState {
 		this.customSql = null;
 	}
 
-	/**
-	 * Update a subquery's position on the canvas (supports nested).
-	 * @param subqueryId - ID of the subquery
-	 * @param position - New position
-	 */
 	updateSubqueryPosition(subqueryId: string, position: { x: number; y: number }): void {
 		this.updateSubqueryRecursive(subqueryId, () => ({ position }));
 	}
 
-	/**
-	 * Update a subquery's size (supports nested).
-	 * @param subqueryId - ID of the subquery
-	 * @param size - New size
-	 */
 	updateSubquerySize(subqueryId: string, size: { width: number; height: number }): void {
 		this.updateSubqueryRecursive(subqueryId, () => ({ size }));
 		this.customSql = null;
 	}
 
-	/**
-	 * Update a subquery's role (supports nested).
-	 * @param subqueryId - ID of the subquery
-	 * @param role - New role
-	 */
 	updateSubqueryRole(subqueryId: string, role: SubqueryRole): void {
 		this.updateSubqueryRecursive(subqueryId, () => ({ role }));
 		this.customSql = null;
 	}
 
-	/**
-	 * Update a subquery's alias (supports nested).
-	 * @param subqueryId - ID of the subquery
-	 * @param alias - New alias
-	 */
 	updateSubqueryAlias(subqueryId: string, alias: string): void {
 		this.updateSubqueryRecursive(subqueryId, () => ({ alias: alias || undefined }));
 		this.customSql = null;
 	}
 
-	/**
-	 * Link a subquery to a filter for WHERE subqueries (supports nested).
-	 * @param subqueryId - ID of the subquery
-	 * @param filterId - ID of the filter to link to
-	 */
 	linkSubqueryToFilter(subqueryId: string, filterId: string): void {
 		this.updateSubqueryRecursive(subqueryId, () => ({ linkedFilterId: filterId }));
 		this.customSql = null;
 	}
 
-	/**
-	 * Get a subquery by ID (supports nested).
-	 * @param subqueryId - ID of the subquery
-	 * @returns The subquery or undefined
-	 */
 	getSubquery(subqueryId: string): CanvasSubquery | undefined {
 		return this.findSubqueryById(subqueryId);
 	}
@@ -959,128 +839,51 @@ export class QueryBuilderState {
 	/**
 	 * Add a table to a subquery's inner query.
 	 * Auto-resizes the subquery container if the table doesn't fit.
-	 * @param subqueryId - ID of the subquery
-	 * @param tableName - Name of the table
-	 * @param position - Position relative to subquery
-	 * @returns The created table or undefined
 	 */
 	addTableToSubquery(
 		subqueryId: string,
 		tableName: string,
 		position: { x: number; y: number }
 	): CanvasTable | undefined {
-		const tableSchema = this.getSchemaTable(tableName);
-		if (!tableSchema) return undefined;
-
-		// Use recursive finder to support nested subqueries
+		if (!this.getSchemaTable(tableName)) return undefined;
 		const subquery = this.findSubqueryById(subqueryId);
 		if (!subquery) return undefined;
 
-		const canvasTable: CanvasTable = {
-			id: generateId(),
-			tableName,
-			position,
-			selectedColumns: new SvelteSet<string>(),
-			columnAggregates: new Map<string, ColumnAggregate>()
-		};
-
-		// Estimated table node dimensions (from table-node.svelte styling)
-		const TABLE_WIDTH = 220;
-		const TABLE_HEIGHT = 280; // scroll area (240px) + header (~40px)
-		const PADDING = 20;
-
-		// Calculate the space needed for the new table
-		const requiredWidth = position.x + TABLE_WIDTH + PADDING;
-		const requiredHeight = position.y + TABLE_HEIGHT + PADDING;
-
-		// Expand subquery size if needed
-		let newWidth = subquery.size.width;
-		let newHeight = subquery.size.height;
-
-		if (requiredWidth > subquery.size.width) {
-			newWidth = requiredWidth;
-		}
-		if (requiredHeight > subquery.size.height) {
-			newHeight = requiredHeight;
-		}
-
-		// Update size if changed
-		if (newWidth !== subquery.size.width || newHeight !== subquery.size.height) {
-			subquery.size = { width: newWidth, height: newHeight };
-		}
-
-		subquery.innerQuery.tables = [...subquery.innerQuery.tables, canvasTable];
-		this.subqueries = [...this.subqueries]; // Trigger reactivity
+		const { table, newSize } = createCanvasTableForContainer(tableName, position, subquery.size);
+		if (newSize) subquery.size = newSize;
+		subquery.innerQuery.tables = [...subquery.innerQuery.tables, table];
+		this.subqueries = [...this.subqueries];
 		this.customSql = null;
-		return canvasTable;
+		return table;
 	}
 
 	/**
 	 * Remove a table from a subquery's inner query (supports nested).
-	 * @param subqueryId - ID of the subquery
-	 * @param tableId - ID of the table to remove
 	 */
 	removeTableFromSubquery(subqueryId: string, tableId: string): void {
-		// Use recursive finder to support nested subqueries
 		const subquery = this.findSubqueryById(subqueryId);
 		if (!subquery) return;
 
-		const table = subquery.innerQuery.tables.find((t) => t.id === tableId);
-		if (!table) return;
-
-		const tableName = table.tableName;
-
-		// Remove associated joins
-		subquery.innerQuery.joins = subquery.innerQuery.joins.filter(
-			(j) => j.sourceTable !== tableName && j.targetTable !== tableName
-		);
-
-		// Remove associated filters
-		subquery.innerQuery.filters = subquery.innerQuery.filters.filter(
-			(f) => !f.column.startsWith(`${tableName}.`)
-		);
-
-		// Remove associated order by
-		subquery.innerQuery.orderBy = subquery.innerQuery.orderBy.filter(
-			(o) => !o.column.startsWith(`${tableName}.`)
-		);
-
-		// Remove the table
-		subquery.innerQuery.tables = subquery.innerQuery.tables.filter((t) => t.id !== tableId);
+		removeTableFromInnerQuery(subquery.innerQuery, tableId);
 		this.subqueries = [...this.subqueries];
 		this.customSql = null;
 	}
 
 	/**
 	 * Toggle a column selection in a subquery table (supports nested).
-	 * @param subqueryId - ID of the subquery
-	 * @param tableId - ID of the table
-	 * @param columnName - Column to toggle
 	 */
 	toggleSubqueryColumn(subqueryId: string, tableId: string, columnName: string): void {
 		const subquery = this.findSubqueryById(subqueryId);
 		if (!subquery) return;
 
-		const table = subquery.innerQuery.tables.find((t) => t.id === tableId);
-		if (!table) return;
-
-		if (table.selectedColumns.has(columnName)) {
-			table.selectedColumns.delete(columnName);
-			table.columnAggregates.delete(columnName);
-		} else {
-			table.selectedColumns.add(columnName);
+		if (toggleColumnInTable(subquery.innerQuery, tableId, columnName)) {
+			this.subqueries = [...this.subqueries];
+			this.customSql = null;
 		}
-		this.subqueries = [...this.subqueries];
-		this.customSql = null;
 	}
 
 	/**
 	 * Add a select aggregate to a subquery (supports nested).
-	 * @param subqueryId - ID of the subquery
-	 * @param func - Aggregate function
-	 * @param expression - Expression
-	 * @param alias - Optional alias
-	 * @returns The aggregate ID or undefined
 	 */
 	addSubquerySelectAggregate(
 		subqueryId: string,
@@ -1091,157 +894,70 @@ export class QueryBuilderState {
 		const subquery = this.findSubqueryById(subqueryId);
 		if (!subquery) return undefined;
 
-		const aggregate: SelectAggregate = {
-			id: generateId(),
-			function: func,
-			expression,
-			alias
-		};
-
-		subquery.innerQuery.selectAggregates = [...subquery.innerQuery.selectAggregates, aggregate];
+		const id = addSelectAggregateToInnerQuery(subquery.innerQuery, func, expression, alias);
 		this.subqueries = [...this.subqueries];
 		this.customSql = null;
-		return aggregate.id;
+		return id;
 	}
 
 	// === ACTIVE CONTEXT METHODS ===
-	// These methods operate on either the top-level query or the selected subquery
+	// These methods operate on CTE, subquery, or top-level query.
+	// Core operations delegated to query-builder-active-context.ts.
 
 	/**
-	 * Add a filter to the active context (CTE, subquery, or top-level).
+	 * Apply an operation to the active clause array (CTE → subquery → top-level).
+	 * Returns the clause key name for the inner query, enabling generic routing.
 	 */
+	private applyToActiveClause<K extends keyof import('$lib/types').SubqueryInnerState>(
+		clause: K,
+		updater: (arr: import('$lib/types').SubqueryInnerState[K]) => import('$lib/types').SubqueryInnerState[K]
+	): void {
+		if (this.selectedCte) {
+			this.selectedCte.innerQuery[clause] = updater(this.selectedCte.innerQuery[clause]);
+			this.ctes = [...this.ctes];
+		} else if (this.selectedSubquery) {
+			this.selectedSubquery.innerQuery[clause] = updater(this.selectedSubquery.innerQuery[clause]);
+			this.subqueries = [...this.subqueries];
+		} else {
+			// Top-level: cast is safe because clause keys match class property names
+			(this as any)[clause] = updater((this as any)[clause]);
+		}
+		this.customSql = null;
+	}
+
 	addActiveFilter(
 		column: string,
 		operator: FilterOperator,
 		value: string,
 		connector: 'AND' | 'OR' = 'AND'
 	): FilterCondition {
-		const filter: FilterCondition = {
-			id: generateId(),
-			column,
-			operator,
-			value,
-			connector
-		};
-
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.filters = [...this.selectedCte.innerQuery.filters, filter];
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.filters = [...this.selectedSubquery.innerQuery.filters, filter];
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.filters = [...this.filters, filter];
-		}
-		this.customSql = null;
+		const filter = createFilter(column, operator, value, connector);
+		this.applyToActiveClause('filters', (arr) => addItemToArray(arr, filter));
 		return filter;
 	}
 
-	/**
-	 * Update a filter in the active context.
-	 */
 	updateActiveFilter(filterId: string, updates: Partial<Omit<FilterCondition, 'id'>>): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.filters = this.selectedCte.innerQuery.filters.map((f) =>
-				f.id === filterId ? { ...f, ...updates } : f
-			);
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.filters = this.selectedSubquery.innerQuery.filters.map((f) =>
-				f.id === filterId ? { ...f, ...updates } : f
-			);
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.filters = this.filters.map((f) => (f.id === filterId ? { ...f, ...updates } : f));
-		}
-		this.customSql = null;
+		this.applyToActiveClause('filters', (arr) => updateItemInArray(arr, filterId, updates));
 	}
 
-	/**
-	 * Remove a filter from the active context.
-	 */
 	removeActiveFilter(filterId: string): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.filters = this.selectedCte.innerQuery.filters.filter(
-				(f) => f.id !== filterId
-			);
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.filters = this.selectedSubquery.innerQuery.filters.filter(
-				(f) => f.id !== filterId
-			);
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.filters = this.filters.filter((f) => f.id !== filterId);
-		}
-		this.customSql = null;
+		this.applyToActiveClause('filters', (arr) => removeItemFromArray(arr, filterId));
 	}
 
-	/**
-	 * Add a GROUP BY to the active context.
-	 */
 	addActiveGroupBy(column: string): GroupByCondition {
-		const groupBy: GroupByCondition = {
-			id: generateId(),
-			column
-		};
-
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.groupBy = [...this.selectedCte.innerQuery.groupBy, groupBy];
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.groupBy = [...this.selectedSubquery.innerQuery.groupBy, groupBy];
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.groupBy = [...this.groupBy, groupBy];
-		}
-		this.customSql = null;
+		const groupBy = createGroupBy(column);
+		this.applyToActiveClause('groupBy', (arr) => addItemToArray(arr, groupBy));
 		return groupBy;
 	}
 
-	/**
-	 * Update a GROUP BY in the active context.
-	 */
 	updateActiveGroupBy(groupById: string, column: string): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.groupBy = this.selectedCte.innerQuery.groupBy.map((g) =>
-				g.id === groupById ? { ...g, column } : g
-			);
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.groupBy = this.selectedSubquery.innerQuery.groupBy.map((g) =>
-				g.id === groupById ? { ...g, column } : g
-			);
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.groupBy = this.groupBy.map((g) => (g.id === groupById ? { ...g, column } : g));
-		}
-		this.customSql = null;
+		this.applyToActiveClause('groupBy', (arr) => updateItemInArray(arr, groupById, { column }));
 	}
 
-	/**
-	 * Remove a GROUP BY from the active context.
-	 */
 	removeActiveGroupBy(groupById: string): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.groupBy = this.selectedCte.innerQuery.groupBy.filter(
-				(g) => g.id !== groupById
-			);
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.groupBy = this.selectedSubquery.innerQuery.groupBy.filter(
-				(g) => g.id !== groupById
-			);
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.groupBy = this.groupBy.filter((g) => g.id !== groupById);
-		}
-		this.customSql = null;
+		this.applyToActiveClause('groupBy', (arr) => removeItemFromArray(arr, groupById));
 	}
 
-	/**
-	 * Add a HAVING to the active context.
-	 */
 	addActiveHaving(
 		aggregateFunction: AggregateFunction,
 		column: string,
@@ -1249,257 +965,63 @@ export class QueryBuilderState {
 		value: string,
 		connector: 'AND' | 'OR' = 'AND'
 	): HavingCondition {
-		const having: HavingCondition = {
-			id: generateId(),
-			aggregateFunction,
-			column,
-			operator,
-			value,
-			connector
-		};
-
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.having = [...this.selectedCte.innerQuery.having, having];
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.having = [...this.selectedSubquery.innerQuery.having, having];
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.having = [...this.having, having];
-		}
-		this.customSql = null;
+		const having = createHaving(aggregateFunction, column, operator, value, connector);
+		this.applyToActiveClause('having', (arr) => addItemToArray(arr, having));
 		return having;
 	}
 
-	/**
-	 * Update a HAVING in the active context.
-	 */
 	updateActiveHaving(havingId: string, updates: Partial<Omit<HavingCondition, 'id'>>): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.having = this.selectedCte.innerQuery.having.map((h) =>
-				h.id === havingId ? { ...h, ...updates } : h
-			);
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.having = this.selectedSubquery.innerQuery.having.map((h) =>
-				h.id === havingId ? { ...h, ...updates } : h
-			);
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.having = this.having.map((h) => (h.id === havingId ? { ...h, ...updates } : h));
-		}
-		this.customSql = null;
+		this.applyToActiveClause('having', (arr) => updateItemInArray(arr, havingId, updates));
 	}
 
-	/**
-	 * Remove a HAVING from the active context.
-	 */
 	removeActiveHaving(havingId: string): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.having = this.selectedCte.innerQuery.having.filter(
-				(h) => h.id !== havingId
-			);
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.having = this.selectedSubquery.innerQuery.having.filter(
-				(h) => h.id !== havingId
-			);
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.having = this.having.filter((h) => h.id !== havingId);
-		}
-		this.customSql = null;
+		this.applyToActiveClause('having', (arr) => removeItemFromArray(arr, havingId));
 	}
 
-	/**
-	 * Add an ORDER BY to the active context.
-	 */
 	addActiveOrderBy(column: string, direction: SortDirection = 'ASC'): SortCondition {
-		const orderBy: SortCondition = {
-			id: generateId(),
-			column,
-			direction
-		};
-
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.orderBy = [...this.selectedCte.innerQuery.orderBy, orderBy];
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.orderBy = [...this.selectedSubquery.innerQuery.orderBy, orderBy];
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.orderBy = [...this.orderBy, orderBy];
-		}
-		this.customSql = null;
+		const orderBy = createOrderBy(column, direction);
+		this.applyToActiveClause('orderBy', (arr) => addItemToArray(arr, orderBy));
 		return orderBy;
 	}
 
-	/**
-	 * Update an ORDER BY direction in the active context.
-	 */
 	updateActiveOrderBy(orderId: string, direction: SortDirection): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.orderBy = this.selectedCte.innerQuery.orderBy.map((o) =>
-				o.id === orderId ? { ...o, direction } : o
-			);
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.orderBy = this.selectedSubquery.innerQuery.orderBy.map((o) =>
-				o.id === orderId ? { ...o, direction } : o
-			);
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.orderBy = this.orderBy.map((o) => (o.id === orderId ? { ...o, direction } : o));
-		}
-		this.customSql = null;
+		this.applyToActiveClause('orderBy', (arr) => updateItemInArray(arr, orderId, { direction }));
 	}
 
-	/**
-	 * Update an ORDER BY column in the active context.
-	 */
 	updateActiveOrderByColumn(orderId: string, column: string): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.orderBy = this.selectedCte.innerQuery.orderBy.map((o) =>
-				o.id === orderId ? { ...o, column } : o
-			);
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.orderBy = this.selectedSubquery.innerQuery.orderBy.map((o) =>
-				o.id === orderId ? { ...o, column } : o
-			);
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.orderBy = this.orderBy.map((o) => (o.id === orderId ? { ...o, column } : o));
-		}
-		this.customSql = null;
+		this.applyToActiveClause('orderBy', (arr) => updateItemInArray(arr, orderId, { column }));
 	}
 
-	/**
-	 * Remove an ORDER BY from the active context.
-	 */
 	removeActiveOrderBy(orderId: string): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.orderBy = this.selectedCte.innerQuery.orderBy.filter(
-				(o) => o.id !== orderId
-			);
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.orderBy = this.selectedSubquery.innerQuery.orderBy.filter(
-				(o) => o.id !== orderId
-			);
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.orderBy = this.orderBy.filter((o) => o.id !== orderId);
-		}
-		this.customSql = null;
+		this.applyToActiveClause('orderBy', (arr) => removeItemFromArray(arr, orderId));
 	}
 
-	/**
-	 * Set the LIMIT in the active context. Can be a number, null, or a {{variable}} string.
-	 */
 	setActiveLimit(limit: string | number | null): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.limit = limit;
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.limit = limit;
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.limit = limit;
-		}
-		this.customSql = null;
+		this.applyToActiveClause('limit', () => limit);
 	}
 
-	/**
-	 * Add a select aggregate to the active context.
-	 */
 	addActiveSelectAggregate(func: AggregateFunction, expression: string, alias?: string): string {
-		const aggregate: SelectAggregate = {
-			id: generateId(),
-			function: func,
-			expression,
-			alias
-		};
-
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.selectAggregates = [
-				...this.selectedCte.innerQuery.selectAggregates,
-				aggregate
-			];
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.selectAggregates = [
-				...this.selectedSubquery.innerQuery.selectAggregates,
-				aggregate
-			];
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.selectAggregates = [...this.selectAggregates, aggregate];
-		}
-		this.customSql = null;
+		const aggregate = createSelectAggregate(func, expression, alias);
+		this.applyToActiveClause('selectAggregates', (arr) => addItemToArray(arr, aggregate));
 		return aggregate.id;
 	}
 
-	/**
-	 * Update a select aggregate in the active context.
-	 */
 	updateActiveSelectAggregate(id: string, updates: Partial<Omit<SelectAggregate, 'id'>>): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.selectAggregates = this.selectedCte.innerQuery.selectAggregates.map(
-				(a) => (a.id === id ? { ...a, ...updates } : a)
-			);
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.selectAggregates = this.selectedSubquery.innerQuery.selectAggregates.map(
-				(a) => (a.id === id ? { ...a, ...updates } : a)
-			);
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.selectAggregates = this.selectAggregates.map((a) => (a.id === id ? { ...a, ...updates } : a));
-		}
-		this.customSql = null;
+		this.applyToActiveClause('selectAggregates', (arr) => updateItemInArray(arr, id, updates));
 	}
 
-	/**
-	 * Remove a select aggregate from the active context.
-	 */
 	removeActiveSelectAggregate(id: string): void {
-		if (this.selectedCte) {
-			this.selectedCte.innerQuery.selectAggregates = this.selectedCte.innerQuery.selectAggregates.filter(
-				(a) => a.id !== id
-			);
-			this.ctes = [...this.ctes];
-		} else if (this.selectedSubquery) {
-			this.selectedSubquery.innerQuery.selectAggregates = this.selectedSubquery.innerQuery.selectAggregates.filter(
-				(a) => a.id !== id
-			);
-			this.subqueries = [...this.subqueries];
-		} else {
-			this.selectAggregates = this.selectAggregates.filter((a) => a.id !== id);
-		}
-		this.customSql = null;
+		this.applyToActiveClause('selectAggregates', (arr) => removeItemFromArray(arr, id));
 	}
 
-	/**
-	 * Set a column aggregate in the active context.
-	 */
 	setActiveColumnAggregate(
 		tableId: string,
 		column: string,
 		func: AggregateFunction | null,
 		alias?: string
 	): void {
-		const tables = this.activeTables;
-		const table = tables.find((t) => t.id === tableId);
-		if (!table) return;
+		if (!setColumnAggregateOnTable(this.activeTables, tableId, column, func, alias)) return;
 
-		if (func === null) {
-			table.columnAggregates.delete(column);
-		} else {
-			table.columnAggregates.set(column, { function: func, alias });
-		}
-
-		// Trigger reactivity
 		if (this.selectedCte) {
 			this.ctes = [...this.ctes];
 		} else if (this.selectedSubquery) {
@@ -1510,29 +1032,16 @@ export class QueryBuilderState {
 		this.customSql = null;
 	}
 
-	/**
-	 * Clear a column aggregate in the active context.
-	 */
 	clearActiveColumnAggregate(tableId: string, column: string): void {
 		this.setActiveColumnAggregate(tableId, column, null);
 	}
 
-	/**
-	 * Add a subquery to the active context (top-level or nested in selected subquery).
-	 */
 	addActiveSubquery(
 		role: SubqueryRole,
 		position: { x: number; y: number },
 		linkedFilterId?: string
 	): CanvasSubquery {
-		const subquery: CanvasSubquery = {
-			id: generateId(),
-			position,
-			size: { width: 300, height: 200 },
-			role,
-			linkedFilterId,
-			innerQuery: this.createEmptyInnerQuery()
-		};
+		const subquery = createActiveSubquery(role, position, linkedFilterId);
 
 		if (this.selectedSubquery) {
 			this.selectedSubquery.innerQuery.subqueries = [
@@ -1547,21 +1056,14 @@ export class QueryBuilderState {
 		return subquery;
 	}
 
-	/**
-	 * Get subqueries from the active context.
-	 */
 	get activeSubqueries(): CanvasSubquery[] {
 		return this.selectedSubquery?.innerQuery.subqueries ?? this.subqueries;
 	}
 
-	/**
-	 * Remove a subquery from the active context.
-	 */
 	removeActiveSubquery(subqueryId: string): void {
 		if (this.selectedSubquery) {
 			const subquery = this.selectedSubquery.innerQuery.subqueries.find(s => s.id === subqueryId);
 			if (subquery?.linkedFilterId) {
-				// Clean up linked filter
 				const filter = this.selectedSubquery.innerQuery.filters.find(f => f.id === subquery.linkedFilterId);
 				if (filter) {
 					this.updateActiveFilter(filter.id, { subqueryId: undefined });
@@ -1577,9 +1079,6 @@ export class QueryBuilderState {
 		this.customSql = null;
 	}
 
-	/**
-	 * Link a subquery to a filter in the active context.
-	 */
 	linkActiveSubqueryToFilter(subqueryId: string, filterId: string): void {
 		if (this.selectedSubquery) {
 			this.selectedSubquery.innerQuery.subqueries = this.selectedSubquery.innerQuery.subqueries.map(s =>
@@ -1593,287 +1092,94 @@ export class QueryBuilderState {
 	}
 
 	// === CTE MANAGEMENT ===
+	// Core logic delegated to query-builder-ctes.ts
 
-	/**
-	 * Add a CTE to the canvas.
-	 * @param name - CTE name (used in WITH clause)
-	 * @param position - Position on the canvas
-	 * @returns The created CTE
-	 */
 	addCte(name: string, position: { x: number; y: number }): CanvasCTE {
-		const cte: CanvasCTE = {
-			id: generateId(),
-			name,
-			position,
-			size: { width: 300, height: 200 },
-			innerQuery: this.createEmptyInnerQuery()
-		};
-
+		const cte = createCte(name, position);
 		this.ctes = [...this.ctes, cte];
 		this.customSql = null;
 		return cte;
 	}
 
-	/**
-	 * Remove a CTE from the canvas.
-	 * Also removes any tables that reference this CTE.
-	 * @param cteId - ID of the CTE to remove
-	 */
 	removeCte(cteId: string): void {
 		const cte = this.ctes.find((c) => c.id === cteId);
 		if (!cte) return;
 
-		// Remove any tables that reference this CTE
 		this.tables = this.tables.filter((t) => t.cteId !== cteId);
-
-		// Remove the CTE
 		this.ctes = this.ctes.filter((c) => c.id !== cteId);
 		this.customSql = null;
 	}
 
-	/**
-	 * Update a CTE's name.
-	 * @param cteId - ID of the CTE
-	 * @param name - New name
-	 */
 	updateCteName(cteId: string, name: string): void {
 		this.ctes = this.ctes.map((c) => (c.id === cteId ? { ...c, name } : c));
 		this.customSql = null;
 	}
 
-	/**
-	 * Update a CTE's position on the canvas.
-	 * @param cteId - ID of the CTE
-	 * @param position - New position
-	 */
 	updateCtePosition(cteId: string, position: { x: number; y: number }): void {
 		this.ctes = this.ctes.map((c) => (c.id === cteId ? { ...c, position } : c));
 	}
 
-	/**
-	 * Update a CTE's size.
-	 * @param cteId - ID of the CTE
-	 * @param size - New size
-	 */
 	updateCteSize(cteId: string, size: { width: number; height: number }): void {
 		this.ctes = this.ctes.map((c) => (c.id === cteId ? { ...c, size } : c));
 		this.customSql = null;
 	}
 
-	/**
-	 * Get a CTE by ID.
-	 * @param cteId - ID of the CTE
-	 * @returns The CTE or undefined
-	 */
 	getCte(cteId: string): CanvasCTE | undefined {
 		return this.ctes.find((c) => c.id === cteId);
 	}
 
-	/**
-	 * Add a table to a CTE's inner query.
-	 * Auto-resizes the CTE container if the table doesn't fit.
-	 * @param cteId - ID of the CTE
-	 * @param tableName - Name of the table
-	 * @param position - Position relative to CTE
-	 * @returns The created table or undefined
-	 */
 	addTableToCte(
 		cteId: string,
 		tableName: string,
 		position: { x: number; y: number }
 	): CanvasTable | undefined {
-		const tableSchema = this.getSchemaTable(tableName);
-		if (!tableSchema) return undefined;
-
+		if (!this.getSchemaTable(tableName)) return undefined;
 		const cte = this.ctes.find((c) => c.id === cteId);
 		if (!cte) return undefined;
 
-		const canvasTable: CanvasTable = {
-			id: generateId(),
-			tableName,
-			position,
-			selectedColumns: new SvelteSet<string>(),
-			columnAggregates: new Map<string, ColumnAggregate>()
-		};
-
-		// Estimated table node dimensions
-		const TABLE_WIDTH = 220;
-		const TABLE_HEIGHT = 280;
-		const PADDING = 20;
-
-		// Calculate the space needed for the new table
-		const requiredWidth = position.x + TABLE_WIDTH + PADDING;
-		const requiredHeight = position.y + TABLE_HEIGHT + PADDING;
-
-		// Expand CTE size if needed
-		let newWidth = cte.size.width;
-		let newHeight = cte.size.height;
-
-		if (requiredWidth > cte.size.width) {
-			newWidth = requiredWidth;
-		}
-		if (requiredHeight > cte.size.height) {
-			newHeight = requiredHeight;
-		}
-
-		// Update size if changed
-		if (newWidth !== cte.size.width || newHeight !== cte.size.height) {
-			cte.size = { width: newWidth, height: newHeight };
-		}
-
-		cte.innerQuery.tables = [...cte.innerQuery.tables, canvasTable];
-		this.ctes = [...this.ctes]; // Trigger reactivity
+		const { table, newSize } = createCanvasTableForContainer(tableName, position, cte.size);
+		if (newSize) cte.size = newSize;
+		cte.innerQuery.tables = [...cte.innerQuery.tables, table];
+		this.ctes = [...this.ctes];
 		this.customSql = null;
-		return canvasTable;
+		return table;
 	}
 
-	/**
-	 * Remove a table from a CTE's inner query.
-	 * @param cteId - ID of the CTE
-	 * @param tableId - ID of the table to remove
-	 */
 	removeTableFromCte(cteId: string, tableId: string): void {
 		const cte = this.ctes.find((c) => c.id === cteId);
 		if (!cte) return;
 
-		const table = cte.innerQuery.tables.find((t) => t.id === tableId);
-		if (!table) return;
-
-		const tableName = table.tableName;
-
-		// Remove associated joins
-		cte.innerQuery.joins = cte.innerQuery.joins.filter(
-			(j) => j.sourceTable !== tableName && j.targetTable !== tableName
-		);
-
-		// Remove associated filters
-		cte.innerQuery.filters = cte.innerQuery.filters.filter(
-			(f) => !f.column.startsWith(`${tableName}.`)
-		);
-
-		// Remove associated order by
-		cte.innerQuery.orderBy = cte.innerQuery.orderBy.filter(
-			(o) => !o.column.startsWith(`${tableName}.`)
-		);
-
-		// Remove the table
-		cte.innerQuery.tables = cte.innerQuery.tables.filter((t) => t.id !== tableId);
+		removeTableFromInnerQuery(cte.innerQuery, tableId);
 		this.ctes = [...this.ctes];
 		this.customSql = null;
 	}
 
-	/**
-	 * Toggle a column selection in a CTE table.
-	 * @param cteId - ID of the CTE
-	 * @param tableId - ID of the table
-	 * @param columnName - Column to toggle
-	 */
 	toggleCteColumn(cteId: string, tableId: string, columnName: string): void {
 		const cte = this.ctes.find((c) => c.id === cteId);
 		if (!cte) return;
 
-		const table = cte.innerQuery.tables.find((t) => t.id === tableId);
-		if (!table) return;
-
-		if (table.selectedColumns.has(columnName)) {
-			table.selectedColumns.delete(columnName);
-			table.columnAggregates.delete(columnName);
-		} else {
-			table.selectedColumns.add(columnName);
+		if (toggleColumnInTable(cte.innerQuery, tableId, columnName)) {
+			this.ctes = [...this.ctes];
+			this.customSql = null;
 		}
-		this.ctes = [...this.ctes];
-		this.customSql = null;
 	}
 
-	/**
-	 * Get the derived columns from a CTE (columns output by its SELECT clause).
-	 * Used when referencing the CTE as a table.
-	 * @param cteId - ID of the CTE
-	 * @returns Array of column definitions
-	 */
 	getCteColumns(cteId: string): Array<{ name: string; type: string }> {
 		const cte = this.ctes.find((c) => c.id === cteId);
 		if (!cte) return [];
-
-		const columns: Array<{ name: string; type: string }> = [];
-
-		// Get columns from selected columns in CTE's tables
-		for (const table of cte.innerQuery.tables) {
-			const tableSchema = this.getSchemaTable(table.tableName);
-			if (!tableSchema) continue;
-
-			for (const colName of table.selectedColumns) {
-				const col = tableSchema.columns.find((c) => c.name === colName);
-				if (col) {
-					const agg = table.columnAggregates.get(colName);
-					if (agg) {
-						// Aggregated column - use alias or generated name
-						columns.push({
-							name: agg.alias || `${agg.function.toLowerCase()}_${colName}`,
-							type: 'numeric'
-						});
-					} else {
-						columns.push({ name: col.name, type: col.type });
-					}
-				}
-			}
-		}
-
-		// Add standalone aggregates from the CTE
-		for (const agg of cte.innerQuery.selectAggregates) {
-			columns.push({
-				name: agg.alias || `${agg.function.toLowerCase()}_${agg.expression.replace(/[^a-zA-Z0-9]/g, '_')}`,
-				type: 'numeric'
-			});
-		}
-
-		// If no columns selected, treat it as SELECT * (all columns from first table)
-		if (columns.length === 0 && cte.innerQuery.tables.length > 0) {
-			const firstTable = cte.innerQuery.tables[0];
-			const tableSchema = this.getSchemaTable(firstTable.tableName);
-			if (tableSchema) {
-				for (const col of tableSchema.columns) {
-					columns.push({ name: col.name, type: col.type });
-				}
-			}
-		}
-
-		return columns;
+		return getCteColumnsPure(cte, this.schema);
 	}
 
-	/**
-	 * Add a CTE reference table to the main query canvas.
-	 * This creates a table node that references the CTE by its ID.
-	 * @param cteId - ID of the CTE to reference
-	 * @param position - Position on the canvas
-	 * @returns The created table or undefined
-	 */
 	addCteReference(cteId: string, position: { x: number; y: number }): CanvasTable | undefined {
 		const cte = this.ctes.find((c) => c.id === cteId);
 		if (!cte || !cte.name) return undefined;
 
-		const canvasTable: CanvasTable = {
-			id: generateId(),
-			tableName: cte.name, // Use CTE name as table name
-			position,
-			selectedColumns: new SvelteSet<string>(),
-			columnAggregates: new Map<string, ColumnAggregate>(),
-			cteId // Mark this as a CTE reference
-		};
-
-		this.tables = [...this.tables, canvasTable];
+		const { table } = createCteReferenceTable(cte.name, cteId, position, { width: 0, height: 0 });
+		this.tables = [...this.tables, table];
 		this.customSql = null;
-		return canvasTable;
+		return table;
 	}
 
-	/**
-	 * Add a reference to an existing CTE inside a subquery.
-	 * CTEs defined at the top level are accessible within subqueries in SQL.
-	 * @param subqueryId - ID of the subquery to add the reference to
-	 * @param cteId - ID of the CTE to reference
-	 * @param position - Position relative to the subquery
-	 * @returns The created table or undefined
-	 */
 	addCteReferenceToSubquery(
 		subqueryId: string,
 		cteId: string,
@@ -1885,33 +1191,12 @@ export class QueryBuilderState {
 		const subquery = this.findSubqueryById(subqueryId);
 		if (!subquery) return undefined;
 
-		const canvasTable: CanvasTable = {
-			id: generateId(),
-			tableName: cte.name, // Use CTE name as table name
-			position,
-			selectedColumns: new SvelteSet<string>(),
-			columnAggregates: new Map<string, ColumnAggregate>(),
-			cteId // Mark this as a CTE reference
-		};
-
-		// Auto-resize subquery if needed
-		const TABLE_WIDTH = 220;
-		const TABLE_HEIGHT = 280;
-		const PADDING = 20;
-		const requiredWidth = position.x + TABLE_WIDTH + PADDING;
-		const requiredHeight = position.y + TABLE_HEIGHT + PADDING;
-
-		if (requiredWidth > subquery.size.width || requiredHeight > subquery.size.height) {
-			subquery.size = {
-				width: Math.max(subquery.size.width, requiredWidth),
-				height: Math.max(subquery.size.height, requiredHeight)
-			};
-		}
-
-		subquery.innerQuery.tables = [...subquery.innerQuery.tables, canvasTable];
-		this.subqueries = [...this.subqueries]; // Trigger reactivity
+		const { table, newSize } = createCteReferenceTable(cte.name, cteId, position, subquery.size);
+		if (newSize) subquery.size = newSize;
+		subquery.innerQuery.tables = [...subquery.innerQuery.tables, table];
+		this.subqueries = [...this.subqueries];
 		this.customSql = null;
-		return canvasTable;
+		return table;
 	}
 
 	// === LIMIT ===
@@ -1949,555 +1234,29 @@ export class QueryBuilderState {
 	// === APPLY FROM PARSED SQL ===
 
 	/**
-	 * Expand selectedColumns, converting '*' to all column names from the schema.
-	 * @param tableName - The name of the table to look up in the schema
-	 * @param selectedColumns - The columns from parsed SQL (may contain '*')
-	 * @returns Expanded column names, or original if no '*' or table not found
-	 */
-	private expandSelectedColumns(tableName: string, selectedColumns: string[]): string[] {
-		// Check if selectedColumns contains '*' (SELECT * or table.*)
-		if (selectedColumns.includes('*')) {
-			const schemaTable = this.schema.find((t) => t.name === tableName);
-			if (schemaTable) {
-				// Return all column names from the schema
-				return schemaTable.columns.map((c) => c.name);
-			}
-		}
-		return selectedColumns;
-	}
-
-	/**
-	 * Type for parsed subquery inner query (recursive).
-	 */
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	private buildSubqueriesFromParsed(
-		parsedSubqueries: Array<{
-			id: string;
-			role: 'where' | 'from' | 'select';
-			linkedFilterIndex?: number;
-			innerQuery: {
-				tables: Array<{ tableName: string; selectedColumns: string[]; isCteReference?: boolean }>;
-				joins: Array<{
-					sourceTable: string;
-					sourceColumn: string;
-					targetTable: string;
-					targetColumn: string;
-					joinType: 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
-				}>;
-				filters: Array<{
-					column: string;
-					operator: FilterOperator;
-					value: string;
-					connector: 'AND' | 'OR';
-					subqueryIndex?: number;
-				}>;
-				groupBy: Array<{ column: string }>;
-				having: Array<{
-					aggregateFunction: AggregateFunction;
-					column: string;
-					operator: HavingOperator;
-					value: string;
-					connector: 'AND' | 'OR';
-				}>;
-				orderBy: Array<{ column: string; direction: 'ASC' | 'DESC' }>;
-				limit: number | null;
-				selectAggregates: Array<{
-					function: AggregateFunction;
-					expression: string;
-					alias?: string;
-				}>;
-				columnAggregates?: Array<{
-					tableName: string;
-					column: string;
-					function: AggregateFunction;
-					alias?: string;
-				}>;
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				subqueries?: any[];
-			};
-		}>,
-		existingSubqueries: CanvasSubquery[],
-		basePosition: { x: number; y: number } = { x: 50, y: 50 },
-		cteNameToId: Map<string, string> = new Map()
-	): { subqueries: CanvasSubquery[]; subqueryIdMap: Map<number, string> } {
-		const result: CanvasSubquery[] = [];
-		const subqueryIdMap = new Map<number, string>();
-
-		for (let i = 0; i < parsedSubqueries.length; i++) {
-			const ps = parsedSubqueries[i];
-			const existingSubquery = existingSubqueries[i];
-
-			const position = existingSubquery?.position ?? {
-				x: basePosition.x + i * 350,
-				y: basePosition.y
-			};
-
-			const subqueryId = existingSubquery?.id ?? generateId();
-			subqueryIdMap.set(i, subqueryId);
-
-			// Build inner query tables
-			const innerTables: CanvasTable[] = [];
-			for (let j = 0; j < ps.innerQuery.tables.length; j++) {
-				const pt = ps.innerQuery.tables[j];
-
-				const columnAggsForTable = new Map<string, ColumnAggregate>();
-				if (ps.innerQuery.columnAggregates) {
-					for (const ca of ps.innerQuery.columnAggregates) {
-						if (ca.tableName === pt.tableName) {
-							columnAggsForTable.set(ca.column, {
-								function: ca.function,
-								alias: ca.alias
-							});
-						}
-					}
-				}
-
-				// Check if this table references a CTE
-				const cteId = cteNameToId.get(pt.tableName);
-
-				innerTables.push({
-					id: generateId(),
-					tableName: pt.tableName,
-					position: { x: 20 + j * 240, y: 50 },
-					selectedColumns: new SvelteSet(this.expandSelectedColumns(pt.tableName, pt.selectedColumns)),
-					columnAggregates: columnAggsForTable,
-					cteId // Will be undefined for regular tables, set for CTE references
-				});
-			}
-
-			// Build inner query joins
-			const innerJoins: CanvasJoin[] = ps.innerQuery.joins.map((pj) => ({
-				id: generateId(),
-				sourceTable: pj.sourceTable,
-				sourceColumn: pj.sourceColumn,
-				targetTable: pj.targetTable,
-				targetColumn: pj.targetColumn,
-				joinType: pj.joinType
-			}));
-
-			// Recursively build nested subqueries
-			const nestedResult = ps.innerQuery.subqueries && ps.innerQuery.subqueries.length > 0
-				? this.buildSubqueriesFromParsed(
-						ps.innerQuery.subqueries,
-						existingSubquery?.innerQuery.subqueries ?? [],
-						{ x: 50, y: 50 },
-						cteNameToId
-				  )
-				: { subqueries: [], subqueryIdMap: new Map<number, string>() };
-
-			// Build inner filters with nested subquery links
-			const innerFilters: FilterCondition[] = ps.innerQuery.filters.map((f, idx) => {
-				const filter: FilterCondition = {
-					id: generateId(),
-					column: f.column,
-					operator: f.operator,
-					value: f.value,
-					connector: f.connector
-				};
-				if (f.subqueryIndex !== undefined) {
-					const nestedSubqueryId = nestedResult.subqueryIdMap.get(f.subqueryIndex);
-					if (nestedSubqueryId) {
-						filter.subqueryId = nestedSubqueryId;
-						const nestedSubquery = nestedResult.subqueries.find(s => s.id === nestedSubqueryId);
-						if (nestedSubquery) {
-							nestedSubquery.linkedFilterId = filter.id;
-						}
-					}
-				}
-				return filter;
-			});
-
-			const subqueryWidth = Math.max(300, 20 + ps.innerQuery.tables.length * 240 + 20);
-			const subqueryHeight = Math.max(200, 350);
-
-			result.push({
-				id: subqueryId,
-				position,
-				size: existingSubquery?.size ?? { width: subqueryWidth, height: subqueryHeight },
-				role: ps.role,
-				innerQuery: {
-					tables: innerTables,
-					joins: innerJoins,
-					filters: innerFilters,
-					groupBy: ps.innerQuery.groupBy.map((g) => ({
-						id: generateId(),
-						column: g.column
-					})),
-					having: ps.innerQuery.having.map((h) => ({
-						id: generateId(),
-						aggregateFunction: h.aggregateFunction,
-						column: h.column,
-						operator: h.operator,
-						value: h.value,
-						connector: h.connector
-					})),
-					orderBy: ps.innerQuery.orderBy.map((o) => ({
-						id: generateId(),
-						column: o.column,
-						direction: o.direction
-					})),
-					limit: ps.innerQuery.limit,
-					selectAggregates: ps.innerQuery.selectAggregates.map((a) => ({
-						id: generateId(),
-						function: a.function,
-						expression: a.expression,
-						alias: a.alias
-					})),
-					subqueries: nestedResult.subqueries
-				}
-			});
-		}
-
-		return { subqueries: result, subqueryIdMap };
-	}
-
-	/**
 	 * Apply parsed SQL to the visual state.
 	 * Used for two-way sync between SQL editor and canvas.
-	 * @param parsed - Parsed query from sql-parser
+	 * Delegates to pure functions in query-builder-parsed-sql.ts.
 	 */
-	applyFromParsedSql(parsed: {
-		tables: Array<{ tableName: string; selectedColumns: string[] }>;
-		joins: Array<{
-			sourceTable: string;
-			sourceColumn: string;
-			targetTable: string;
-			targetColumn: string;
-			joinType: 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
-		}>;
-		filters: Array<{
-			column: string;
-			operator: FilterOperator;
-			value: string;
-			connector: 'AND' | 'OR';
-			subqueryIndex?: number;
-		}>;
-		groupBy: Array<{ column: string }>;
-		having: Array<{
-			aggregateFunction: AggregateFunction;
-			column: string;
-			operator: HavingOperator;
-			value: string;
-			connector: 'AND' | 'OR';
-		}>;
-		orderBy: Array<{ column: string; direction: 'ASC' | 'DESC' }>;
-		limit: number | null;
-		selectAggregates: Array<{
-			function: AggregateFunction;
-			expression: string;
-			alias?: string;
-		}>;
-		columnAggregates: Array<{
-			tableName: string;
-			column: string;
-			function: AggregateFunction;
-			alias?: string;
-		}>;
-		subqueries?: Array<{
-			id: string;
-			role: 'where' | 'from' | 'select';
-			linkedFilterIndex?: number;
-			innerQuery: {
-				tables: Array<{ tableName: string; selectedColumns: string[] }>;
-				joins: Array<{
-					sourceTable: string;
-					sourceColumn: string;
-					targetTable: string;
-					targetColumn: string;
-					joinType: 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
-				}>;
-				filters: Array<{
-					column: string;
-					operator: FilterOperator;
-					value: string;
-					connector: 'AND' | 'OR';
-					subqueryIndex?: number;
-				}>;
-				groupBy: Array<{ column: string }>;
-				having: Array<{
-					aggregateFunction: AggregateFunction;
-					column: string;
-					operator: HavingOperator;
-					value: string;
-					connector: 'AND' | 'OR';
-				}>;
-				orderBy: Array<{ column: string; direction: 'ASC' | 'DESC' }>;
-				limit: number | null;
-				selectAggregates: Array<{
-					function: AggregateFunction;
-					expression: string;
-					alias?: string;
-				}>;
-				columnAggregates?: Array<{
-					tableName: string;
-					column: string;
-					function: AggregateFunction;
-					alias?: string;
-				}>;
-				subqueries?: unknown[];
-			};
-		}>;
-		ctes?: Array<{
-			id: string;
-			name: string;
-			innerQuery: {
-				tables: Array<{ tableName: string; selectedColumns: string[] }>;
-				joins: Array<{
-					sourceTable: string;
-					sourceColumn: string;
-					targetTable: string;
-					targetColumn: string;
-					joinType: 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
-				}>;
-				filters: Array<{
-					column: string;
-					operator: FilterOperator;
-					value: string;
-					connector: 'AND' | 'OR';
-				}>;
-				groupBy: Array<{ column: string }>;
-				having: Array<{
-					aggregateFunction: AggregateFunction;
-					column: string;
-					operator: HavingOperator;
-					value: string;
-					connector: 'AND' | 'OR';
-				}>;
-				orderBy: Array<{ column: string; direction: 'ASC' | 'DESC' }>;
-				limit: number | null;
-				selectAggregates: Array<{
-					function: AggregateFunction;
-					expression: string;
-					alias?: string;
-				}>;
-				columnAggregates?: Array<{
-					tableName: string;
-					column: string;
-					function: AggregateFunction;
-					alias?: string;
-				}>;
-			};
-		}>;
-	}): void {
-		// Build CTEs first (so we can identify CTE reference tables)
-		const newCtes: CanvasCTE[] = [];
-		const cteNameToId = new Map<string, string>(); // Map CTE name to its ID
+	applyFromParsedSql(parsed: ParsedQuery): void {
+		const result = applyParsedSqlToState(
+			this.schema,
+			parsed,
+			this.tables,
+			this.ctes,
+			this.subqueries
+		);
 
-		if (parsed.ctes && parsed.ctes.length > 0) {
-			const existingCteMap = new Map(this.ctes.map((c) => [c.name, c]));
-
-			for (let i = 0; i < parsed.ctes.length; i++) {
-				const pc = parsed.ctes[i];
-				const existing = existingCteMap.get(pc.name);
-
-				// Build inner tables for the CTE
-				const innerTables: CanvasTable[] = pc.innerQuery.tables.map((pt, idx) => ({
-					id: generateId(),
-					tableName: pt.tableName,
-					position: { x: 20 + idx * 240, y: 50 },
-					selectedColumns: new SvelteSet(this.expandSelectedColumns(pt.tableName, pt.selectedColumns)),
-					columnAggregates: new Map(
-						(pc.innerQuery.columnAggregates || [])
-							.filter((ca) => ca.tableName === pt.tableName)
-							.map((ca) => [ca.column, { function: ca.function, alias: ca.alias }])
-					)
-				}));
-
-				// Build inner joins for the CTE
-				const innerJoins: CanvasJoin[] = pc.innerQuery.joins.map((pj) => ({
-					id: generateId(),
-					sourceTable: pj.sourceTable,
-					sourceColumn: pj.sourceColumn,
-					targetTable: pj.targetTable,
-					targetColumn: pj.targetColumn,
-					joinType: pj.joinType
-				}));
-
-				// Build inner filters for the CTE
-				const innerFilters: FilterCondition[] = pc.innerQuery.filters.map((pf) => ({
-					id: generateId(),
-					column: pf.column,
-					operator: pf.operator,
-					value: pf.value,
-					connector: pf.connector
-				}));
-
-				// Build inner group by for the CTE
-				const innerGroupBy: GroupByCondition[] = pc.innerQuery.groupBy.map((pg) => ({
-					id: generateId(),
-					column: pg.column
-				}));
-
-				// Build inner having for the CTE
-				const innerHaving: HavingCondition[] = pc.innerQuery.having.map((ph) => ({
-					id: generateId(),
-					aggregateFunction: ph.aggregateFunction,
-					column: ph.column,
-					operator: ph.operator,
-					value: ph.value,
-					connector: ph.connector
-				}));
-
-				// Build inner order by for the CTE
-				const innerOrderBy: SortCondition[] = pc.innerQuery.orderBy.map((po) => ({
-					id: generateId(),
-					column: po.column,
-					direction: po.direction
-				}));
-
-				// Build inner select aggregates for the CTE
-				const innerSelectAggregates: SelectAggregate[] = pc.innerQuery.selectAggregates.map((pa) => ({
-					id: generateId(),
-					function: pa.function,
-					expression: pa.expression,
-					alias: pa.alias
-				}));
-
-				const cteWidth = Math.max(300, 20 + pc.innerQuery.tables.length * 240 + 20);
-				const cteId = existing?.id ?? generateId();
-
-				newCtes.push({
-					id: cteId,
-					name: pc.name,
-					position: existing?.position ?? { x: 50 + i * 350, y: 50 },
-					size: existing?.size ?? { width: cteWidth, height: 350 },
-					innerQuery: {
-						tables: innerTables,
-						joins: innerJoins,
-						filters: innerFilters,
-						groupBy: innerGroupBy,
-						having: innerHaving,
-						orderBy: innerOrderBy,
-						limit: pc.innerQuery.limit,
-						selectAggregates: innerSelectAggregates,
-						subqueries: []
-					}
-				});
-
-				cteNameToId.set(pc.name, cteId);
-			}
-		}
-
-		// Build new tables with positions
-		const newTables: CanvasTable[] = [];
-		const existingTableMap = new Map(this.tables.map((t) => [t.tableName, t]));
-
-		for (let i = 0; i < parsed.tables.length; i++) {
-			const pt = parsed.tables[i];
-			const existing = existingTableMap.get(pt.tableName);
-
-			// Reuse existing position if table was already on canvas, otherwise auto-layout
-			const position = existing?.position ?? { x: 50 + i * 280, y: 50 + (i % 2) * 150 };
-
-			// Build columnAggregates map for this table
-			const columnAggsForTable = new Map<string, ColumnAggregate>();
-			for (const ca of parsed.columnAggregates) {
-				if (ca.tableName === pt.tableName) {
-					columnAggsForTable.set(ca.column, {
-						function: ca.function,
-						alias: ca.alias
-					});
-				}
-			}
-
-			// Check if this table references a CTE
-			const cteId = cteNameToId.get(pt.tableName);
-
-			newTables.push({
-				id: existing?.id ?? generateId(),
-				tableName: pt.tableName,
-				position,
-				selectedColumns: new SvelteSet(this.expandSelectedColumns(pt.tableName, pt.selectedColumns)),
-				columnAggregates: columnAggsForTable,
-				cteId // Will be undefined for regular tables, set for CTE references
-			});
-		}
-
-		// Build new joins
-		const newJoins: CanvasJoin[] = parsed.joins.map((pj) => ({
-			id: generateId(),
-			sourceTable: pj.sourceTable,
-			sourceColumn: pj.sourceColumn,
-			targetTable: pj.targetTable,
-			targetColumn: pj.targetColumn,
-			joinType: pj.joinType
-		}));
-
-		// Build subqueries recursively (supports nested subqueries)
-		const subqueryResult = parsed.subqueries && parsed.subqueries.length > 0
-			? this.buildSubqueriesFromParsed(parsed.subqueries, this.subqueries, { x: 400, y: 300 }, cteNameToId)
-			: { subqueries: [], subqueryIdMap: new Map<number, string>() };
-		const newSubqueries = subqueryResult.subqueries;
-		const subqueryIdMap = subqueryResult.subqueryIdMap;
-
-		// Build new filters with subquery links
-		const newFilters: FilterCondition[] = parsed.filters.map((pf, index) => {
-			const filter: FilterCondition = {
-				id: generateId(),
-				column: pf.column,
-				operator: pf.operator,
-				value: pf.value,
-				connector: pf.connector
-			};
-
-			// Link to subquery if this filter uses one
-			if (pf.subqueryIndex !== undefined) {
-				const subqueryId = subqueryIdMap.get(pf.subqueryIndex);
-				if (subqueryId) {
-					filter.subqueryId = subqueryId;
-					// Also update the subquery's linkedFilterId
-					const subquery = newSubqueries.find((s) => s.id === subqueryId);
-					if (subquery) {
-						subquery.linkedFilterId = filter.id;
-					}
-				}
-			}
-
-			return filter;
-		});
-
-		// Build new group by
-		const newGroupBy: GroupByCondition[] = parsed.groupBy.map((pg) => ({
-			id: generateId(),
-			column: pg.column
-		}));
-
-		// Build new having
-		const newHaving: HavingCondition[] = parsed.having.map((ph) => ({
-			id: generateId(),
-			aggregateFunction: ph.aggregateFunction,
-			column: ph.column,
-			operator: ph.operator,
-			value: ph.value,
-			connector: ph.connector
-		}));
-
-		// Build new order by
-		const newOrderBy: SortCondition[] = parsed.orderBy.map((po) => ({
-			id: generateId(),
-			column: po.column,
-			direction: po.direction
-		}));
-
-		// Build new select aggregates
-		const newSelectAggregates: SelectAggregate[] = parsed.selectAggregates.map((pa) => ({
-			id: generateId(),
-			function: pa.function,
-			expression: pa.expression,
-			alias: pa.alias
-		}));
-
-		// Apply all at once
-		this.tables = newTables;
-		this.joins = newJoins;
-		this.filters = newFilters;
-		this.groupBy = newGroupBy;
-		this.having = newHaving;
-		this.orderBy = newOrderBy;
-		this.limit = parsed.limit;
-		this.selectAggregates = newSelectAggregates;
-		this.subqueries = newSubqueries;
-		this.ctes = newCtes;
+		this.tables = result.tables;
+		this.joins = result.joins;
+		this.filters = result.filters;
+		this.groupBy = result.groupBy;
+		this.having = result.having;
+		this.orderBy = result.orderBy;
+		this.limit = result.limit;
+		this.selectAggregates = result.selectAggregates;
+		this.subqueries = result.subqueries;
+		this.ctes = result.ctes;
 	}
 
 	// === RESET ===
