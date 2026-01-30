@@ -16,6 +16,7 @@
     import LanguageToggle from "./language-toggle.svelte";
     import { m } from "$lib/paraglide/messages.js";
     import { DEFAULT_PROJECT_ID } from "$lib/types";
+    import HeaderTabs from "./header-tabs.svelte";
 
     const db = useDatabase();
     const sidebar = Sidebar.useSidebar();
@@ -72,9 +73,10 @@
 >
     <div
         data-tauri-drag-region
-        class="h-(--header-height) flex w-full items-center gap-2 pr-2 justify-between {isMac() ? 'pl-18' : ''}"
+        class="h-(--header-height) flex w-full items-center pr-2"
     >
-        <div data-tauri-drag-region class="flex items-center gap-1 flex-1 min-w-0">
+        <!-- Left section: sidebar toggle + project dropdown (fixed sidebar width) -->
+        <div data-tauri-drag-region class="flex items-center gap-1 shrink-0 w-(--sidebar-width) {isMac() ? 'pl-18' : 'pl-2'}">
             <Button
                 class="size-8 shrink-0"
                 variant="ghost"
@@ -133,7 +135,14 @@
                 </DropdownMenu.Content>
             </DropdownMenu.Root>
         </div>
-        <div class="flex items-center gap-1">
+
+        <!-- Middle section: tabs -->
+        <div class="flex-1 min-w-0 h-full flex items-center">
+            <HeaderTabs />
+        </div>
+
+        <!-- Right section: action buttons -->
+        <div class="flex items-center gap-1 shrink-0">
             {#if db.state.activeConnection?.database || db.state.activeConnection?.mssqlConnectionId || db.state.activeConnection?.providerConnectionId}
                 <Button
                     size="icon"
