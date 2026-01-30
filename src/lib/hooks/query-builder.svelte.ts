@@ -45,6 +45,8 @@ import {
 	createCteReferenceTable
 } from './query-builder-subqueries';
 import { createCte, getCteColumns as getCteColumnsPure } from './query-builder-ctes';
+import { computeDisplayAggregates } from './query-builder-aggregates';
+import { computeTableRemovalCleanup } from './query-builder-tables';
 import {
 	createFilter,
 	createGroupBy,
@@ -192,81 +194,15 @@ export class QueryBuilderState {
 	/**
 	 * Active display aggregates - unified format from active context.
 	 */
-	activeDisplayAggregates = $derived.by((): DisplayAggregate[] => {
-		const result: DisplayAggregate[] = [];
-		const tables = this.activeTables;
-		const selectAggs = this.activeSelectAggregates;
-
-		// Collect column aggregates from active tables
-		for (const table of tables) {
-			for (const [columnName, agg] of table.columnAggregates) {
-				result.push({
-					id: `col-${table.id}-${columnName}`,
-					function: agg.function,
-					expression: `${table.tableName}.${columnName}`,
-					alias: agg.alias,
-					source: 'column',
-					tableId: table.id,
-					columnName
-				});
-			}
-		}
-
-		// Add standalone select aggregates
-		for (const agg of selectAggs) {
-			result.push({
-				id: agg.id,
-				function: agg.function,
-				expression: agg.expression,
-				alias: agg.alias,
-				source: 'select'
-			});
-		}
-
-		return result;
-	});
+	activeDisplayAggregates = $derived.by((): DisplayAggregate[] =>
+		computeDisplayAggregates(this.activeTables, this.activeSelectAggregates)
+	);
 
 	/**
 	 * Generated SQL query from the current canvas state.
 	 */
 	generatedSql = $derived.by(() => {
 		return this.buildSql();
-	});
-
-	/**
-	 * All aggregates (column + select) in a unified display format.
-	 * Used by the filter panel to show all aggregates in one place.
-	 */
-	allDisplayAggregates = $derived.by((): DisplayAggregate[] => {
-		const result: DisplayAggregate[] = [];
-
-		// Collect column aggregates from all tables
-		for (const table of this.tables) {
-			for (const [columnName, agg] of table.columnAggregates) {
-				result.push({
-					id: `col-${table.id}-${columnName}`,
-					function: agg.function,
-					expression: `${table.tableName}.${columnName}`,
-					alias: agg.alias,
-					source: 'column',
-					tableId: table.id,
-					columnName
-				});
-			}
-		}
-
-		// Add standalone select aggregates
-		for (const agg of this.selectAggregates) {
-			result.push({
-				id: agg.id,
-				function: agg.function,
-				expression: agg.expression,
-				alias: agg.alias,
-				source: 'select'
-			});
-		}
-
-		return result;
 	});
 
 	/**
@@ -330,20 +266,11 @@ export class QueryBuilderState {
 		const table = this.tables.find((t) => t.id === tableId);
 		if (!table) return;
 
-		const tableName = table.tableName;
+		const cleanup = computeTableRemovalCleanup(table.tableName, this.joins, this.filters, this.orderBy);
+		this.joins = cleanup.joins;
+		this.filters = cleanup.filters;
+		this.orderBy = cleanup.orderBy;
 
-		// Remove associated joins
-		this.joins = this.joins.filter(
-			(j) => j.sourceTable !== tableName && j.targetTable !== tableName
-		);
-
-		// Remove associated filters (column format is "table.column")
-		this.filters = this.filters.filter((f) => !f.column.startsWith(`${tableName}.`));
-
-		// Remove associated order by clauses
-		this.orderBy = this.orderBy.filter((o) => !o.column.startsWith(`${tableName}.`));
-
-		// Remove the table
 		this.tables = this.tables.filter((t) => t.id !== tableId);
 		this.customSql = null; // Clear custom SQL so editor syncs with visual state
 	}
@@ -462,207 +389,6 @@ export class QueryBuilderState {
 		this.customSql = null; // Clear custom SQL so editor syncs with visual state
 	}
 
-	// === FILTER MANAGEMENT ===
-
-	/**
-	 * Add a filter condition.
-	 * @param column - Column to filter on (format: "table.column")
-	 * @param operator - Comparison operator
-	 * @param value - Value to compare against
-	 * @param connector - Logical connector to next condition
-	 * @returns The created filter
-	 */
-	addFilter(
-		column: string,
-		operator: FilterOperator,
-		value: string,
-		connector: 'AND' | 'OR' = 'AND'
-	): FilterCondition {
-		const filter: FilterCondition = {
-			id: generateId(),
-			column,
-			operator,
-			value,
-			connector
-		};
-
-		this.filters = [...this.filters, filter];
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-		return filter;
-	}
-
-	/**
-	 * Update an existing filter.
-	 * @param filterId - ID of the filter
-	 * @param updates - Partial filter updates
-	 */
-	updateFilter(filterId: string, updates: Partial<Omit<FilterCondition, 'id'>>): void {
-		this.filters = this.filters.map((f) => (f.id === filterId ? { ...f, ...updates } : f));
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-	}
-
-	/**
-	 * Remove a filter.
-	 * @param filterId - ID of the filter to remove
-	 */
-	removeFilter(filterId: string): void {
-		this.filters = this.filters.filter((f) => f.id !== filterId);
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-	}
-
-	// === GROUP BY MANAGEMENT ===
-
-	/**
-	 * Add a GROUP BY column.
-	 * @param column - Column to group by (format: "table.column")
-	 * @returns The created group by condition
-	 */
-	addGroupBy(column: string): GroupByCondition {
-		const groupByCondition: GroupByCondition = {
-			id: generateId(),
-			column
-		};
-
-		this.groupBy = [...this.groupBy, groupByCondition];
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-		return groupByCondition;
-	}
-
-	/**
-	 * Update the column of a GROUP BY clause.
-	 * @param groupById - ID of the group by condition
-	 * @param column - New column name
-	 */
-	updateGroupBy(groupById: string, column: string): void {
-		this.groupBy = this.groupBy.map((g) => (g.id === groupById ? { ...g, column } : g));
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-	}
-
-	/**
-	 * Remove a GROUP BY clause.
-	 * @param groupById - ID of the group by condition to remove
-	 */
-	removeGroupBy(groupById: string): void {
-		this.groupBy = this.groupBy.filter((g) => g.id !== groupById);
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-	}
-
-	// === HAVING MANAGEMENT ===
-
-	/**
-	 * Add a HAVING condition.
-	 * @param aggregateFunction - Aggregate function (COUNT, SUM, AVG, MIN, MAX)
-	 * @param column - Column for the aggregate (empty string = * for COUNT)
-	 * @param operator - Comparison operator
-	 * @param value - Value to compare against
-	 * @param connector - Logical connector to next condition
-	 * @returns The created having condition
-	 */
-	addHaving(
-		aggregateFunction: AggregateFunction,
-		column: string,
-		operator: HavingOperator,
-		value: string,
-		connector: 'AND' | 'OR' = 'AND'
-	): HavingCondition {
-		const havingCondition: HavingCondition = {
-			id: generateId(),
-			aggregateFunction,
-			column,
-			operator,
-			value,
-			connector
-		};
-
-		this.having = [...this.having, havingCondition];
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-		return havingCondition;
-	}
-
-	/**
-	 * Update an existing HAVING condition.
-	 * @param havingId - ID of the having condition
-	 * @param updates - Partial having condition updates
-	 */
-	updateHaving(havingId: string, updates: Partial<Omit<HavingCondition, 'id'>>): void {
-		this.having = this.having.map((h) => (h.id === havingId ? { ...h, ...updates } : h));
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-	}
-
-	/**
-	 * Remove a HAVING condition.
-	 * @param havingId - ID of the having condition to remove
-	 */
-	removeHaving(havingId: string): void {
-		this.having = this.having.filter((h) => h.id !== havingId);
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-	}
-
-	// === ORDER BY MANAGEMENT ===
-
-	/**
-	 * Add an ORDER BY clause.
-	 * @param column - Column to sort by (format: "table.column")
-	 * @param direction - Sort direction
-	 * @returns The created sort condition
-	 */
-	addOrderBy(column: string, direction: SortDirection = 'ASC'): SortCondition {
-		const sortCondition: SortCondition = {
-			id: generateId(),
-			column,
-			direction
-		};
-
-		this.orderBy = [...this.orderBy, sortCondition];
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-		return sortCondition;
-	}
-
-	/**
-	 * Update the direction of an ORDER BY clause.
-	 * @param orderId - ID of the sort condition
-	 * @param direction - New sort direction
-	 */
-	updateOrderBy(orderId: string, direction: SortDirection): void {
-		this.orderBy = this.orderBy.map((o) => (o.id === orderId ? { ...o, direction } : o));
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-	}
-
-	/**
-	 * Update the column of an ORDER BY clause.
-	 * @param orderId - ID of the sort condition
-	 * @param column - New column name
-	 */
-	updateOrderByColumn(orderId: string, column: string): void {
-		this.orderBy = this.orderBy.map((o) => (o.id === orderId ? { ...o, column } : o));
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-	}
-
-	/**
-	 * Remove an ORDER BY clause.
-	 * @param orderId - ID of the sort condition to remove
-	 */
-	removeOrderBy(orderId: string): void {
-		this.orderBy = this.orderBy.filter((o) => o.id !== orderId);
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-	}
-
-	/**
-	 * Reorder ORDER BY clauses.
-	 * @param fromIndex - Current index
-	 * @param toIndex - Target index
-	 */
-	reorderOrderBy(fromIndex: number, toIndex: number): void {
-		if (fromIndex < 0 || fromIndex >= this.orderBy.length) return;
-		if (toIndex < 0 || toIndex >= this.orderBy.length) return;
-
-		const newOrderBy = [...this.orderBy];
-		const [removed] = newOrderBy.splice(fromIndex, 1);
-		newOrderBy.splice(toIndex, 0, removed);
-		this.orderBy = newOrderBy;
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
-	}
-
 	// === COLUMN AGGREGATE MANAGEMENT ===
 
 	/**
@@ -698,49 +424,6 @@ export class QueryBuilderState {
 	 */
 	clearColumnAggregate(tableId: string, column: string): void {
 		this.setColumnAggregate(tableId, column, null);
-	}
-
-	// === SELECT AGGREGATE MANAGEMENT ===
-
-	/**
-	 * Add a standalone aggregate to the SELECT clause.
-	 * @param func - Aggregate function
-	 * @param expression - Expression inside the aggregate (*, column, or expression)
-	 * @param alias - Optional alias for AS clause
-	 * @returns The created aggregate's ID
-	 */
-	addSelectAggregate(func: AggregateFunction, expression: string, alias?: string): string {
-		const aggregate: SelectAggregate = {
-			id: generateId(),
-			function: func,
-			expression,
-			alias
-		};
-
-		this.selectAggregates = [...this.selectAggregates, aggregate];
-		this.customSql = null;
-		return aggregate.id;
-	}
-
-	/**
-	 * Update a standalone aggregate.
-	 * @param id - ID of the aggregate
-	 * @param updates - Partial updates
-	 */
-	updateSelectAggregate(id: string, updates: Partial<Omit<SelectAggregate, 'id'>>): void {
-		this.selectAggregates = this.selectAggregates.map((a) =>
-			a.id === id ? { ...a, ...updates } : a
-		);
-		this.customSql = null;
-	}
-
-	/**
-	 * Remove a standalone aggregate.
-	 * @param id - ID of the aggregate to remove
-	 */
-	removeSelectAggregate(id: string): void {
-		this.selectAggregates = this.selectAggregates.filter((a) => a.id !== id);
-		this.customSql = null;
 	}
 
 	// === SUBQUERY MANAGEMENT ===
@@ -790,10 +473,9 @@ export class QueryBuilderState {
 		if (!subquery) return;
 
 		if (subquery.linkedFilterId) {
-			const filter = this.filters.find((f) => f.id === subquery.linkedFilterId);
-			if (filter) {
-				this.updateFilter(filter.id, { subqueryId: undefined });
-			}
+			this.filters = this.filters.map((f) =>
+				f.id === subquery.linkedFilterId ? { ...f, subqueryId: undefined } : f
+			);
 		}
 
 		const parent = findParentSubqueryPure(subqueryId, this.subqueries);
@@ -1197,17 +879,6 @@ export class QueryBuilderState {
 		this.subqueries = [...this.subqueries];
 		this.customSql = null;
 		return table;
-	}
-
-	// === LIMIT ===
-
-	/**
-	 * Set the LIMIT value.
-	 * @param limit - Limit value, or null for no limit
-	 */
-	setLimit(limit: number | null): void {
-		this.limit = limit;
-		this.customSql = null; // Clear custom SQL so editor syncs with visual state
 	}
 
 	// === SQL GENERATION ===
