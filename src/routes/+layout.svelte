@@ -22,6 +22,7 @@
     import { m } from "$lib/paraglide/messages.js";
     import { onMount } from "svelte";
     import { onboardingStore } from "$lib/stores/onboarding.svelte.js";
+    import { licenseStore } from "$lib/stores/license.svelte.js";
     import { dbeaverImportStore } from "$lib/stores/dbeaver-import.svelte.js";
     import { tutorialProgressStore } from "$lib/stores/tutorial-progress.svelte.js";
     import { isTauri } from "$lib/utils/environment";
@@ -44,8 +45,9 @@
         await tutorialProgressStore.initialize();
 
         if (isTauri()) {
-            // Desktop app: initialize onboarding and dbeaver import
+            // Desktop app: initialize onboarding, license, and dbeaver import
             await onboardingStore.initialize();
+            await licenseStore.initialize();
             await dbeaverImportStore.initialize();
         } else {
             // Browser demo: initialize DuckDB with sample data

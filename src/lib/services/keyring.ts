@@ -25,6 +25,11 @@ export interface KeyringService {
 	deleteSshKeyPassphrase(connectionId: string): Promise<void>;
 
 	deleteAllForConnection(connectionId: string): Promise<void>;
+
+	setLicenseKey(key: string): Promise<void>;
+	getLicenseKey(): Promise<string | null>;
+	deleteLicenseKey(): Promise<void>;
+
 	isAvailable(): boolean;
 }
 
@@ -124,6 +129,29 @@ class TauriKeyringService implements KeyringService {
 		]);
 	}
 
+	async setLicenseKey(key: string): Promise<void> {
+		await this.init();
+		await this.keyringApi!.setPassword(SERVICE, 'license-key', key);
+	}
+
+	async getLicenseKey(): Promise<string | null> {
+		await this.init();
+		try {
+			return await this.keyringApi!.getPassword(SERVICE, 'license-key');
+		} catch {
+			return null;
+		}
+	}
+
+	async deleteLicenseKey(): Promise<void> {
+		await this.init();
+		try {
+			await this.keyringApi!.deletePassword(SERVICE, 'license-key');
+		} catch {
+			// Ignore - entry may not exist
+		}
+	}
+
 	isAvailable(): boolean {
 		return true;
 	}
@@ -149,6 +177,11 @@ class NoopKeyringService implements KeyringService {
 	}
 	async deleteSshKeyPassphrase(): Promise<void> {}
 	async deleteAllForConnection(): Promise<void> {}
+	async setLicenseKey(): Promise<void> {}
+	async getLicenseKey(): Promise<string | null> {
+		return null;
+	}
+	async deleteLicenseKey(): Promise<void> {}
 	isAvailable(): boolean {
 		return false;
 	}

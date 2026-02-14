@@ -67,3 +67,32 @@ export async function installUpdate(): Promise<void> {
 export async function readDbeaverConfig(): Promise<string | null> {
 	return invoke<string | null>('read_dbeaver_config');
 }
+
+export async function getUsername(): Promise<string> {
+	return invoke<string>('get_username');
+}
+
+// === License Commands ===
+
+export interface LicenseResponse {
+	id: string;
+	status: string;
+	key: string;
+	tier: string;
+	activation: number;
+	activation_limit: number;
+	expires_at: string | null;
+	instance_id: string | null;
+}
+
+export async function activateLicense(key: string, instanceName: string): Promise<LicenseResponse> {
+	return invoke<LicenseResponse>('activate_license', { key, instanceName });
+}
+
+export async function validateLicense(key: string, instanceId: string): Promise<LicenseResponse> {
+	return invoke<LicenseResponse>('validate_license', { key, instanceId });
+}
+
+export async function deactivateLicense(key: string, instanceId: string): Promise<LicenseResponse> {
+	return invoke<LicenseResponse>('deactivate_license', { key, instanceId });
+}

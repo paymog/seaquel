@@ -8,6 +8,7 @@ use tauri_plugin_updater::UpdaterExt;
 
 mod duckdb_commands;
 mod git;
+mod license;
 mod mssql;
 mod ssh_tunnel;
 
@@ -110,6 +111,11 @@ fn open_path(path: String) -> Result<(), CommandError> {
         message: format!("Failed to open path: {}", e),
         code: "OPEN_ERROR".to_string(),
     })
+}
+
+#[tauri::command]
+fn get_username() -> String {
+    whoami::username()
 }
 
 #[tauri::command]
@@ -276,6 +282,7 @@ pub fn run() {
             copy_image_to_clipboard,
             open_path,
             get_data_dir,
+            get_username,
             install_update,
             read_dbeaver_config,
             ssh_tunnel::create_ssh_tunnel,
@@ -303,6 +310,9 @@ pub fn run() {
             git::git_get_conflict_content,
             git::git_set_remote,
             git::git_get_remote_url,
+            license::activate_license,
+            license::validate_license,
+            license::deactivate_license,
         ])
         .setup(|app| {
             // Set up custom menu

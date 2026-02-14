@@ -17,6 +17,10 @@
     import { m } from "$lib/paraglide/messages.js";
     import { DEFAULT_PROJECT_ID } from "$lib/types";
     import HeaderTabs from "./header-tabs.svelte";
+    import { Badge } from "$lib/components/ui/badge/index.js";
+    import { licenseStore } from "$lib/stores/license.svelte.js";
+    import { settingsDialogStore } from "$lib/stores/settings-dialog.svelte.js";
+    import { isTauri } from "$lib/utils/environment";
 
     const db = useDatabase();
     const sidebar = Sidebar.useSidebar();
@@ -143,6 +147,16 @@
 
         <!-- Right section: action buttons -->
         <div class="flex items-center gap-1 shrink-0">
+            {#if isTauri()}
+                <button
+                    class="cursor-pointer"
+                    onclick={() => settingsDialogStore.open("license")}
+                >
+                    <Badge variant={licenseStore.status === "active" ? "default" : licenseStore.status === "expired" || licenseStore.status === "invalid" ? "destructive" : "secondary"}>
+                        {licenseStore.badgeLabel}
+                    </Badge>
+                </button>
+            {/if}
             {#if db.state.activeConnection?.database || db.state.activeConnection?.mssqlConnectionId || db.state.activeConnection?.providerConnectionId}
                 <Button
                     size="icon"
