@@ -3,6 +3,7 @@
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "$lib/components/ui/card";
 	import { connectionDialogStore } from "$lib/stores/connection-dialog.svelte.js";
 	import { dbeaverImportStore } from "$lib/stores/dbeaver-import.svelte.js";
+	import { tablePlusImportStore } from "$lib/stores/tableplus-import.svelte.js";
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
 	import { m } from "$lib/paraglide/messages.js";
 	import { isTauri } from "$lib/utils/environment";
@@ -26,6 +27,11 @@
 	const handleImportDbeaver = async () => {
 		const existingIds = db.state.connections.map((c) => c.id);
 		await dbeaverImportStore.checkAndShowDialog(existingIds);
+	};
+
+	const handleImportTablePlus = async () => {
+		const existingIds = db.state.connections.map((c) => c.id);
+		await tablePlusImportStore.checkAndShowDialog(existingIds);
 	};
 
 	const handleConnectionClick = async (connection: typeof db.state.connections[0]) => {
@@ -76,6 +82,10 @@
 				<Button size="lg" variant="outline" class="w-full" onclick={handleImportDbeaver}>
 					<DownloadIcon class="size-4 me-2" />
 					{m.starter_import_dbeaver()}
+				</Button>
+				<Button size="lg" variant="outline" class="w-full" onclick={handleImportTablePlus}>
+					<DownloadIcon class="size-4 me-2" />
+					{m.starter_import_tableplus()}
 				</Button>
 			{/if}
 		</div>

@@ -16,6 +16,7 @@
     import { themeStore } from "$lib/stores/theme.svelte.js";
     import { applyThemeColors } from "$lib/themes/apply";
     import DbeaverImportDialog from "$lib/components/dbeaver-import-dialog.svelte";
+    import TablePlusImportDialog from "$lib/components/tableplus-import-dialog.svelte";
     import type { ThemeColors } from "$lib/types/theme";
     import { toast } from "svelte-sonner";
     import { errorToast } from "$lib/utils/toast";
@@ -24,6 +25,7 @@
     import { onboardingStore } from "$lib/stores/onboarding.svelte.js";
     import { licenseStore } from "$lib/stores/license.svelte.js";
     import { dbeaverImportStore } from "$lib/stores/dbeaver-import.svelte.js";
+    import { tablePlusImportStore } from "$lib/stores/tableplus-import.svelte.js";
     import { tutorialProgressStore } from "$lib/stores/tutorial-progress.svelte.js";
     import { isTauri } from "$lib/utils/environment";
     import { initializeDemo } from "$lib/demo/init";
@@ -49,6 +51,7 @@
             await onboardingStore.initialize();
             await licenseStore.initialize();
             await dbeaverImportStore.initialize();
+            await tablePlusImportStore.initialize();
         } else {
             // Browser demo: initialize DuckDB with sample data
             try {
@@ -181,6 +184,7 @@
     <CommandPalette />
     <SettingsDialog />
     <DbeaverImportDialog />
+    <TablePlusImportDialog />
 
     <Sidebar.Provider
         class="[--header-height:calc(--spacing(8))] flex-col h-svh overflow-hidden"
