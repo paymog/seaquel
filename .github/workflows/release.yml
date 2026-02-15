@@ -111,3 +111,33 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  # The Windows build transforms the version in tauri.conf.json (e.g. 2026.4.0 → 26.4.0)
+  # for MSI compatibility. Since tauri-action shares a single latest.json across all matrix
+  # jobs, the Windows build can overwrite the version field with the truncated value.
+  # This job restores the correct version so the updater works on all platforms.
+  fix-updater-manifest:
+    needs: publish-tauri
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Fix version in latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+
+          gh release download "$TAG" --pattern 'latest.json' --output latest.json
+
+          CURRENT=$(jq -r .version latest.json)
+          if [ "$CURRENT" != "$VERSION" ]; then
+            echo "Fixing version in latest.json: $CURRENT → $VERSION"
+            jq --arg v "$VERSION" '.version = $v' latest.json > fixed.json
+            mv fixed.json latest.json
+            gh release upload "$TAG" latest.json --clobber
+          else
+            echo "Version already correct: $CURRENT"
+          fi
