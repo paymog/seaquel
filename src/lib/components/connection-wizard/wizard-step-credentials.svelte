@@ -13,10 +13,18 @@
 	import FolderIcon from "@lucide/svelte/icons/folder";
 	import CopyIcon from "@lucide/svelte/icons/copy";
 	import { toast } from "svelte-sonner";
-import { errorToast } from "$lib/utils/toast";
+	import { errorToast } from "$lib/utils/toast";
+	import { getUsername } from "$lib/api/tauri";
+	import { isTauri } from "$lib/utils/environment";
 
 	const keyring = getKeyringService();
 	const keychainAvailable = keyring.isAvailable();
+
+	let osUsername = $state("");
+
+	if (isTauri()) {
+		getUsername().then((name) => { osUsername = name; });
+	}
 
 	interface Props {
 		formData: WizardFormData;
@@ -31,6 +39,10 @@ import { errorToast } from "$lib/utils/toast";
 		$props();
 
 	const isFileBasedDb = $derived(formData.type === "sqlite" || formData.type === "duckdb");
+
+	// Track whether the user has manually edited the connection name field.
+	// This prevents the auto-generation effect from overwriting user input.
+	let nameManuallyEdited = $state(formData.name !== "");
 
 	const selectDatabaseFile = async () => {
 		try {
@@ -47,7 +59,7 @@ import { errorToast } from "$lib/utils/toast";
 			if (selected && typeof selected === "string") {
 				formData.databaseName = selected;
 				// Auto-generate name from file
-				if (!formData.name) {
+				if (!nameManuallyEdited) {
 					const fileName = selected.split("/").pop() || "database";
 					formData.name = isDuckDB ? `DuckDB - ${fileName}` : `SQLite - ${fileName}`;
 				}
@@ -59,14 +71,14 @@ import { errorToast } from "$lib/utils/toast";
 
 	const useInMemoryDatabase = () => {
 		formData.databaseName = ":memory:";
-		if (!formData.name) {
+		if (!nameManuallyEdited) {
 			formData.name = "DuckDB - In-Memory";
 		}
 	};
 
-	// Auto-generate connection name from database name
+	// Auto-generate connection name from database name (only if user hasn't edited it)
 	$effect(() => {
-		if (formData.databaseName && !formData.name && !isReconnecting) {
+		if (formData.databaseName && !formData.name && !isReconnecting && !nameManuallyEdited) {
 			formData.name = formData.databaseName;
 		}
 	});
@@ -131,7 +143,7 @@ import { errorToast } from "$lib/utils/toast";
 				<Label for="username">{m.connection_dialog_label_username()}</Label>
 				<div class="relative">
 					<UserIcon class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-					<Input id="username" bind:value={formData.username} placeholder="postgres" class="pl-9" />
+					<Input id="username" bind:value={formData.username} placeholder={osUsername} class="pl-9" />
 				</div>
 			</div>
 
@@ -176,6 +188,7 @@ import { errorToast } from "$lib/utils/toast";
 			<Input
 				id="name"
 				bind:value={formData.name}
+				oninput={() => nameManuallyEdited = true}
 				placeholder={m.connection_dialog_placeholder_connection_name()}
 			/>
 			<p class="text-xs text-muted-foreground">{m.wizard_credentials_name_hint()}</p>
