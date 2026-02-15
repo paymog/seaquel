@@ -69,6 +69,40 @@ fn read_dbeaver_config() -> Result<Option<String>, CommandError> {
 }
 
 #[tauri::command]
+fn read_tableplus_config() -> Result<Option<String>, CommandError> {
+    let home = dirs::home_dir().ok_or(CommandError {
+        message: "Could not find home directory".to_string(),
+        code: "HOME_DIR_ERROR".to_string(),
+    })?;
+
+    // TablePlus only runs on macOS
+    #[cfg(target_os = "macos")]
+    let config_path = home.join("Library/Application Support/com.tinyapp.TablePlus/Data/Connections.plist");
+
+    #[cfg(not(target_os = "macos"))]
+    return Ok(None);
+
+    #[cfg(target_os = "macos")]
+    {
+        if config_path.exists() {
+            let value: plist::Value = plist::from_file(&config_path)
+                .map_err(|e| CommandError {
+                    message: format!("Failed to parse TablePlus plist: {}", e),
+                    code: "PARSE_ERROR".to_string(),
+                })?;
+            let json = serde_json::to_string(&value)
+                .map_err(|e| CommandError {
+                    message: format!("Failed to serialize plist to JSON: {}", e),
+                    code: "SERIALIZE_ERROR".to_string(),
+                })?;
+            Ok(Some(json))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+#[tauri::command]
 fn copy_image_to_clipboard(path: String) -> Result<(), CommandError> {
     let img = ImageReader::open(&path)
         .map_err(|e| CommandError {
@@ -285,6 +319,7 @@ pub fn run() {
             get_username,
             install_update,
             read_dbeaver_config,
+            read_tableplus_config,
             ssh_tunnel::create_ssh_tunnel,
             ssh_tunnel::close_ssh_tunnel,
             ssh_tunnel::check_tunnel_status,
