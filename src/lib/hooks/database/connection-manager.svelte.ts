@@ -164,7 +164,7 @@ export class ConnectionManager {
         tunnelLocalPort: tunnelResult.localPort,
       };
     } catch (error) {
-      errorToast(`SSH tunnel failed: ${error}`);
+      errorToast(`SSH tunnel failed: ${JSON.stringify(error)}`);
       throw error;
     }
   }
