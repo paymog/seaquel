@@ -16,7 +16,6 @@
     import LanguageToggle from "./language-toggle.svelte";
     import { m } from "$lib/paraglide/messages.js";
     import { DEFAULT_PROJECT_ID } from "$lib/types";
-    import HeaderTabs from "./header-tabs.svelte";
     import { Badge } from "$lib/components/ui/badge/index.js";
     import { licenseStore } from "$lib/stores/license.svelte.js";
     import { settingsDialogStore } from "$lib/stores/settings-dialog.svelte.js";
@@ -140,10 +139,8 @@
             </DropdownMenu.Root>
         </div>
 
-        <!-- Middle section: tabs -->
-        <div class="flex-1 min-w-0 h-full flex items-center">
-            <HeaderTabs />
-        </div>
+        <!-- Middle section: empty drag space -->
+        <div data-tauri-drag-region class="flex-1 min-w-0 h-full"></div>
 
         <!-- Right section: action buttons -->
         <div class="flex items-center gap-1 shrink-0">

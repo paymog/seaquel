@@ -17,6 +17,7 @@
     import { StatisticsDashboard } from "$lib/components/statistics";
     import CanvasView from "$lib/components/canvas/canvas-view.svelte";
     import QueryVisualViewer from "$lib/components/query-visual-viewer.svelte";
+    import HeaderTabs from "$lib/components/header-tabs.svelte";
 
     const db = useDatabase();
     const shortcuts = useShortcuts();
@@ -45,6 +46,9 @@
 <SidebarLeft />
 
 <SidebarInset class="flex flex-col h-full overflow-hidden">
+    <div class="h-8 flex items-center border-b shrink-0">
+        <HeaderTabs />
+    </div>
     {#if db.state.connectionsLoading || db.state.projectsLoading}
         <!-- Loading state - show nothing to prevent flash -->
     {:else if db.state.activeConnectionId}
