@@ -80,6 +80,8 @@ export interface QueryResult {
 	pageSize: number;
 	/** Total number of pages */
 	totalPages: number;
+	/** Whether this is a utility/DDL statement (SET, PRAGMA, CREATE, etc.) */
+	isUtility?: boolean;
 }
 
 /**

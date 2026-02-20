@@ -21,6 +21,13 @@ export function isWriteQuery(query: string): boolean {
 }
 
 /**
+ * Returns true if the query is a SELECT statement.
+ */
+export function isSelectQuery(query: string): boolean {
+	return detectQueryType(query) === 'select';
+}
+
+/**
  * Extracts the table name from a simple SELECT query.
  * Returns null if the table cannot be determined.
  */

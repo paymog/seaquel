@@ -3,7 +3,7 @@ import { errorToast } from "$lib/utils/toast";
 import type { DatabaseConnection, QueryResult, StatementResult, ParameterValue } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { QueryHistoryManager } from "./query-history.svelte.js";
-import { detectQueryType, isWriteQuery, extractTableFromSelect } from "$lib/db/query-utils";
+import { detectQueryType, isWriteQuery, isSelectQuery, extractTableFromSelect } from "$lib/db/query-utils";
 import { splitSqlStatements, getStatementAtOffset } from "$lib/db/sql-parser";
 import { substituteParameters } from "$lib/db/query-params";
 import { m } from "$lib/paraglide/messages.js";
@@ -105,6 +105,35 @@ export class QueryExecutionManager {
     const queryType = detectQueryType(baseQuery);
     const isMssql = connection.type === "mssql" && connection.mssqlConnectionId;
     const providerConnectionId = connection.providerConnectionId;
+
+    // Handle utility/DDL statements (SET, PRAGMA, CREATE, ALTER, DROP, etc.)
+    // These are not SELECT and not write queries — execute them without pagination.
+    // Use select() (not execute()) so statements like SET properly modify connection state
+    // in backends like DuckDB where conn.execute() may not apply settings.
+    if (!isSelectQuery(baseQuery) && !isWriteQuery(baseQuery)) {
+      if (isMssql) {
+        await mssqlExecute(connection.mssqlConnectionId!, baseQuery);
+      } else if (providerConnectionId) {
+        const provider = await this.providers.getForType(connection.type);
+        await provider.select(providerConnectionId, baseQuery, bindValues);
+      } else {
+        throw new Error("No connection established");
+      }
+
+      const totalMs = performance.now() - start;
+      return {
+        columns: [],
+        rows: [],
+        rowCount: 0,
+        totalRows: 0,
+        executionTime: Math.round(totalMs * 100) / 100,
+        queryType,
+        page: 1,
+        pageSize,
+        totalPages: 1,
+        isUtility: true,
+      };
+    }
 
     // Handle write queries (INSERT/UPDATE/DELETE)
     if (isWriteQuery(baseQuery)) {
@@ -430,8 +459,10 @@ export class QueryExecutionManager {
     // Mark as executing with proper reactivity
     this.updateQueryTabState(tabId, { isExecuting: true });
 
-    // Get effective page size from the first result or use default
-    const effectivePageSize = pageSize ?? tab.results?.[0]?.pageSize ?? this.DEFAULT_PAGE_SIZE;
+    // Get effective page size: use the first SELECT-type result's pageSize from previous execution, or default.
+    // Avoid inheriting pageSize from error or utility results.
+    const previousSelectResult = tab.results?.find(r => !r.isError && !r.isUtility && r.queryType === 'select');
+    const effectivePageSize = pageSize ?? previousSelectResult?.pageSize ?? this.DEFAULT_PAGE_SIZE;
 
     // Get database type for parsing
     const dbType = connection.type ?? "postgres";
@@ -450,14 +481,14 @@ export class QueryExecutionManager {
       return;
     }
 
-    const results: StatementResult[] = [];
+    const allResults: StatementResult[] = [];
 
     // Execute each statement
     for (let i = 0; i < statements.length; i++) {
       const stmt = statements[i];
       try {
         const result = await this.executeStatement(stmt.sql, page, effectivePageSize, connection);
-        results.push({
+        allResults.push({
           ...result,
           statementIndex: i,
           statementSql: stmt.sql,
@@ -465,14 +496,14 @@ export class QueryExecutionManager {
         });
       } catch (error) {
         // Continue on error - add error result
-        results.push({
+        allResults.push({
           columns: ["Error"],
           rows: [{ Error: extractErrorMessage(error) }],
           rowCount: 1,
           totalRows: 1,
           executionTime: 0,
           page: 1,
-          pageSize: 1,
+          pageSize: effectivePageSize,
           totalPages: 1,
           statementIndex: i,
           statementSql: stmt.sql,
@@ -482,16 +513,25 @@ export class QueryExecutionManager {
       }
     }
 
-    // Update tab with all results
+    // Filter out utility results (SET, PRAGMA, etc.) — they executed but don't need result tabs.
+    // Keep them only if ALL statements are utility (so the user sees something).
+    const displayResults = allResults.filter(r => !r.isUtility);
+    const results = displayResults.length > 0 ? displayResults : allResults;
+
+    // Re-index displayed results
+    const indexedResults = results.map((r, idx) => ({ ...r, statementIndex: idx }));
+
+    // Update tab with filtered results
     this.updateQueryTabState(tabId, {
-      results,
+      results: indexedResults,
       activeResultIndex: 0,
       isExecuting: false,
     });
 
-    // Add to history (only on first page to avoid duplicates, use first result's timing)
-    if (page === 1 && results.length > 0) {
-      this.queryHistory.addToHistory(tab.query, results[0]);
+    // Add to history (only on first page to avoid duplicates, use first meaningful result)
+    if (page === 1 && indexedResults.length > 0) {
+      const historyResult = indexedResults.find(r => !r.isUtility) ?? indexedResults[0];
+      this.queryHistory.addToHistory(tab.query, historyResult);
     }
   }
 
@@ -521,8 +561,9 @@ export class QueryExecutionManager {
     // Mark as executing
     this.updateQueryTabState(tabId, { isExecuting: true });
 
-    // Get effective page size
-    const effectivePageSize = pageSize ?? tab.results?.[0]?.pageSize ?? this.DEFAULT_PAGE_SIZE;
+    // Get effective page size: use the first SELECT-type result's pageSize from previous execution, or default.
+    const previousSelectResult = tab.results?.find(r => !r.isError && !r.isUtility && r.queryType === 'select');
+    const effectivePageSize = pageSize ?? previousSelectResult?.pageSize ?? this.DEFAULT_PAGE_SIZE;
 
     // Get database type
     const dbType = connection.type ?? "postgres";
@@ -541,7 +582,7 @@ export class QueryExecutionManager {
       return;
     }
 
-    const results: StatementResult[] = [];
+    const allResults: StatementResult[] = [];
 
     // Execute each statement with parameter substitution
     for (let i = 0; i < statements.length; i++) {
@@ -551,21 +592,21 @@ export class QueryExecutionManager {
         const { sql, bindValues } = substituteParameters(stmt.sql, parameterValues, dbType);
 
         const result = await this.executeStatement(sql, page, effectivePageSize, connection, bindValues);
-        results.push({
+        allResults.push({
           ...result,
           statementIndex: i,
           statementSql: stmt.sql, // Keep original SQL with {{}} for display
           isError: false,
         });
       } catch (error) {
-        results.push({
+        allResults.push({
           columns: ["Error"],
           rows: [{ Error: extractErrorMessage(error) }],
           rowCount: 1,
           totalRows: 1,
           executionTime: 0,
           page: 1,
-          pageSize: 1,
+          pageSize: effectivePageSize,
           totalPages: 1,
           statementIndex: i,
           statementSql: stmt.sql,
@@ -575,16 +616,24 @@ export class QueryExecutionManager {
       }
     }
 
-    // Update tab with all results
+    // Filter out utility results (SET, PRAGMA, etc.)
+    const displayResults = allResults.filter(r => !r.isUtility);
+    const results = displayResults.length > 0 ? displayResults : allResults;
+
+    // Re-index displayed results
+    const indexedResults = results.map((r, idx) => ({ ...r, statementIndex: idx }));
+
+    // Update tab with filtered results
     this.updateQueryTabState(tabId, {
-      results,
+      results: indexedResults,
       activeResultIndex: 0,
       isExecuting: false,
     });
 
-    // Add to history (only on first page, use first result's timing)
-    if (page === 1 && results.length > 0) {
-      this.queryHistory.addToHistory(tab.query, results[0]);
+    // Add to history (only on first page, use first meaningful result)
+    if (page === 1 && indexedResults.length > 0) {
+      const historyResult = indexedResults.find(r => !r.isUtility) ?? indexedResults[0];
+      this.queryHistory.addToHistory(tab.query, historyResult);
     }
   }
 
