@@ -29,6 +29,7 @@
     import { tutorialProgressStore } from "$lib/stores/tutorial-progress.svelte.js";
     import { isTauri } from "$lib/utils/environment";
     import { initializeDemo } from "$lib/demo/init";
+    import UpdateToastLink from "$lib/components/update-toast-link.svelte";
 
     setDatabase();
 
@@ -96,7 +97,9 @@
             const unlistenUpdate = await listen<string>(
                 "update-downloaded",
                 (event) => {
-                    toast.success(`Update v${event.payload} downloaded`, {
+                    toast.success(`v${event.payload} downloaded`, {
+                        description: UpdateToastLink,
+                        componentProps: { version: event.payload },
                         action: {
                             label: "Install & Restart",
                             onClick: () => installUpdate(),
