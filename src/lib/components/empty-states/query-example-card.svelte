@@ -26,8 +26,8 @@ import { errorToast } from "$lib/utils/toast";
 
 <div class="rounded-lg border bg-card p-4 space-y-3">
 	<div class="space-y-1">
-		<h3 class="font-medium text-sm">{query.name}</h3>
-		<p class="text-xs text-muted-foreground">{query.description}</p>
+		<h3 class="font-medium text-sm">{query.name()}</h3>
+		<p class="text-xs text-muted-foreground">{query.description()}</p>
 	</div>
 
 	<div class="rounded-md bg-muted/50 p-3 overflow-x-auto">
