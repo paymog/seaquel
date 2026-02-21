@@ -20,12 +20,12 @@ function detectPlatform(): string {
 	}
 
 	// Browser detection using navigator
-	if (typeof navigator !== "undefined") {
-		const ua = navigator.userAgent.toLowerCase();
-		if (ua.includes("mac")) return "macos";
-		if (ua.includes("win")) return "windows";
-		if (ua.includes("linux")) return "linux";
-	}
+	// if (typeof navigator !== "undefined") {
+	// 	const ua = navigator.userAgent.toLowerCase();
+	// 	if (ua.includes("mac")) return "macos";
+	// 	if (ua.includes("win")) return "windows";
+	// 	if (ua.includes("linux")) return "linux";
+	// }
 
 	return "unknown";
 }
