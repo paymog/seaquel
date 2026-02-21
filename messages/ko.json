@@ -300,7 +300,14 @@
 	"sidebar_saved": "저장됨",
 	"sidebar_no_history": "기록이 없습니다",
 	"sidebar_no_saved": "저장된 쿼리 없음",
-	"sidebar_tables_count": "{count}개 테이블",
+	"sidebar_tables_count": [{
+    "declarations": ["input count", "local countPlural = count: plural"],
+    "selectors": ["countPlural"],
+    "match": {
+      "countPlural=one": "{count}개 테이블",
+      "countPlural=other": "{count}개 테이블"
+    }
+  }],
 	"sidebar_queries_stats": "{executed}개 실행됨, {saved}개 저장됨",
 	"sidebar_no_connection_footer": "연결 없음",
 	"sidebar_updated": "{time} 업데이트됨",

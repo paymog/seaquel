@@ -300,7 +300,14 @@
 	"sidebar_saved": "Guardadas",
 	"sidebar_no_history": "No se encontró historial",
 	"sidebar_no_saved": "No hay consultas guardadas",
-	"sidebar_tables_count": "{count} tablas",
+	"sidebar_tables_count": [{
+    "declarations": ["input count", "local countPlural = count: plural"],
+    "selectors": ["countPlural"],
+    "match": {
+      "countPlural=one": "{count} tabla",
+      "countPlural=other": "{count} tablas"
+    }
+  }],
 	"sidebar_queries_stats": "{executed} ejecutadas, {saved} guardadas",
 	"sidebar_no_connection_footer": "Sin conexión",
 	"sidebar_updated": "Actualizado {time}",

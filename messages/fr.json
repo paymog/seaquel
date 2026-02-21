@@ -300,7 +300,14 @@
 	"sidebar_saved": "Enregistrées",
 	"sidebar_no_history": "Aucun historique trouvé",
 	"sidebar_no_saved": "Aucune requête enregistrée",
-	"sidebar_tables_count": "{count} tables",
+	"sidebar_tables_count": [{
+    "declarations": ["input count", "local countPlural = count: plural"],
+    "selectors": ["countPlural"],
+    "match": {
+      "countPlural=one": "{count} table",
+      "countPlural=other": "{count} tables"
+    }
+  }],
 	"sidebar_queries_stats": "{executed} exécutées, {saved} enregistrées",
 	"sidebar_no_connection_footer": "Aucune connexion",
 	"sidebar_updated": "Mis à jour {time}",

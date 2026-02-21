@@ -300,7 +300,18 @@
 	"sidebar_saved": "المحفوظة",
 	"sidebar_no_history": "لم يتم العثور على سجل",
 	"sidebar_no_saved": "لا توجد استعلامات محفوظة",
-	"sidebar_tables_count": "{count} جداول",
+	"sidebar_tables_count": [{
+    "declarations": ["input count", "local countPlural = count: plural"],
+    "selectors": ["countPlural"],
+    "match": {
+      "countPlural=zero": "{count} جداول",
+      "countPlural=one": "{count} جدول",
+      "countPlural=two": "{count} جدولان",
+      "countPlural=few": "{count} جداول",
+      "countPlural=many": "{count} جدولاً",
+      "countPlural=other": "{count} جدول"
+    }
+  }],
 	"sidebar_queries_stats": "{executed} منفذة، {saved} محفوظة",
 	"sidebar_no_connection_footer": "لا يوجد اتصال",
 	"sidebar_updated": "تم التحديث {time}",

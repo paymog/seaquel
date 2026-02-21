@@ -300,7 +300,14 @@
 	"sidebar_saved": "Gespeichert",
 	"sidebar_no_history": "Kein Verlauf gefunden",
 	"sidebar_no_saved": "Keine gespeicherten Abfragen",
-	"sidebar_tables_count": "{count} Tabellen",
+	"sidebar_tables_count": [{
+    "declarations": ["input count", "local countPlural = count: plural"],
+    "selectors": ["countPlural"],
+    "match": {
+      "countPlural=one": "{count} Tabelle",
+      "countPlural=other": "{count} Tabellen"
+    }
+  }],
 	"sidebar_queries_stats": "{executed} ausgeführt, {saved} gespeichert",
 	"sidebar_no_connection_footer": "Keine Verbindung",
 	"sidebar_updated": "Aktualisiert {time}",
