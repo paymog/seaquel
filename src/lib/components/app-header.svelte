@@ -20,6 +20,10 @@
     import { licenseStore } from "$lib/stores/license.svelte.js";
     import { settingsDialogStore } from "$lib/stores/settings-dialog.svelte.js";
     import { isTauri } from "$lib/utils/environment";
+    import { page } from "$app/state";
+    import { resolve } from "$app/paths";
+
+    const isLearnPage = $derived(page.url.pathname.startsWith(resolve("/learn")));
 
     const db = useDatabase();
     const sidebar = Sidebar.useSidebar();
@@ -154,7 +158,7 @@
                     </Badge>
                 </button>
             {/if}
-            {#if db.state.activeConnection?.database || db.state.activeConnection?.mssqlConnectionId || db.state.activeConnection?.providerConnectionId}
+            {#if !isLearnPage && (db.state.activeConnection?.database || db.state.activeConnection?.mssqlConnectionId || db.state.activeConnection?.providerConnectionId)}
                 <Button
                     size="icon"
                     variant="ghost"
