@@ -6,6 +6,7 @@
 	import LayersIcon from '@lucide/svelte/icons/layers';
 	import XIcon from '@lucide/svelte/icons/x';
 	import CalculatorIcon from '@lucide/svelte/icons/calculator';
+	import { m } from '$lib/paraglide/messages.js';
 
 	interface Props {
 		id: string;
@@ -69,7 +70,7 @@
 			<LayersIcon class="size-4 shrink-0 text-violet-500" />
 
 			<!-- CTE Name Input -->
-			<span class="text-xs text-muted-foreground font-medium">WITH</span>
+			<span class="text-xs text-muted-foreground font-medium">{m.cte_with()}</span>
 			<Input
 				type="text"
 				placeholder="cte_name"
@@ -78,14 +79,14 @@
 				onkeydown={handleKeyDown}
 				class="h-6 text-xs w-28 font-mono bg-violet-500/5 border-violet-500/30 focus:border-violet-500"
 			/>
-			<span class="text-xs text-muted-foreground font-medium">AS</span>
+			<span class="text-xs text-muted-foreground font-medium">{m.cte_as()}</span>
 		</div>
 
 		<!-- Info badges -->
 		<div class="flex items-center gap-1 shrink-0">
 			{#if data.tableCount > 0}
 				<span class="text-xs bg-violet-500/20 rounded px-1.5 py-0.5 text-violet-600 dark:text-violet-400">
-					{data.tableCount} {data.tableCount === 1 ? 'table' : 'tables'}
+					{data.tableCount === 1 ? m.qb_table_count_one({ count: data.tableCount }) : m.qb_table_count_other({ count: data.tableCount })}
 				</span>
 			{/if}
 			{#if data.hasAggregates}
@@ -108,7 +109,7 @@
 	<div class="flex-1 p-2 relative pointer-events-none">
 		{#if data.tableCount === 0}
 			<div class="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs pointer-events-none">
-				Drag tables here to build CTE query
+				{m.qb_cte_empty_hint()}
 			</div>
 		{/if}
 	</div>

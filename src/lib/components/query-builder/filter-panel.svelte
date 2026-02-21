@@ -316,7 +316,7 @@
 							<!-- Column input -->
 							<Input
 								type="text"
-								placeholder="table.column"
+								placeholder={m.qb_placeholder_table_column()}
 								value={filter.column}
 								oninput={(e: Event) => {
 									const target = e.target as HTMLInputElement;
@@ -389,7 +389,7 @@
 									<div class="flex items-center gap-1">
 										<Input
 											type="text"
-											placeholder="value"
+											placeholder={m.qb_placeholder_value()}
 											value={filter.value}
 											oninput={(e: Event) => {
 												const target = e.target as HTMLInputElement;
@@ -467,7 +467,7 @@
 							<!-- Column input -->
 							<Input
 								type="text"
-								placeholder="table.column"
+								placeholder={m.qb_placeholder_table_column()}
 								value={group.column}
 								oninput={(e: Event) => {
 									const target = e.target as HTMLInputElement;
@@ -556,7 +556,7 @@
 							<span class="text-xs text-muted-foreground">(</span>
 							<Input
 								type="text"
-								placeholder={aggregate.function === 'COUNT' ? '*' : 'expression'}
+								placeholder={aggregate.function === 'COUNT' ? '*' : m.qb_placeholder_expression()}
 								value={aggregate.expression}
 								oninput={(e: Event) => {
 									const target = e.target as HTMLInputElement;
@@ -570,7 +570,7 @@
 							<span class="text-xs text-muted-foreground">{m.cte_as()}</span>
 							<Input
 								type="text"
-								placeholder="alias"
+								placeholder={m.qb_placeholder_alias()}
 								value={aggregate.alias ?? ''}
 								oninput={(e: Event) => {
 									const target = e.target as HTMLInputElement;
@@ -683,7 +683,7 @@
 							<span class="text-xs text-muted-foreground">(</span>
 							<Input
 								type="text"
-								placeholder={having.aggregateFunction === 'COUNT' ? '*' : 'column'}
+								placeholder={having.aggregateFunction === 'COUNT' ? '*' : m.qb_placeholder_column()}
 								value={having.column}
 								oninput={(e: Event) => {
 									const target = e.target as HTMLInputElement;
@@ -718,7 +718,7 @@
 							<!-- Value input -->
 							<Input
 								type="text"
-								placeholder="value"
+								placeholder={m.qb_placeholder_value()}
 								value={having.value}
 								oninput={(e: Event) => {
 									const target = e.target as HTMLInputElement;
@@ -784,7 +784,7 @@
 							<!-- Column input -->
 							<Input
 								type="text"
-								placeholder="table.column"
+								placeholder={m.qb_placeholder_table_column()}
 								value={sort.column}
 								oninput={(e: Event) => {
 									const target = e.target as HTMLInputElement;

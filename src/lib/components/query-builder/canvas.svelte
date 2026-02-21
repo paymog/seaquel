@@ -21,6 +21,7 @@
 	import JoinEdge from './join-edge.svelte';
 	import SubqueryEdge from './subquery-edge.svelte';
 	import { useDnD } from './dnd-provider.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	const type = useDnD();
 	const qb = useQueryBuilder();
@@ -991,7 +992,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
 	class="flex-1 h-full"
-	aria-label="Query builder canvas"
+	aria-label={m.qb_canvas_aria_label()}
 	role="application"
 	tabindex="-1"
 	onkeydown={handleKeydown}

@@ -10,6 +10,7 @@
 	import FilterIcon from '@lucide/svelte/icons/filter';
 	import TableIcon from '@lucide/svelte/icons/table';
 	import CalculatorIcon from '@lucide/svelte/icons/calculator';
+	import { m } from '$lib/paraglide/messages.js';
 
 	const ROLE_ICONS: Record<SubqueryRole, typeof FilterIcon> = {
 		where: FilterIcon,
@@ -17,10 +18,10 @@
 		select: CalculatorIcon
 	};
 
-	const ROLE_LABELS: Record<SubqueryRole, string> = {
-		where: 'WHERE Subquery',
-		from: 'FROM (Derived Table)',
-		select: 'SELECT (Scalar)'
+	const ROLE_LABELS: Record<SubqueryRole, () => string> = {
+		where: () => m.qb_role_where_subquery(),
+		from: () => m.qb_role_from_derived(),
+		select: () => m.qb_role_select_scalar()
 	};
 
 	const ROLE_COLORS: Record<SubqueryRole, string> = {
@@ -35,10 +36,10 @@
 		select: 'bg-amber-500/10 border-amber-500/30'
 	};
 
-	const ROLE_OPTIONS: { value: SubqueryRole; label: string }[] = [
-		{ value: 'where', label: 'WHERE' },
-		{ value: 'from', label: 'FROM' },
-		{ value: 'select', label: 'SELECT' }
+	const ROLE_OPTIONS: { value: SubqueryRole; label: () => string }[] = [
+		{ value: 'where', label: () => m.qb_role_where() },
+		{ value: 'from', label: () => m.qb_role_from() },
+		{ value: 'select', label: () => m.qb_role_select() }
 	];
 
 	interface Props {
@@ -149,12 +150,12 @@
 				onValueChange={handleRoleChange}
 			>
 				<Select.Trigger size="sm" class="h-6 w-20 text-xs">
-					{ROLE_OPTIONS.find((r) => r.value === data.role)?.label}
+					{ROLE_OPTIONS.find((r) => r.value === data.role)?.label()}
 				</Select.Trigger>
 				<Select.Content>
 					{#each ROLE_OPTIONS as role}
-						<Select.Item value={role.value} label={role.label}>
-							{role.label}
+						<Select.Item value={role.value} label={role.label()}>
+							{role.label()}
 						</Select.Item>
 					{/each}
 				</Select.Content>
@@ -162,7 +163,7 @@
 
 			<!-- Alias (for FROM and SELECT subqueries) -->
 			{#if data.role === 'from' || data.role === 'select'}
-				<span class="text-xs text-muted-foreground">AS</span>
+				<span class="text-xs text-muted-foreground">{m.cte_as()}</span>
 				<Input
 					type="text"
 					placeholder="alias"
@@ -177,12 +178,12 @@
 		<div class="flex items-center gap-1 shrink-0">
 			{#if data.tableCount > 0}
 				<span class="text-xs bg-muted/50 rounded px-1.5 py-0.5 text-muted-foreground">
-					{data.tableCount} {data.tableCount === 1 ? 'table' : 'tables'}
+					{data.tableCount === 1 ? m.qb_table_count_one({ count: data.tableCount }) : m.qb_table_count_other({ count: data.tableCount })}
 				</span>
 			{/if}
 			{#if data.nestedSubqueryCount && data.nestedSubqueryCount > 0}
 				<span class="text-xs bg-indigo-500/20 rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400">
-					{data.nestedSubqueryCount} nested
+					{m.qb_nested_count({ count: data.nestedSubqueryCount })}
 				</span>
 			{/if}
 			{#if data.hasAggregates}
@@ -206,7 +207,7 @@
 	<div class="flex-1 p-2 relative pointer-events-none">
 		{#if data.tableCount === 0}
 			<div class="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs pointer-events-none">
-				Drag tables here to build subquery
+				{m.qb_subquery_empty_hint()}
 			</div>
 		{/if}
 	</div>

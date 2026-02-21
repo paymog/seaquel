@@ -11,6 +11,7 @@
     import * as Tooltip from "$lib/components/ui/tooltip";
     import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
     import CheckIcon from "@lucide/svelte/icons/check";
+    import { m } from '$lib/paraglide/messages.js';
 
     interface Props {
         id: string;
@@ -47,32 +48,32 @@
     const joinOptions: Array<{
         type: JoinType;
         short: string;
-        label: string;
-        description: string;
+        label: () => string;
+        description: () => string;
     }> = [
         {
             type: "INNER",
             short: "INNER",
-            label: "Inner Join",
-            description: "Only matching rows",
+            label: () => m.qb_join_inner(),
+            description: () => m.qb_join_inner_desc(),
         },
         {
             type: "LEFT",
             short: "LEFT",
-            label: "Left Join",
-            description: "All left + matching right",
+            label: () => m.qb_join_left(),
+            description: () => m.qb_join_left_desc(),
         },
         {
             type: "RIGHT",
             short: "RIGHT",
-            label: "Right Join",
-            description: "All right + matching left",
+            label: () => m.qb_join_right(),
+            description: () => m.qb_join_right_desc(),
         },
         {
             type: "FULL",
             short: "FULL",
-            label: "Full Outer",
-            description: "All rows from both",
+            label: () => m.qb_join_full(),
+            description: () => m.qb_join_full_desc(),
         },
     ];
 
@@ -163,9 +164,9 @@
                                 class: "size-4 shrink-0",
                             })}
                             <div class="flex-1 min-w-0">
-                                <div class="font-medium text-sm">{option.label}</div>
+                                <div class="font-medium text-sm">{option.label()}</div>
                                 <div class="text-xs text-muted-foreground truncate">
-                                    {option.description}
+                                    {option.description()}
                                 </div>
                             </div>
                             {#if option.type === joinType}
@@ -180,8 +181,8 @@
             <div class="flex items-center gap-2">
                 {@render JoinIcon({ type: joinType, class: "size-4 shrink-0" })}
                 <div>
-                    <div class="font-medium">{currentOption.label}</div>
-                    <div class="text-xs text-muted-foreground">{currentOption.description}</div>
+                    <div class="font-medium">{currentOption.label()}</div>
+                    <div class="text-xs text-muted-foreground">{currentOption.description()}</div>
                 </div>
             </div>
         </Tooltip.Content>

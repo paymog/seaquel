@@ -9,6 +9,7 @@
 	import { getTutorialSchema } from '$lib/tutorial/database';
 	import { TUTORIAL_SCHEMA } from '$lib/tutorial/schema';
 	import type { SchemaTable } from '$lib/types';
+	import { m } from '$lib/paraglide/messages.js';
 
 	interface Props {
 		/** Optional schema for Monaco autocomplete (for Manage section with real databases) */
@@ -255,7 +256,7 @@
 
 	function handleCopy() {
 		navigator.clipboard.writeText(qb.generatedSql);
-		toast.success('SQL copied to clipboard');
+		toast.success(m.qb_sql_copied());
 	}
 
 	function handleReset() {
@@ -269,27 +270,27 @@
 <div class="flex flex-col h-full border-l">
 	<!-- Header -->
 	<div class="flex items-center justify-between px-3 py-2 border-b bg-muted/50">
-		<span class="font-medium text-sm">SQL</span>
+		<span class="font-medium text-sm">{m.sql_label()}</span>
 		<div class="flex items-center gap-1">
 			<Button
 				variant="ghost"
 				size="sm"
 				class="h-7 px-2 gap-1.5 text-xs"
 				onclick={handleReset}
-				title="Clear and reset"
+				title={m.qb_sql_reset_tooltip()}
 			>
 				<RotateCcwIcon class="size-3.5" />
-				Reset
+				{m.qb_sql_reset()}
 			</Button>
 			<Button
 				variant="ghost"
 				size="sm"
 				class="h-7 px-2 gap-1.5 text-xs"
 				onclick={handleCopy}
-				title="Copy SQL to clipboard"
+				title={m.qb_sql_copy_tooltip()}
 			>
 				<CopyIcon class="size-3.5" />
-				Copy
+				{m.qb_sql_copy()}
 			</Button>
 		</div>
 	</div>

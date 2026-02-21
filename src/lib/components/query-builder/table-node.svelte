@@ -15,6 +15,7 @@
 	import DivideIcon from "@lucide/svelte/icons/divide";
 	import ArrowDownIcon from "@lucide/svelte/icons/arrow-down-narrow-wide";
 	import ArrowUpIcon from "@lucide/svelte/icons/arrow-up-narrow-wide";
+	import { m } from '$lib/paraglide/messages.js';
 
 	const AGGREGATE_ICONS: Record<AggregateFunction, typeof HashIcon> = {
 		COUNT: HashIcon,
@@ -55,13 +56,13 @@
 		return table?.cteId ? table.cteId : null;
 	});
 
-	const AGGREGATE_FUNCTIONS: { value: AggregateFunction | 'none'; label: string }[] = [
-		{ value: 'none', label: 'None' },
-		{ value: 'COUNT', label: 'COUNT' },
-		{ value: 'SUM', label: 'SUM' },
-		{ value: 'AVG', label: 'AVG' },
-		{ value: 'MIN', label: 'MIN' },
-		{ value: 'MAX', label: 'MAX' }
+	const AGGREGATE_FUNCTIONS: { value: AggregateFunction | 'none'; label: () => string }[] = [
+		{ value: 'none', label: () => m.qb_aggregate_none() },
+		{ value: 'COUNT', label: () => 'COUNT' },
+		{ value: 'SUM', label: () => 'SUM' },
+		{ value: 'AVG', label: () => 'AVG' },
+		{ value: 'MIN', label: () => 'MIN' },
+		{ value: 'MAX', label: () => 'MAX' }
 	];
 
 	// Get the table schema - either from actual table or derived from CTE
@@ -212,7 +213,7 @@
 				class="h-6 px-2 text-xs"
 				onclick={handleSelectAll}
 			>
-				All
+				{m.qb_select_all()}
 			</Button>
 			<Button
 				variant="ghost"
@@ -220,7 +221,7 @@
 				class="h-6 px-2 text-xs"
 				onclick={handleSelectNone}
 			>
-				None
+				{m.qb_select_none()}
 			</Button>
 		</div>
 	</div>
@@ -271,8 +272,8 @@
 									</Select.Trigger>
 									<Select.Content>
 										{#each AGGREGATE_FUNCTIONS as fn}
-											<Select.Item value={fn.value} label={fn.label}>
-												{fn.label}
+											<Select.Item value={fn.value} label={fn.label()}>
+												{fn.label()}
 											</Select.Item>
 										{/each}
 									</Select.Content>
@@ -283,7 +284,7 @@
 						<!-- FK Icon or spacer -->
 						<div class="w-4 flex items-center justify-center shrink-0">
 							{#if isForeignKey}
-								<span title="FK -> {column.foreignKey?.table}.{column.foreignKey?.column}">
+								<span title={m.qb_fk_tooltip({ table: column.foreignKey?.table ?? '', column: column.foreignKey?.column ?? '' })}>
 									<LinkIcon class="size-3 text-blue-500" />
 								</span>
 							{/if}
@@ -312,7 +313,7 @@
 		</ScrollArea>
 	{:else}
 		<div class="px-3 py-4 text-sm text-muted-foreground text-center">
-			Table not found in schema
+			{m.qb_table_not_found()}
 		</div>
 	{/if}
 </div>
