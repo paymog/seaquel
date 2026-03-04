@@ -39,13 +39,13 @@ export async function openThemeEditor(theme: Theme | null): Promise<void> {
 		});
 
 		// Handle window creation error
-		themeEditorWindow.once("tauri://error", (e) => {
+		void themeEditorWindow.once("tauri://error", (e) => {
 			console.error("Failed to create theme editor window:", e);
 			themeEditorWindow = null;
 		});
 
 		// Handle window close
-		themeEditorWindow.once("tauri://destroyed", () => {
+		void themeEditorWindow.once("tauri://destroyed", () => {
 			themeEditorWindow = null;
 		});
 	} catch (error) {

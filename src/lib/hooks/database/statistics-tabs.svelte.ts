@@ -37,10 +37,9 @@ export class StatisticsTabManager extends BaseTabManager<StatisticsTab> {
 	 * Add a Statistics tab for the current connection.
 	 * Returns the tab ID or null if no active project/connection.
 	 */
-	add(): string | null {
+	async add(): Promise<string | null> {
 		if (!this.state.activeProjectId || !this.state.activeConnectionId || !this.state.activeConnection) return null;
 
-		const projectId = this.state.activeProjectId;
 		const tabs = this.getProjectTabs();
 
 		// Check if a Statistics tab already exists for this connection
@@ -50,7 +49,7 @@ export class StatisticsTabManager extends BaseTabManager<StatisticsTab> {
 			this.setActiveTabId(existingTab.id);
 			this.setActiveView('statistics');
 			// Refresh the data
-			this.refresh(existingTab.id);
+			await this.refresh(existingTab.id);
 			return existingTab.id;
 		}
 
@@ -65,7 +64,7 @@ export class StatisticsTabManager extends BaseTabManager<StatisticsTab> {
 		this.setActiveView('statistics');
 
 		// Load the statistics data
-		this.loadStatistics(newTab.id);
+		await this.loadStatistics(newTab.id);
 
 		return newTab.id;
 	}

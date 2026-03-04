@@ -1,6 +1,6 @@
 // src/lib/tutorial/lessons/aggregates.ts
 import type { TutorialLesson } from '$lib/types';
-import { criterion, hasTable, hasAnyColumns, sqlContains } from '../criteria';
+import { criterion, sqlContains } from '../criteria';
 
 export const aggregatesLesson: TutorialLesson = {
 	id: 'aggregates',

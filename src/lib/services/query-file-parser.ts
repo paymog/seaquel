@@ -101,7 +101,6 @@ function parseYamlFrontmatter(yaml: string): QueryFrontmatter {
 	const result: QueryFrontmatter = { name: '' };
 	const lines = yaml.split('\n');
 
-	let currentKey = '';
 	let inParameters = false;
 	let currentParam: Partial<QueryParameter> | null = null;
 	const parameters: QueryParameter[] = [];

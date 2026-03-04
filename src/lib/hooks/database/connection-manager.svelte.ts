@@ -268,7 +268,7 @@ export class ConnectionManager {
         const provider = await this.providers.getForType(newConnection.type);
         await provider.disconnect(providerConnectionId).catch(() => {});
       }
-      throw new Error(`Failed to load database schema: ${error}`);
+      throw new Error(`Failed to load database schema: ${String(error)}`);
     }
 
     // Only set active connection after schema loading succeeds
@@ -287,7 +287,7 @@ export class ConnectionManager {
     this.onCreateInitialTab();
 
     // Persist the connection to store (password saved to keyring if enabled)
-    this.persistence.persistConnection(newConnection, {
+    await this.persistence.persistConnection(newConnection, {
       savePassword: connection.savePassword,
       saveSshPassword: connection.saveSshPassword,
       saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
@@ -423,7 +423,7 @@ export class ConnectionManager {
         const provider = await this.providers.getForType(existingConnection.type);
         await provider.disconnect(providerConnectionId).catch(() => {});
       }
-      throw new Error(`Failed to load database schema: ${error}`);
+      throw new Error(`Failed to load database schema: ${String(error)}`);
     }
 
     // Store tables immediately (without column metadata) so UI is responsive
@@ -446,7 +446,7 @@ export class ConnectionManager {
     }
 
     // Persist the connection to store (password saved to keyring if enabled)
-    this.persistence.persistConnection(updatedConnection, {
+    await this.persistence.persistConnection(updatedConnection, {
       savePassword: connection.savePassword,
       saveSshPassword: connection.saveSshPassword,
       saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
@@ -491,7 +491,7 @@ export class ConnectionManager {
     );
 
     // Persist the updated connection
-    this.persistence.persistConnection(updatedConnection, {
+    await this.persistence.persistConnection(updatedConnection, {
       savePassword: connection.savePassword,
       saveSshPassword: connection.saveSshPassword,
       saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
@@ -593,7 +593,7 @@ export class ConnectionManager {
   /**
    * Remove a connection and all its state.
    */
-  remove(id: string): void {
+  async remove(id: string): Promise<void> {
     // Prevent deletion of demo connection in demo mode
     if (isDemo() && id === "demo-connection") {
       return;
@@ -604,7 +604,7 @@ export class ConnectionManager {
     // Close provider connection if exists
     if (connection?.providerConnectionId) {
       // Use appropriate provider for disconnect based on type
-      this.providers.getForType(connection.type).then(provider => {
+      await this.providers.getForType(connection.type).then(provider => {
         provider.disconnect(connection.providerConnectionId!).catch(console.error);
       });
     }
@@ -622,7 +622,7 @@ export class ConnectionManager {
     }
 
     // Remove from persistence (both connection and its data)
-    this.persistence.removePersistedConnection(id);
+    await this.persistence.removePersistedConnection(id);
     this.state.connections = this.state.connections.filter((c) => c.id !== id);
     this.stateRestoration.cleanupConnectionMaps(id);
 
@@ -819,7 +819,7 @@ export class ConnectionManager {
   /**
    * Toggle connection state (disconnect if connected).
    */
-  toggle(id: string): void {
+  async toggle(id: string): Promise<void> {
     const connection = this.state.connections.find((c) => c.id === id);
     if (connection) {
       const wasConnected = !!connection.providerConnectionId || !!connection.mssqlConnectionId;
@@ -827,7 +827,7 @@ export class ConnectionManager {
       // Disconnect provider connection if connected
       if (connection.providerConnectionId) {
         // Use appropriate provider for disconnect based on type
-        this.providers.getForType(connection.type).then(provider => {
+        await this.providers.getForType(connection.type).then(provider => {
           provider.disconnect(connection.providerConnectionId!).catch(console.error);
         });
         connection.providerConnectionId = undefined;

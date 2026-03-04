@@ -6,7 +6,6 @@
 import { SvelteSet } from 'svelte/reactivity';
 import type {
 	CanvasTable,
-	CanvasJoin,
 	CanvasSubquery,
 	CanvasCTE,
 	SubqueryInnerState,

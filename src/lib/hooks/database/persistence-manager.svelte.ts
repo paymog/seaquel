@@ -12,10 +12,9 @@ import type {
   DatabaseConnection,
   PersistedProject,
   PersistedProjectState,
-  ConnectionLabel,
   PersistedSharedQueryRepo,
 } from "$lib/types";
-import { serializeRepo, deserializeRepo } from "$lib/types";
+import { serializeRepo } from "$lib/types";
 import type { SavedCanvas } from "$lib/types/canvas";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistedConnection } from "./types.js";
@@ -52,7 +51,7 @@ export class PersistenceManager {
       clearTimeout(this.persistenceTimer);
     }
     this.persistenceTimer = setTimeout(() => {
-      this.persistProjectState(projectId);
+      void this.persistProjectState(projectId);
       this.persistenceTimer = null;
     }, this.PERSISTENCE_DEBOUNCE_MS);
   }
@@ -67,7 +66,7 @@ export class PersistenceManager {
       clearTimeout(this.persistenceTimer);
     }
     this.persistenceTimer = setTimeout(() => {
-      this.persistConnectionData(connectionId);
+      void this.persistConnectionData(connectionId);
       this.persistenceTimer = null;
     }, this.PERSISTENCE_DEBOUNCE_MS);
   }
@@ -80,7 +79,7 @@ export class PersistenceManager {
       clearTimeout(this.sharedReposTimer);
     }
     this.sharedReposTimer = setTimeout(() => {
-      this.persistSharedRepos();
+      void this.persistSharedRepos();
       this.sharedReposTimer = null;
     }, this.PERSISTENCE_DEBOUNCE_MS);
   }
@@ -88,7 +87,7 @@ export class PersistenceManager {
   /**
    * Immediately flush any pending persistence operations.
    */
-  flush(): void {
+  async flush(): Promise<void> {
     if (this.persistenceTimer) {
       clearTimeout(this.persistenceTimer);
       this.persistenceTimer = null;
@@ -99,23 +98,23 @@ export class PersistenceManager {
     }
     // Persist all projects that have data
     for (const projectId of Object.keys(this.state.queryTabsByProject)) {
-      this.persistProjectState(projectId);
+      await this.persistProjectState(projectId);
     }
     // Persist all connection data
     for (const connectionId of Object.keys(this.state.queryHistoryByConnection)) {
-      this.persistConnectionData(connectionId);
+      await this.persistConnectionData(connectionId);
     }
     // Persist shared repos
     if (this.state.sharedRepos.length > 0) {
-      this.persistSharedRepos();
+      await this.persistSharedRepos();
     }
   }
 
   /**
    * Clean up resources. Should be called when component unmounts.
    */
-  cleanup(): void {
-    this.flush();
+  async cleanup(): Promise<void> {
+    await this.flush();
   }
 
   // === SERIALIZATION METHODS ===

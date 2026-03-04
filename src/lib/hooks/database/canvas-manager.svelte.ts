@@ -17,9 +17,6 @@ import type { SchemaTable, ChartConfig } from "$lib/types";
 import { createDefaultChartConfig } from "$lib/components/charts/chart-utils";
 
 const DEFAULT_NODE_WIDTH = 320;
-const DEFAULT_TABLE_NODE_HEIGHT = 300;
-const DEFAULT_QUERY_NODE_HEIGHT = 200;
-const DEFAULT_RESULT_NODE_HEIGHT = 250;
 
 /**
  * Canvas manager - handles all canvas operations

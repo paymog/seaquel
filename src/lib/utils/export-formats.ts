@@ -7,8 +7,9 @@ export const formatConfig: Record<ExportFormat, { extension: string; name: strin
 	markdown: { extension: "md", name: "Markdown" }
 };
 
-export function escapeCSVValue(value: unknown): string {
-	if (value === null || value === undefined) return "";
+function escapeCSVValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+	// oxlint-disable-next-line typescript-eslint(no-base-to-string)
 	const str = String(value);
 	if (str.includes(",") || str.includes('"') || str.includes("\n")) {
 		return `"${str.replace(/"/g, '""')}"`;
@@ -20,16 +21,18 @@ export function escapeSQLValue(value: unknown): string {
 	if (value === null || value === undefined) return "NULL";
 	if (typeof value === "number") return String(value);
 	if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+	// oxlint-disable-next-line typescript-eslint(no-base-to-string)
 	const str = String(value);
 	return `'${str.replace(/'/g, "''")}'`;
 }
 
 export function escapeMarkdownValue(value: unknown): string {
 	if (value === null || value === undefined) return "";
+	// oxlint-disable-next-line typescript-eslint(no-base-to-string)
 	return String(value).replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 
-export function generateCSV(columns: string[], rows: Record<string, unknown>[]): string {
+function generateCSV(columns: string[], rows: Record<string, unknown>[]): string {
 	const header = columns.map(escapeCSVValue).join(",");
 	const dataRows = rows.map((row) =>
 		columns.map((col) => escapeCSVValue(row[col])).join(",")

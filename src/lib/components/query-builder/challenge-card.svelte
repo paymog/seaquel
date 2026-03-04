@@ -34,6 +34,7 @@
 
 	// Reset hint visibility when challenge changes
 	$effect(() => {
+	    // oxlint-disable-next-line eslint(no-unused-expressions)
 		challengeIndex;
 		showHint = false;
 	});

@@ -3,19 +3,12 @@
  * Handles creating, removing, and querying CTEs.
  */
 
-import { SvelteSet } from 'svelte/reactivity';
 import type {
-	CanvasTable,
 	CanvasCTE,
-	ColumnAggregate,
 	QueryBuilderTable
 } from '$lib/types';
 import {
 	createEmptyInnerQuery,
-	removeTableFromInnerQuery,
-	toggleColumnInTable,
-	createCanvasTableForContainer,
-	createCteReferenceTable
 } from './query-builder-subqueries';
 import { getQueryBuilderTable } from '$lib/utils/schema-adapter';
 

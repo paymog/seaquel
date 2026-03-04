@@ -9,7 +9,6 @@ import type {
 	QueryJoin,
 	QueryFilter,
 	QueryProjection,
-	QueryOrderBy
 } from '$lib/types';
 import type { DatabaseType } from '$lib/types';
 

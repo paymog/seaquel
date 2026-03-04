@@ -52,19 +52,19 @@ class OnboardingStore {
 
 	setBackground(background: UserBackground): void {
 		this.userBackground = background;
-		this.persist();
+		void this.persist();
 	}
 
 	completeWizard(): void {
 		this.hasCompletedWizard = true;
     this.isFirstRun = false;
-		this.persist();
+		void this.persist();
 	}
 
 	dismissHint(hintId: string): void {
 		if (!this.dismissedHints.includes(hintId)) {
 			this.dismissedHints = [...this.dismissedHints, hintId];
-			this.persist();
+			void this.persist();
 		}
 	}
 
@@ -74,12 +74,12 @@ class OnboardingStore {
 
 	setShowWizardHints(show: boolean): void {
 		this.showWizardHints = show;
-		this.persist();
+		void this.persist();
 	}
 
 	setLearnEnabled(enabled: boolean): void {
 		this.learnEnabled = enabled;
-		this.persist();
+		void this.persist();
 	}
 
 	private async persist(): Promise<void> {

@@ -62,7 +62,7 @@ export class LabelManager {
   /**
    * Add a label to a connection.
    */
-  addLabelToConnection(connectionId: string, labelId: string): void {
+  async addLabelToConnection(connectionId: string, labelId: string): Promise<void> {
     const connection = this.state.connections.find((c) => c.id === connectionId);
     if (!connection) return;
 
@@ -83,14 +83,14 @@ export class LabelManager {
     // Persist connection
     const updatedConnection = this.state.connections.find((c) => c.id === connectionId);
     if (updatedConnection) {
-      this.persistence.persistConnection(updatedConnection);
+      await this.persistence.persistConnection(updatedConnection);
     }
   }
 
   /**
    * Remove a label from a connection.
    */
-  removeLabelFromConnection(connectionId: string, labelId: string): void {
+  async removeLabelFromConnection(connectionId: string, labelId: string): Promise<void> {
     const connection = this.state.connections.find((c) => c.id === connectionId);
     if (!connection) return;
     if (!connection.labelIds.includes(labelId)) return;
@@ -107,14 +107,14 @@ export class LabelManager {
     // Persist connection
     const updatedConnection = this.state.connections.find((c) => c.id === connectionId);
     if (updatedConnection) {
-      this.persistence.persistConnection(updatedConnection);
+      await this.persistence.persistConnection(updatedConnection);
     }
   }
 
   /**
    * Set all labels for a connection.
    */
-  setConnectionLabels(connectionId: string, labelIds: string[]): void {
+  async setConnectionLabels(connectionId: string, labelIds: string[]): Promise<void> {
     const connection = this.state.connections.find((c) => c.id === connectionId);
     if (!connection) return;
 
@@ -134,7 +134,7 @@ export class LabelManager {
     // Persist connection
     const updatedConnection = this.state.connections.find((c) => c.id === connectionId);
     if (updatedConnection) {
-      this.persistence.persistConnection(updatedConnection);
+      await this.persistence.persistConnection(updatedConnection);
     }
   }
 

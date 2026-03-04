@@ -102,7 +102,8 @@ export function extractErrorMessage(error: unknown): string {
 	if (typeof error === 'object' && error !== null) {
 		const errObj = error as Record<string, unknown>;
 		if (typeof errObj.message === 'string') {
-			return errObj.code ? `${errObj.code}: ${errObj.message}` : errObj.message;
+		  // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+			return errObj.code ? `${String(errObj.code)}: ${errObj.message}` : errObj.message;
 		}
 	}
 

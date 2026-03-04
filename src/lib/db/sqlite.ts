@@ -88,7 +88,7 @@ export class SqliteAdapter implements DatabaseAdapter {
 
 		// Build tree structure
 		let root: ExplainNode | null = null;
-		for (const [id, node] of nodeMap) {
+		for (const [_id, node] of nodeMap) {
 			if (node.parentId === 0 || !nodeMap.has(node.parentId)) {
 				// This is a root node
 				if (!root) {

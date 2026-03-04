@@ -58,7 +58,7 @@ export default defineConfig(async ({ mode }) => {
           outDir: "build-demo",
           // Externalize Tauri packages in demo mode (they won't be used)
           rollupOptions: {
-            external: (/** @type {string} */ id) => {
+            external: (/** @type {string} */ _id) => {
               // Don't externalize - let the dynamic imports handle it
               // The environment checks will prevent Tauri code from running
               return false;

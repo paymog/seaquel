@@ -759,10 +759,11 @@ export class QueryExecutionManager {
         // SQL Server: use square brackets for identifiers and inline values
         const whereConditions = sourceTable.primaryKeys.map((pk) => {
           const val = row[pk];
-          const escapedVal = typeof val === "string" ? `'${val.replace(/'/g, "''")}'` : val;
+          const escapedVal = typeof val === "string" ? `'${val.replace(/'/g, "''")}'` : String(val);
           return `[${pk}] = ${escapedVal}`;
         });
-        const escapedNewValue = typeof newValue === "string" ? `'${newValue.replace(/'/g, "''")}'` : newValue === null ? "NULL" : newValue;
+        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+        const escapedNewValue = typeof newValue === "string" ? `'${newValue.replace(/'/g, "''")}'` : newValue === null ? "NULL" : String(newValue);
         const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = ${escapedNewValue} WHERE ${whereConditions.join(" AND ")}`;
         await mssqlExecute(connection.mssqlConnectionId!, query);
       } else if (connection?.providerConnectionId) {
@@ -805,6 +806,7 @@ export class QueryExecutionManager {
       if (isMssql) {
         // SQL Server: use square brackets for identifiers and inline values
         const columnNames = columns.map((c) => `[${c}]`).join(", ");
+        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
         const valuesList = Object.values(values).map((v) => {
           if (v === null || v === undefined) return "NULL";
           if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
@@ -874,7 +876,7 @@ export class QueryExecutionManager {
         // SQL Server: use square brackets for identifiers and inline values
         const whereConditions = sourceTable.primaryKeys.map((pk) => {
           const val = row[pk];
-          const escapedVal = typeof val === "string" ? `'${val.replace(/'/g, "''")}'` : val;
+          const escapedVal = typeof val === "string" ? `'${val.replace(/'/g, "''")}'` : String(val);
           return `[${pk}] = ${escapedVal}`;
         });
         const query = `DELETE FROM [${sourceTable.schema}].[${sourceTable.name}] WHERE ${whereConditions.join(" AND ")}`;

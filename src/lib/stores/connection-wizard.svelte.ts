@@ -225,7 +225,7 @@ class ConnectionWizardStore {
 	}
 
 	// Open the wizard
-	open(mode: WizardMode = "wizard", prefill?: ConnectionDialogPrefill): void {
+	async open(mode: WizardMode = "wizard", prefill?: ConnectionDialogPrefill): Promise<void> {
 		this.mode = mode;
 		this.connectionError = null;
 		this.connectionSuccess = false;
@@ -263,7 +263,7 @@ class ConnectionWizardStore {
 
 			// Load saved credentials from keyring
 			if (prefill.id) {
-				this.loadSavedCredentials(prefill.id, prefill);
+				await this.loadSavedCredentials(prefill.id, prefill);
 			} else {
 				// No credentials to load
 				this.credentialsLoaded = true;

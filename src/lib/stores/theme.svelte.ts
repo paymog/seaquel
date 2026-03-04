@@ -2,10 +2,8 @@ import { loadStore } from "$lib/storage";
 import { mode } from "mode-watcher";
 import type {
 	Theme,
-	ThemeColors,
 	ThemePreferences,
 	ThemeExport,
-	PersistedThemeData,
 } from "$lib/types/theme";
 import { BUILT_IN_THEMES, DEFAULT_PREFERENCES } from "$lib/themes/presets";
 import { applyTheme, cacheThemeColors } from "$lib/themes/apply";
@@ -277,7 +275,7 @@ class ThemeStore {
 			clearTimeout(this.persistenceTimer);
 		}
 		this.persistenceTimer = setTimeout(() => {
-			this.persist();
+			void this.persist();
 			this.persistenceTimer = null;
 		}, this.PERSISTENCE_DEBOUNCE_MS);
 	}
@@ -307,7 +305,7 @@ class ThemeStore {
 		if (this.persistenceTimer) {
 			clearTimeout(this.persistenceTimer);
 			this.persistenceTimer = null;
-			this.persist();
+			void this.persist();
 		}
 	}
 }

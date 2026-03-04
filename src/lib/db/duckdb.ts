@@ -14,13 +14,6 @@ interface DuckDBColumnRow {
 	column_default: string | null;
 }
 
-interface DuckDBForeignKeyRow {
-	column_name: string;
-	referenced_schema: string;
-	referenced_table: string;
-	referenced_column: string;
-}
-
 /**
  * DuckDB adapter for SQL generation and result parsing.
  * DuckDB uses PostgreSQL-compatible SQL syntax.

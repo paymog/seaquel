@@ -147,14 +147,14 @@ class UseDatabase {
       this.tabs,
       providers,
       (connectionId: string, schemas: SchemaTable[], adapter: DatabaseAdapter, providerConnectionId?: string, mssqlConnectionId?: string) => {
-        this.schemaTabs.loadTableMetadataInBackground(connectionId, schemas, adapter, providerConnectionId, mssqlConnectionId);
+        void this.schemaTabs.loadTableMetadataInBackground(connectionId, schemas, adapter, providerConnectionId, mssqlConnectionId);
       },
       () => this.queryTabs.add()
     );
 
     // Set up cross-manager callbacks
-    this.projects.setRemoveConnectionCallback((connectionId: string) => {
-      this.connections.remove(connectionId);
+    this.projects.setRemoveConnectionCallback(async (connectionId: string) => {
+      await this.connections.remove(connectionId);
     });
 
     this.projects.setInitializeStarterTabsCallback((projectId: string) => {
@@ -179,7 +179,7 @@ class UseDatabase {
     );
 
     // Initialize: projects first, then connections
-    this.initializeApp();
+    void this.initializeApp();
   }
 
   /**

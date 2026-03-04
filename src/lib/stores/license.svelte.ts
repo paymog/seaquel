@@ -104,6 +104,7 @@ class LicenseStore {
 			return true;
 		} catch (error: unknown) {
 			const err = error as Record<string, unknown>;
+			// oxlint-disable-next-line typescript-eslint(no-base-to-string)
 			const message = err?.message ? String(err.message) : String(error);
 			this.activationError = message;
 			return false;
@@ -229,7 +230,7 @@ class LicenseStore {
 		this.clearRevalidationTimer();
 
 		if (!this.lastValidatedAt) {
-			this.revalidateInBackground();
+			void this.revalidateInBackground();
 			return;
 		}
 
@@ -238,7 +239,7 @@ class LicenseStore {
 		const msRemaining = nextValidation - Date.now();
 
 		if (msRemaining <= 0) {
-			this.revalidateInBackground();
+			void this.revalidateInBackground();
 		} else {
 			this.scheduleRevalidationIn(msRemaining);
 		}
@@ -247,7 +248,7 @@ class LicenseStore {
 	private scheduleRevalidationIn(ms: number): void {
 		this.clearRevalidationTimer();
 		this.revalidationTimer = setTimeout(() => {
-			this.revalidateInBackground();
+			void this.revalidateInBackground();
 		}, ms);
 	}
 

@@ -4,10 +4,7 @@ import {
 	criterion,
 	hasTable,
 	hasColumn,
-	hasAnyColumns,
 	hasGroupBy,
-	hasAnyGroupBy,
-	sqlContains
 } from '../criteria';
 
 export const groupByLesson: TutorialLesson = {

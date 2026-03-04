@@ -36,7 +36,6 @@ export class ErdTabManager extends BaseTabManager<ErdTab> {
 	add(): string | null {
 		if (!this.state.activeProjectId || !this.state.activeConnectionId || !this.state.activeConnection) return null;
 
-		const projectId = this.state.activeProjectId;
 		const tabs = this.getProjectTabs();
 
 		// Check if an ERD tab already exists for this connection

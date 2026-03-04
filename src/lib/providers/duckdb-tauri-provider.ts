@@ -9,9 +9,6 @@ import {
 	duckdbQuery,
 	duckdbExecute,
 	duckdbTest,
-	type DuckDBConnectResult,
-	type DuckDBQueryResult,
-	type DuckDBExecuteResult
 } from '$lib/api/tauri';
 import type { DatabaseProvider, ConnectionConfig, ExecuteResult } from './types';
 

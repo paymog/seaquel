@@ -5,7 +5,6 @@ import type {
   PersistedSchemaTab,
   PersistedExplainTab,
   PersistedErdTab,
-  PersistedSavedQuery,
   PersistedQueryHistoryItem,
 } from "$lib/types";
 import { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME } from "$lib/types";
@@ -69,7 +68,7 @@ export class MigrationManager {
     }
 
     // 2. Create default project
-    const defaultProject = await this.createDefaultProject();
+    await this.createDefaultProject();
 
     // 3. Update connections with projectId and labelIds
     const updatedConnections: PersistedConnection[] = connections.map((conn) => ({
@@ -82,7 +81,7 @@ export class MigrationManager {
     const mergedState = await this.mergeConnectionStates(updatedConnections);
 
     // 5. Save updated connections
-    for (const conn of updatedConnections) {
+    for (const _conn of updatedConnections) {
       // We need to save each connection individually to trigger proper persistence
       // This is a workaround since we don't have direct access to the store
       // The connections will be re-saved when the app loads them

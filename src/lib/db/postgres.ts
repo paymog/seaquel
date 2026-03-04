@@ -146,6 +146,7 @@ export class PostgresAdapter implements DatabaseAdapter {
 		analyze: boolean
 	): ExplainNode {
 		const result: ExplainNode = {
+		  // oxlint-disable-next-line typescript-eslint(no-base-to-string)
 			type: String(node["Node Type"] || "Unknown"),
 			label: this.buildPgNodeLabel(node),
 			cost: node["Total Cost"] as number | undefined,
@@ -168,10 +169,14 @@ export class PostgresAdapter implements DatabaseAdapter {
 	}
 
 	private buildPgNodeLabel(node: Record<string, unknown>): string {
+	  // oxlint-disable-next-line typescript-eslint(no-base-to-string)
 		const parts: string[] = [String(node["Node Type"] || "")];
-		if (node["Relation Name"]) parts.push(`on ${node["Relation Name"]}`);
-		if (node["Index Name"]) parts.push(`using ${node["Index Name"]}`);
-		if (node["Join Type"]) parts.push(`(${node["Join Type"]})`);
+		// oxlint-disable-next-line typescript-eslint(no-base-to-string)
+		if (node["Relation Name"]) parts.push(`on ${String(node["Relation Name"])}`);
+		// oxlint-disable-next-line typescript-eslint(no-base-to-string)
+		if (node["Index Name"]) parts.push(`using ${String(node["Index Name"])}`);
+		// oxlint-disable-next-line typescript-eslint(no-base-to-string)
+		if (node["Join Type"]) parts.push(`(${String(node["Join Type"])})`);
 		return parts.join(" ");
 	}
 

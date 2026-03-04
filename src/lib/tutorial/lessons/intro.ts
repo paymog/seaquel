@@ -1,6 +1,6 @@
 // src/lib/tutorial/lessons/intro.ts
 import type { TutorialLesson } from '$lib/types';
-import { criterion, hasTable, hasColumn, hasAnyColumns } from '../criteria';
+import { criterion, hasTable, hasColumn } from '../criteria';
 
 export const introLesson: TutorialLesson = {
 	id: 'intro',

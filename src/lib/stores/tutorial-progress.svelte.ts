@@ -74,7 +74,7 @@ class TutorialProgressStore {
 	/**
 	 * Mark a challenge as completed for a lesson, optionally saving its state
 	 */
-	completeChallenge(lessonId: string, challengeId: string, state?: SerializableQueryBuilderState): void {
+	async completeChallenge(lessonId: string, challengeId: string, state?: SerializableQueryBuilderState): Promise<void> {
 		if (!this.completedChallenges[lessonId]) {
 			this.completedChallenges[lessonId] = new Set();
 		}
@@ -84,23 +84,23 @@ class TutorialProgressStore {
 
 		// Save state if provided
 		if (state) {
-			this.saveChallengeState(lessonId, challengeId, state);
+			await this.saveChallengeState(lessonId, challengeId, state);
 		} else {
-			this.persist();
+			await this.persist();
 		}
 	}
 
 	/**
 	 * Save the query builder state for a challenge
 	 */
-	saveChallengeState(lessonId: string, challengeId: string, state: SerializableQueryBuilderState): void {
+	async saveChallengeState(lessonId: string, challengeId: string, state: SerializableQueryBuilderState): Promise<void> {
 		if (!this.challengeStates[lessonId]) {
 			this.challengeStates[lessonId] = {};
 		}
 		this.challengeStates[lessonId][challengeId] = state;
 		// Trigger reactivity
 		this.challengeStates = { ...this.challengeStates };
-		this.persist();
+		await this.persist();
 	}
 
 	/**
@@ -151,7 +151,7 @@ class TutorialProgressStore {
 	/**
 	 * Reset progress for a specific lesson
 	 */
-	resetLesson(lessonId: string): void {
+	async resetLesson(lessonId: string): Promise<void> {
 		let changed = false;
 		if (this.completedChallenges[lessonId]) {
 			delete this.completedChallenges[lessonId];
@@ -164,17 +164,17 @@ class TutorialProgressStore {
 			changed = true;
 		}
 		if (changed) {
-			this.persist();
+			await this.persist();
 		}
 	}
 
 	/**
 	 * Reset all tutorial progress
 	 */
-	resetAll(): void {
+	async resetAll(): Promise<void> {
 		this.completedChallenges = {};
 		this.challengeStates = {};
-		this.persist();
+		await this.persist();
 	}
 
 	private async persist(): Promise<void> {

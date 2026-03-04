@@ -6,7 +6,6 @@ import {
 	hasColumn,
 	hasAnyColumns,
 	hasFilter,
-	hasAnyFilter
 } from '../criteria';
 
 export const whereLesson: TutorialLesson = {

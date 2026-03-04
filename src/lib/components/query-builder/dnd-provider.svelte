@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
     import { getContext } from "svelte";
 
     export const useDnD = () => {

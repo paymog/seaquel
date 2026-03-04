@@ -6,7 +6,6 @@ import {
 	hasColumn,
 	hasAnyColumns,
 	hasOrderBy,
-	hasAnyOrderBy,
 	hasLimit
 } from '../criteria';
 

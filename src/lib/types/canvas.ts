@@ -1,5 +1,5 @@
-import type { Node, Edge, XYPosition, Viewport } from "@xyflow/svelte";
-import type { ForeignKeyRef, ChartType, ChartConfig } from "$lib/types";
+import type { Node, XYPosition, Viewport } from "@xyflow/svelte";
+import type { ForeignKeyRef, ChartConfig } from "$lib/types";
 
 // Node type identifiers
 export type CanvasNodeType = "table" | "query" | "result" | "chart";

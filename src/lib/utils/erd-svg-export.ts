@@ -178,7 +178,6 @@ export function generateErdSvg(
 
       const visibleColumns = table.columns.slice(0, MAX_VISIBLE_COLUMNS);
       const hiddenCount = table.columns.length - MAX_VISIBLE_COLUMNS;
-      const bodyHeight = data.height - HEADER_HEIGHT;
 
       // Column rows
       const columnRows = visibleColumns

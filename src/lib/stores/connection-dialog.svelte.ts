@@ -31,9 +31,9 @@ class ConnectionDialogStore {
 	 * - New connections default to wizard mode
 	 * - Reconnections use reconnect mode (password-only prompt)
 	 */
-	open(prefill?: ConnectionDialogPrefill, mode?: WizardMode) {
+	async open(prefill?: ConnectionDialogPrefill, mode?: WizardMode) {
 		const resolvedMode = mode ?? (prefill?.id ? "reconnect" : "wizard");
-		connectionWizardStore.open(resolvedMode, prefill);
+		await connectionWizardStore.open(resolvedMode, prefill);
 	}
 
 	close() {

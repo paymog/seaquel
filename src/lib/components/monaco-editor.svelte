@@ -28,6 +28,7 @@
 		class?: string;
 	} = $props();
 
+	// oxlint-disable-next-line eslint(no-unassigned-vars)
 	let container: HTMLDivElement;
 	let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 	let completionDisposable: monaco.IDisposable | null = null;

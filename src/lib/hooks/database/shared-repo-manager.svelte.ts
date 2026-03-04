@@ -414,11 +414,11 @@ export class SharedRepoManager {
 		const interval = intervalMs ?? SharedRepoManager.DEFAULT_REFRESH_INTERVAL;
 
 		this.refreshIntervalId = setInterval(() => {
-			this.refreshAllRepoStatuses();
+			void this.refreshAllRepoStatuses();
 		}, interval);
 
 		// Do an initial refresh
-		this.refreshAllRepoStatuses();
+		void this.refreshAllRepoStatuses();
 	}
 
 	/**

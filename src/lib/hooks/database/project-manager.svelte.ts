@@ -2,7 +2,7 @@ import type { Project, ConnectionLabel, PersistedProject } from "$lib/types";
 import { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
-import { MigrationManager, CURRENT_STORAGE_VERSION } from "./migration.svelte.js";
+import { MigrationManager } from "./migration.svelte.js";
 
 /**
  * Manages projects and their lifecycle.
@@ -97,7 +97,7 @@ export class ProjectManager {
   /**
    * Update an existing project.
    */
-  update(id: string, updates: Partial<Pick<Project, "name" | "description">>): void {
+  async update(id: string, updates: Partial<Pick<Project, "name" | "description">>): Promise<void> {
     this.state.projects = this.state.projects.map((p) => {
       if (p.id !== id) return p;
       return {
@@ -106,7 +106,7 @@ export class ProjectManager {
         updatedAt: new Date(),
       };
     });
-    this.persistence.persistProjects();
+    await this.persistence.persistProjects();
   }
 
   /**
@@ -166,10 +166,10 @@ export class ProjectManager {
   /**
    * Add a custom label to a project.
    */
-  addCustomLabel(
+  async addCustomLabel(
     projectId: string,
     label: Omit<ConnectionLabel, "id" | "isPredefined">
-  ): ConnectionLabel {
+  ): Promise<ConnectionLabel> {
     const newLabel: ConnectionLabel = {
       id: `label-${Date.now()}`,
       name: label.name,
@@ -185,7 +185,7 @@ export class ProjectManager {
         updatedAt: new Date(),
       };
     });
-    this.persistence.persistProjects();
+    await this.persistence.persistProjects();
 
     return newLabel;
   }
@@ -194,7 +194,7 @@ export class ProjectManager {
    * Remove a custom label from a project.
    * Also removes the label from all connections.
    */
-  removeCustomLabel(projectId: string, labelId: string): void {
+  async removeCustomLabel(projectId: string, labelId: string): Promise<void> {
     // Remove from project
     this.state.projects = this.state.projects.map((p) => {
       if (p.id !== projectId) return p;
@@ -204,7 +204,7 @@ export class ProjectManager {
         updatedAt: new Date(),
       };
     });
-    this.persistence.persistProjects();
+    await this.persistence.persistProjects();
 
     // Remove from connections
     this.state.connections = this.state.connections.map((c) => {
@@ -220,11 +220,11 @@ export class ProjectManager {
   /**
    * Update a custom label.
    */
-  updateCustomLabel(
+  async updateCustomLabel(
     projectId: string,
     labelId: string,
     updates: Partial<Pick<ConnectionLabel, "name" | "color">>
-  ): void {
+  ): Promise<void> {
     this.state.projects = this.state.projects.map((p) => {
       if (p.id !== projectId) return p;
       return {
@@ -236,7 +236,7 @@ export class ProjectManager {
         updatedAt: new Date(),
       };
     });
-    this.persistence.persistProjects();
+    await this.persistence.persistProjects();
   }
 
   // === PRIVATE METHODS ===

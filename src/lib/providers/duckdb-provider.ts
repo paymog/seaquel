@@ -58,7 +58,7 @@ export class DuckDBProvider implements DatabaseProvider {
 		this.initialized = true;
 	}
 
-	async connect(config: ConnectionConfig): Promise<string> {
+	async connect(_config: ConnectionConfig): Promise<string> {
 		await this.initialize();
 
 		if (!this.db) {

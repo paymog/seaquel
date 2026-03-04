@@ -16,7 +16,6 @@ import type {
 	SelectAggregate,
 	CanvasTable,
 	CanvasSubquery,
-	SubqueryInnerState,
 	SubqueryRole
 } from '$lib/types';
 import { createEmptyInnerQuery } from './query-builder-subqueries';
