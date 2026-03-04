@@ -87,7 +87,6 @@ export class DatabaseState {
 
 	// === SHARED QUERY LIBRARY STATE ===
 	sharedRepos = $state<SharedQueryRepo[]>([]);
-	sharedReposLoading = $state(true);
 	activeRepoId = $state<string | null>(null);
 	sharedQueriesByRepo = $state<Record<string, SharedQuery[]>>({});
 	syncStateByRepo = $state<Record<string, SyncState>>({});

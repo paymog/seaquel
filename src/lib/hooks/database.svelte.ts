@@ -225,8 +225,6 @@ class UseDatabase {
       }
     } catch (error) {
       console.error("Failed to initialize shared repos:", error);
-    } finally {
-      this.state.sharedReposLoading = false;
     }
   }
 
