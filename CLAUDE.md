@@ -68,7 +68,7 @@ This script removes old demo files, builds the demo with `BUILD_TARGET=demo`, an
 
 ## Releasing a New Version
 
-Version format: `YYYY.release.patch` (e.g., `2026.1.1`)
+Version format: `YYYY.month.patch` (e.g., `2026.1.1`)
 
 1. Update version in these files:
    - `package.json`
@@ -88,9 +88,11 @@ Version format: `YYYY.release.patch` (e.g., `2026.1.1`)
 
 5. Review and publish the draft release on GitHub
 
-## Tools
-Use 'bd' for task tracking
+## AI behaviour
 
+Never commit any changes to git.
+
+## Tools
 You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
 
 ## Available MCP Tools:
