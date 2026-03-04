@@ -8,7 +8,7 @@
 [![Version](https://img.shields.io/github/v/release/webstonehq/seaquel)](https://github.com/webstonehq/seaquel/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/webstonehq/seaquel)](https://github.com/webstonehq/seaquel/stargazers)
 [![Build](https://img.shields.io/github/actions/workflow/status/webstonehq/seaquel/release.yml)](https://github.com/webstonehq/seaquel/actions)
-[![Discord](https://img.shields.io/discord/1330646498795515904?label=Discord&logo=discord&logoColor=white)](https://seaquel.app/discord)
+[![Discord](https://img.shields.io/discord/1452421515164385436?label=Discord&logo=discord&logoColor=white)](https://seaquel.app/discord)
 [![Try Demo](https://img.shields.io/badge/Try-Live%20Demo-brightgreen)](https://seaquel.app/demo)
 
 ![Seaquel Screenshot](https://seaquel.app/product-screenshot.png)
