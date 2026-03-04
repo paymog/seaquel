@@ -2,38 +2,79 @@
 
 # Seaquel
 
-**A modern, open-source database client for desktop and web.**
+**Explore, query, and visualize your databases — all in one app.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/github/v/release/webstonehq/seaquel)](https://github.com/webstonehq/seaquel/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/webstonehq/seaquel)](https://github.com/webstonehq/seaquel/stargazers)
+[![Build](https://img.shields.io/github/actions/workflow/status/webstonehq/seaquel/release.yml)](https://github.com/webstonehq/seaquel/actions)
+[![Discord](https://img.shields.io/discord/1330646498795515904?label=Discord&logo=discord&logoColor=white)](https://seaquel.app/discord)
 [![Try Demo](https://img.shields.io/badge/Try-Live%20Demo-brightgreen)](https://seaquel.app/demo)
 
 ![Seaquel Screenshot](https://seaquel.app/product-screenshot.png)
+
+Works with 6 database engines. No account required. Free and open source.<br>
+[Try it in your browser](https://seaquel.app/demo) in seconds.
 
 </div>
 
 ## Features
 
-- **Multi-database support** — PostgreSQL, MySQL, MariaDB, SQLite, MSSQL, and DuckDB
+### Query & Edit
+
 - **SQL editor** — Syntax highlighting, formatting, parameter support, and Monaco-based editing
-- **Schema browser** — Explore tables, columns, indexes, constraints, and more
-- **EXPLAIN/ANALYZE visualizer** — Understand query plans with hot path detection
-- **Entity Relationship Diagrams** — Auto-generated ERDs with PNG/SVG export
-- **Database statistics** — Dashboard with table sizes, row counts, and index usage
-- **Visual query builder** — Drag-and-drop canvas for building queries without SQL
-- **Data visualization** — Bar, line, pie, and scatter charts from query results
 - **Inline result editing** — INSERT, UPDATE, and DELETE rows directly from the results table
-- **CSV/JSON export** — Export query results to CSV or JSON
-- **Query sharing** — Share queries via Git repositories
+- **Visual query builder** — Drag-and-drop canvas for building queries without SQL
 - **AI assistant** — Get help writing and understanding SQL queries
 - **SQL learning sandbox** — Interactive challenges to practice SQL
-- **SSH tunneling** — Connect securely through SSH tunnels
+
+### Explore & Visualize
+
+- **Schema browser** — Explore tables, columns, indexes, constraints, and more
+- **Entity Relationship Diagrams** — Auto-generated ERDs with PNG/SVG export
+- **EXPLAIN/ANALYZE visualizer** — Understand query plans with hot path detection
+- **Database statistics** — Dashboard with table sizes, row counts, and index usage
+- **Data visualization** — Bar, line, pie, and scatter charts from query results
+
+### Collaborate & Share
+
+- **CSV/JSON export** — Export query results to CSV or JSON
+- **Query sharing** — Share queries via Git repositories
 - **Connection import** — Import connections from DBeaver and TablePlus
 - **Multi-project** — Organize connections and queries across projects
+
+### Customize
+
 - **Themes** — Light and dark modes with a built-in theme editor
 - **Internationalization** — Available in English, Spanish, German, French, Arabic, and Korean
-- **Auto-updates** — Stay current with automatic update notifications
 - **Command palette** — Quick access to all actions via keyboard
+- **SSH tunneling** — Connect securely through SSH tunnels
+- **Auto-updates** — Stay current with automatic update notifications
+
+## Comparison with Alternatives
+
+| | Seaquel | DBeaver | TablePlus | DataGrip | pgAdmin |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Open source | :white_check_mark: | :white_check_mark: | :x: | :x: | :white_check_mark: |
+| Multi-database | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x: |
+| Browser demo | :white_check_mark: | :x: | :x: | :x: | :x: |
+| ERD generation | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x: |
+| Visual query builder | :white_check_mark: | :white_check_mark: | :x: | :x: | :white_check_mark: |
+| EXPLAIN visualizer | :white_check_mark: | :white_check_mark: | :x: | :white_check_mark: | :white_check_mark: |
+| Free | :white_check_mark: | Freemium | Paid | Paid | :white_check_mark: |
+| Lightweight | :white_check_mark: | :x: | :white_check_mark: | :x: | :white_check_mark: |
+
+## Installation
+
+Download Seaquel for your platform from [seaquel.app/download](https://seaquel.app/download).
+
+| Platform | Architectures |
+|---|---|
+| macOS | Intel (x86_64), Apple Silicon (ARM64) |
+| Linux | x86_64, ARM64 |
+| Windows | x86_64, ARM64 |
+
+Want to try it first? Check out the [browser demo](https://seaquel.app/demo) (powered by DuckDB WASM).
 
 ## Database Support
 
@@ -46,17 +87,18 @@
 | Inline editing | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
 | Statistics dashboard | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
 
-## Installation
+## Community
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/webstonehq/seaquel/releases).
+- [Discord](https://seaquel.app/discord) — Chat, ask questions, share feedback
+- [GitHub Issues](https://github.com/webstonehq/seaquel/issues) — Bug reports and feature requests
 
-| Platform | Architectures |
-|---|---|
-| macOS | Intel (x86_64), Apple Silicon (ARM64) |
-| Linux | x86_64, ARM64 |
-| Windows | x86_64, ARM64 |
+## Contributing
 
-Want to try it first? Check out the [browser demo](https://seaquel.app/demo) (powered by DuckDB WASM).
+Contributions are welcome! Here's how to get started:
+
+1. Browse the [open issues](https://github.com/webstonehq/seaquel/issues) to find something to work on
+2. For larger changes, open an issue first to discuss your approach
+3. Fork the repo, create a branch, and submit a pull request
 
 ## Development
 
@@ -89,21 +131,12 @@ npm run check:watch     # Type checking (watch mode)
 
 ## Tech Stack
 
-- [Tauri 2](https://v2.tauri.app/) — Native app shell with Rust backend
-- [SvelteKit 5](https://svelte.dev/docs/kit) — App framework
-- [Svelte 5](https://svelte.dev/) — UI with runes-based reactivity
+- [Tauri](https://tauri.app/) — Native app shell with Rust backend
+- [SvelteKit](https://svelte.dev/docs/kit) — App framework
+- [Svelte](https://svelte.dev/) — UI with runes-based reactivity
 - [TypeScript](https://www.typescriptlang.org/) — Type safety
-- [Tailwind CSS v4](https://tailwindcss.com/) — Styling
+- [Tailwind CSS](https://tailwindcss.com/) — Styling
 - [Rust](https://www.rust-lang.org/) — Backend plugins and system integration
-
-## Community
-
-- [Discord](https://seaquel.app/discord) — Chat, ask questions, share feedback
-- [GitHub Issues](https://github.com/webstonehq/seaquel/issues) — Bug reports and feature requests
-
-## Contributing
-
-Contributions are welcome! Check the [open issues](https://github.com/webstonehq/seaquel/issues) to find something to work on, or open a new issue to propose a change.
 
 ## License
 
