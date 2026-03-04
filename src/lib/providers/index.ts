@@ -3,10 +3,10 @@
  * Returns the appropriate provider based on the runtime environment.
  */
 
-import type { DatabaseProvider } from './types';
-import { isTauri } from '$lib/utils/environment';
+import type { DatabaseProvider } from "./types";
+import { isTauri } from "$lib/utils/environment";
 
-export type { DatabaseProvider, ConnectionConfig, ExecuteResult } from './types';
+export type { DatabaseProvider, ConnectionConfig, ExecuteResult } from "./types";
 
 let provider: DatabaseProvider | null = null;
 let duckdbProvider: DatabaseProvider | null = null;
@@ -16,17 +16,17 @@ let duckdbProvider: DatabaseProvider | null = null;
  * Returns TauriDatabaseProvider in desktop app, DuckDBProvider in browser.
  */
 export async function getProvider(): Promise<DatabaseProvider> {
-	if (provider) return provider;
+  if (provider) return provider;
 
-	if (isTauri()) {
-		const { TauriDatabaseProvider } = await import('./tauri-provider');
-		provider = new TauriDatabaseProvider();
-	} else {
-		const { DuckDBProvider } = await import('./duckdb-provider');
-		provider = new DuckDBProvider();
-	}
+  if (isTauri()) {
+    const { TauriDatabaseProvider } = await import("./tauri-provider");
+    provider = new TauriDatabaseProvider();
+  } else {
+    const { DuckDBProvider } = await import("./duckdb-provider");
+    provider = new DuckDBProvider();
+  }
 
-	return provider;
+  return provider;
 }
 
 /**
@@ -34,24 +34,24 @@ export async function getProvider(): Promise<DatabaseProvider> {
  * Returns DuckDBTauriProvider in desktop app, DuckDBProvider (WASM) in browser.
  */
 export async function getDuckDBProvider(): Promise<DatabaseProvider> {
-	if (duckdbProvider) return duckdbProvider;
+  if (duckdbProvider) return duckdbProvider;
 
-	if (isTauri()) {
-		const { DuckDBTauriProvider } = await import('./duckdb-tauri-provider');
-		duckdbProvider = new DuckDBTauriProvider();
-	} else {
-		const { DuckDBProvider } = await import('./duckdb-provider');
-		duckdbProvider = new DuckDBProvider();
-	}
+  if (isTauri()) {
+    const { DuckDBTauriProvider } = await import("./duckdb-tauri-provider");
+    duckdbProvider = new DuckDBTauriProvider();
+  } else {
+    const { DuckDBProvider } = await import("./duckdb-provider");
+    duckdbProvider = new DuckDBProvider();
+  }
 
-	return duckdbProvider;
+  return duckdbProvider;
 }
 
 /**
  * Check if we're in demo mode (browser, not Tauri).
  */
 export function isDemo(): boolean {
-	return !isTauri();
+  return !isTauri();
 }
 
 /**
@@ -59,8 +59,8 @@ export function isDemo(): boolean {
  * Mainly useful for testing.
  */
 export function resetProvider(): void {
-	provider = null;
-	duckdbProvider = null;
+  provider = null;
+  duckdbProvider = null;
 }
 
-export { ProviderRegistry } from './provider-registry';
+export { ProviderRegistry } from "./provider-registry";

@@ -3,7 +3,12 @@ import { errorToast } from "$lib/utils/toast";
 import type { DatabaseConnection, QueryResult, StatementResult, ParameterValue } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { QueryHistoryManager } from "./query-history.svelte.js";
-import { detectQueryType, isWriteQuery, isSelectQuery, extractTableFromSelect } from "$lib/db/query-utils";
+import {
+  detectQueryType,
+  isWriteQuery,
+  isSelectQuery,
+  extractTableFromSelect,
+} from "$lib/db/query-utils";
 import { splitSqlStatements, getStatementAtOffset } from "$lib/db/sql-parser";
 import { substituteParameters } from "$lib/db/query-params";
 import { m } from "$lib/paraglide/messages.js";
@@ -20,7 +25,7 @@ export class QueryExecutionManager {
   constructor(
     private state: DatabaseState,
     private queryHistory: QueryHistoryManager,
-    private providers: ProviderRegistry
+    private providers: ProviderRegistry,
   ) {}
 
   /**
@@ -28,15 +33,17 @@ export class QueryExecutionManager {
    */
   private updateQueryTabState(
     tabId: string,
-    updates: Partial<{ results: StatementResult[]; activeResultIndex: number; isExecuting: boolean }>
+    updates: Partial<{
+      results: StatementResult[];
+      activeResultIndex: number;
+      isExecuting: boolean;
+    }>,
   ): void {
     if (!this.state.activeProjectId) return;
 
     const projectId = this.state.activeProjectId;
     const tabs = this.state.queryTabsByProject[projectId] ?? [];
-    const updatedTabs = tabs.map((tab) =>
-      tab.id === tabId ? { ...tab, ...updates } : tab
-    );
+    const updatedTabs = tabs.map((tab) => (tab.id === tabId ? { ...tab, ...updates } : tab));
 
     this.state.queryTabsByProject = {
       ...this.state.queryTabsByProject,
@@ -60,7 +67,12 @@ export class QueryExecutionManager {
    * sqlx binds JS strings as PostgreSQL TEXT, which won't auto-cast to
    * timestamp, date, boolean, etc. This adds CAST($N AS <type>) when needed.
    */
-  private getCastPlaceholder(paramIndex: number, schema: string, tableName: string, column: string): string {
+  private getCastPlaceholder(
+    paramIndex: number,
+    schema: string,
+    tableName: string,
+    column: string,
+  ): string {
     const placeholder = `$${paramIndex}`;
     const connectionId = this.state.activeConnectionId;
     if (!connectionId) return placeholder;
@@ -98,7 +110,7 @@ export class QueryExecutionManager {
     page: number,
     pageSize: number,
     connection: DatabaseConnection,
-    bindValues?: unknown[]
+    bindValues?: unknown[],
   ): Promise<QueryResult> {
     const start = performance.now();
     const baseQuery = sql.replace(/;$/, "").trim();
@@ -192,7 +204,11 @@ export class QueryExecutionManager {
         } else if (providerConnectionId) {
           const provider = await this.providers.getForType(connection.type);
           // Pass bind values since count query wraps the parameterized query
-          countResult = await provider.select<{ total: string | number }>(providerConnectionId, countQuery, bindValues);
+          countResult = await provider.select<{ total: string | number }>(
+            providerConnectionId,
+            countQuery,
+            bindValues,
+          );
         } else {
           throw new Error("No connection established");
         }
@@ -232,7 +248,11 @@ export class QueryExecutionManager {
     } else if (providerConnectionId) {
       const provider = await this.providers.getForType(connection.type);
       // Pass bind values for parameterized queries
-      dbResult = await provider.select<Record<string, unknown>>(providerConnectionId, paginatedQuery, bindValues);
+      dbResult = await provider.select<Record<string, unknown>>(
+        providerConnectionId,
+        paginatedQuery,
+        bindValues,
+      );
       resultColumns = (dbResult?.length ?? 0) > 0 ? Object.keys(dbResult[0]) : [];
     } else {
       throw new Error("No connection established");
@@ -244,7 +264,8 @@ export class QueryExecutionManager {
       totalRows = dbResult?.length ?? 0;
     }
 
-    const totalPages = hasPagination || pageSize === 0 ? 1 : Math.max(1, Math.ceil(totalRows / pageSize));
+    const totalPages =
+      hasPagination || pageSize === 0 ? 1 : Math.max(1, Math.ceil(totalRows / pageSize));
 
     // Try to extract source table info for CRUD operations
     const tableInfo = extractTableFromSelect(baseQuery);
@@ -281,7 +302,12 @@ export class QueryExecutionManager {
   /**
    * Execute only the statement at the cursor position.
    */
-  async executeCurrent(tabId: string, cursorOffset: number, page: number = 1, pageSize?: number): Promise<void> {
+  async executeCurrent(
+    tabId: string,
+    cursorOffset: number,
+    page: number = 1,
+    pageSize?: number,
+  ): Promise<void> {
     if (!this.state.activeProjectId) return;
 
     const connection = this.state.activeConnection;
@@ -312,13 +338,20 @@ export class QueryExecutionManager {
     const effectivePageSize = pageSize ?? tab.results?.[0]?.pageSize ?? this.DEFAULT_PAGE_SIZE;
 
     try {
-      const result = await this.executeStatement(statement.sql, page, effectivePageSize, connection);
-      const results: StatementResult[] = [{
-        ...result,
-        statementIndex: 0,
-        statementSql: statement.sql,
-        isError: false,
-      }];
+      const result = await this.executeStatement(
+        statement.sql,
+        page,
+        effectivePageSize,
+        connection,
+      );
+      const results: StatementResult[] = [
+        {
+          ...result,
+          statementIndex: 0,
+          statementSql: statement.sql,
+          isError: false,
+        },
+      ];
 
       this.updateQueryTabState(tabId, {
         results,
@@ -331,20 +364,22 @@ export class QueryExecutionManager {
         this.queryHistory.addToHistory(statement.sql, results[0]);
       }
     } catch (error) {
-      const results: StatementResult[] = [{
-        columns: ["Error"],
-        rows: [{ Error: extractErrorMessage(error) }],
-        rowCount: 1,
-        totalRows: 1,
-        executionTime: 0,
-        page: 1,
-        pageSize: 1,
-        totalPages: 1,
-        statementIndex: 0,
-        statementSql: statement.sql,
-        error: extractErrorMessage(error),
-        isError: true,
-      }];
+      const results: StatementResult[] = [
+        {
+          columns: ["Error"],
+          rows: [{ Error: extractErrorMessage(error) }],
+          rowCount: 1,
+          totalRows: 1,
+          executionTime: 0,
+          page: 1,
+          pageSize: 1,
+          totalPages: 1,
+          statementIndex: 0,
+          statementSql: statement.sql,
+          error: extractErrorMessage(error),
+          isError: true,
+        },
+      ];
 
       this.updateQueryTabState(tabId, {
         results,
@@ -362,7 +397,7 @@ export class QueryExecutionManager {
     cursorOffset: number,
     parameterValues: ParameterValue[],
     page: number = 1,
-    pageSize?: number
+    pageSize?: number,
   ): Promise<void> {
     if (!this.state.activeProjectId) return;
 
@@ -397,13 +432,21 @@ export class QueryExecutionManager {
       // Substitute parameters
       const { sql, bindValues } = substituteParameters(statement.sql, parameterValues, dbType);
 
-      const result = await this.executeStatement(sql, page, effectivePageSize, connection, bindValues);
-      const results: StatementResult[] = [{
-        ...result,
-        statementIndex: 0,
-        statementSql: statement.sql, // Keep original SQL for display
-        isError: false,
-      }];
+      const result = await this.executeStatement(
+        sql,
+        page,
+        effectivePageSize,
+        connection,
+        bindValues,
+      );
+      const results: StatementResult[] = [
+        {
+          ...result,
+          statementIndex: 0,
+          statementSql: statement.sql, // Keep original SQL for display
+          isError: false,
+        },
+      ];
 
       this.updateQueryTabState(tabId, {
         results,
@@ -416,20 +459,22 @@ export class QueryExecutionManager {
         this.queryHistory.addToHistory(statement.sql, results[0]);
       }
     } catch (error) {
-      const results: StatementResult[] = [{
-        columns: ["Error"],
-        rows: [{ Error: extractErrorMessage(error) }],
-        rowCount: 1,
-        totalRows: 1,
-        executionTime: 0,
-        page: 1,
-        pageSize: 1,
-        totalPages: 1,
-        statementIndex: 0,
-        statementSql: statement.sql,
-        error: extractErrorMessage(error),
-        isError: true,
-      }];
+      const results: StatementResult[] = [
+        {
+          columns: ["Error"],
+          rows: [{ Error: extractErrorMessage(error) }],
+          rowCount: 1,
+          totalRows: 1,
+          executionTime: 0,
+          page: 1,
+          pageSize: 1,
+          totalPages: 1,
+          statementIndex: 0,
+          statementSql: statement.sql,
+          error: extractErrorMessage(error),
+          isError: true,
+        },
+      ];
 
       this.updateQueryTabState(tabId, {
         results,
@@ -461,7 +506,9 @@ export class QueryExecutionManager {
 
     // Get effective page size: use the first SELECT-type result's pageSize from previous execution, or default.
     // Avoid inheriting pageSize from error or utility results.
-    const previousSelectResult = tab.results?.find(r => !r.isError && !r.isUtility && r.queryType === 'select');
+    const previousSelectResult = tab.results?.find(
+      (r) => !r.isError && !r.isUtility && r.queryType === "select",
+    );
     const effectivePageSize = pageSize ?? previousSelectResult?.pageSize ?? this.DEFAULT_PAGE_SIZE;
 
     // Get database type for parsing
@@ -515,7 +562,7 @@ export class QueryExecutionManager {
 
     // Filter out utility results (SET, PRAGMA, etc.) — they executed but don't need result tabs.
     // Keep them only if ALL statements are utility (so the user sees something).
-    const displayResults = allResults.filter(r => !r.isUtility);
+    const displayResults = allResults.filter((r) => !r.isUtility);
     const results = displayResults.length > 0 ? displayResults : allResults;
 
     // Re-index displayed results
@@ -530,7 +577,7 @@ export class QueryExecutionManager {
 
     // Add to history (only on first page to avoid duplicates, use first meaningful result)
     if (page === 1 && indexedResults.length > 0) {
-      const historyResult = indexedResults.find(r => !r.isUtility) ?? indexedResults[0];
+      const historyResult = indexedResults.find((r) => !r.isUtility) ?? indexedResults[0];
       this.queryHistory.addToHistory(tab.query, historyResult);
     }
   }
@@ -543,7 +590,7 @@ export class QueryExecutionManager {
     tabId: string,
     parameterValues: ParameterValue[],
     page: number = 1,
-    pageSize?: number
+    pageSize?: number,
   ): Promise<void> {
     if (!this.state.activeProjectId) return;
 
@@ -562,7 +609,9 @@ export class QueryExecutionManager {
     this.updateQueryTabState(tabId, { isExecuting: true });
 
     // Get effective page size: use the first SELECT-type result's pageSize from previous execution, or default.
-    const previousSelectResult = tab.results?.find(r => !r.isError && !r.isUtility && r.queryType === 'select');
+    const previousSelectResult = tab.results?.find(
+      (r) => !r.isError && !r.isUtility && r.queryType === "select",
+    );
     const effectivePageSize = pageSize ?? previousSelectResult?.pageSize ?? this.DEFAULT_PAGE_SIZE;
 
     // Get database type
@@ -591,7 +640,13 @@ export class QueryExecutionManager {
         // Substitute parameters for this statement
         const { sql, bindValues } = substituteParameters(stmt.sql, parameterValues, dbType);
 
-        const result = await this.executeStatement(sql, page, effectivePageSize, connection, bindValues);
+        const result = await this.executeStatement(
+          sql,
+          page,
+          effectivePageSize,
+          connection,
+          bindValues,
+        );
         allResults.push({
           ...result,
           statementIndex: i,
@@ -617,7 +672,7 @@ export class QueryExecutionManager {
     }
 
     // Filter out utility results (SET, PRAGMA, etc.)
-    const displayResults = allResults.filter(r => !r.isUtility);
+    const displayResults = allResults.filter((r) => !r.isUtility);
     const results = displayResults.length > 0 ? displayResults : allResults;
 
     // Re-index displayed results
@@ -632,7 +687,7 @@ export class QueryExecutionManager {
 
     // Add to history (only on first page, use first meaningful result)
     if (page === 1 && indexedResults.length > 0) {
-      const historyResult = indexedResults.find(r => !r.isUtility) ?? indexedResults[0];
+      const historyResult = indexedResults.find((r) => !r.isUtility) ?? indexedResults[0];
       this.queryHistory.addToHistory(tab.query, historyResult);
     }
   }
@@ -675,7 +730,7 @@ export class QueryExecutionManager {
     tabId: string,
     resultIndex: number,
     page: number,
-    pageSize: number
+    pageSize: number,
   ): Promise<void> {
     if (!this.state.activeProjectId) return;
 
@@ -690,7 +745,12 @@ export class QueryExecutionManager {
     const existingResult = tab.results[resultIndex];
 
     try {
-      const result = await this.executeStatement(existingResult.statementSql, page, pageSize, connection);
+      const result = await this.executeStatement(
+        existingResult.statementSql,
+        page,
+        pageSize,
+        connection,
+      );
 
       // Update only this specific result in the array
       const newResults = [...tab.results];
@@ -735,7 +795,7 @@ export class QueryExecutionManager {
     rowIndex: number,
     column: string,
     newValue: unknown,
-    sourceTable: { schema: string; name: string; primaryKeys: string[] }
+    sourceTable: { schema: string; name: string; primaryKeys: string[] },
   ): Promise<{ success: boolean; error?: string }> {
     const tabs = this.state.queryTabsByProject[this.state.activeProjectId!] ?? [];
     const tab = tabs.find((t) => t.id === tabId);
@@ -763,7 +823,12 @@ export class QueryExecutionManager {
           return `[${pk}] = ${escapedVal}`;
         });
         // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-        const escapedNewValue = typeof newValue === "string" ? `'${newValue.replace(/'/g, "''")}'` : newValue === null ? "NULL" : String(newValue);
+        const escapedNewValue =
+          typeof newValue === "string"
+            ? `'${newValue.replace(/'/g, "''")}'`
+            : newValue === null
+              ? "NULL"
+              : String(newValue);
         const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = ${escapedNewValue} WHERE ${whereConditions.join(" AND ")}`;
         await mssqlExecute(connection.mssqlConnectionId!, query);
       } else if (connection?.providerConnectionId) {
@@ -772,7 +837,12 @@ export class QueryExecutionManager {
         const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 2}`);
         // Look up column type for explicit CAST — sqlx binds strings as TEXT,
         // and PostgreSQL won't implicitly cast TEXT to timestamp, date, etc.
-        const valuePlaceholder = this.getCastPlaceholder(1, sourceTable.schema, sourceTable.name, column);
+        const valuePlaceholder = this.getCastPlaceholder(
+          1,
+          sourceTable.schema,
+          sourceTable.name,
+          column,
+        );
         const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = ${valuePlaceholder} WHERE ${whereConditions.join(" AND ")}`;
         const bindValues = [newValue, ...sourceTable.primaryKeys.map((pk) => row[pk])];
         await provider.execute(connection.providerConnectionId, query, bindValues);
@@ -792,7 +862,7 @@ export class QueryExecutionManager {
    */
   async insertRow(
     sourceTable: { schema: string; name: string },
-    values: Record<string, unknown>
+    values: Record<string, unknown>,
   ): Promise<{ success: boolean; error?: string; lastInsertId?: number }> {
     const columns = Object.keys(values);
     if (columns.length === 0) {
@@ -807,11 +877,13 @@ export class QueryExecutionManager {
         // SQL Server: use square brackets for identifiers and inline values
         const columnNames = columns.map((c) => `[${c}]`).join(", ");
         // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-        const valuesList = Object.values(values).map((v) => {
-          if (v === null || v === undefined) return "NULL";
-          if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
-          return v;
-        }).join(", ");
+        const valuesList = Object.values(values)
+          .map((v) => {
+            if (v === null || v === undefined) return "NULL";
+            if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
+            return v;
+          })
+          .join(", ");
         const query = `INSERT INTO [${sourceTable.schema}].[${sourceTable.name}] (${columnNames}) VALUES (${valuesList})`;
         await mssqlExecute(connection.mssqlConnectionId!, query);
         return { success: true };
@@ -819,11 +891,17 @@ export class QueryExecutionManager {
         // PostgreSQL/SQLite/DuckDB: use double quotes and parameterized queries
         const provider = await this.providers.getForType(connection.type);
         const columnNames = columns.map((c) => `"${c}"`).join(", ");
-        const placeholders = columns.map((col, i) =>
-          this.getCastPlaceholder(i + 1, sourceTable.schema, sourceTable.name, col)
-        ).join(", ");
+        const placeholders = columns
+          .map((col, i) =>
+            this.getCastPlaceholder(i + 1, sourceTable.schema, sourceTable.name, col),
+          )
+          .join(", ");
         const query = `INSERT INTO "${sourceTable.schema}"."${sourceTable.name}" (${columnNames}) VALUES (${placeholders})`;
-        const result = await provider.execute(connection.providerConnectionId, query, Object.values(values));
+        const result = await provider.execute(
+          connection.providerConnectionId,
+          query,
+          Object.values(values),
+        );
         return { success: true, lastInsertId: result?.lastInsertId };
       } else {
         return { success: false, error: "No connection established" };
@@ -862,7 +940,7 @@ export class QueryExecutionManager {
    */
   async deleteRow(
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
-    row: Record<string, unknown>
+    row: Record<string, unknown>,
   ): Promise<{ success: boolean; error?: string }> {
     if (sourceTable.primaryKeys.length === 0) {
       return { success: false, error: "No primary key found" };

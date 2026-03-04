@@ -2,11 +2,13 @@
   "name": "seaquel",
   "version": "2026.4.3",
   "description": "",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
     "build:demo": "BUILD_TARGET=demo vite build --mode demo",
+    "format": "oxfmt",
     "lint": "oxlint --fix",
     "preview": "vite preview",
     "preview:demo": "vite preview --outDir build-demo",
@@ -17,7 +19,6 @@
     "demos:db:create": "rm -f docs/demos.db && sqlite3 docs/demos.db < docs/sample-data.sql",
     "demos:start": "SEAQUEL_DATA_DIR=~/projects/github/webstonehq/seaquel/docs/data tauri dev"
   },
-  "license": "MIT",
   "dependencies": {
     "@dagrejs/dagre": "^1.1.8",
     "@duckdb/duckdb-wasm": "^1.32.0",
@@ -62,6 +63,7 @@
     "bits-ui": "^2.14.4",
     "clsx": "^2.1.1",
     "mode-watcher": "^1.1.0",
+    "oxfmt": "^0.36.0",
     "oxlint": "^1.51.0",
     "oxlint-tsgolint": "^0.16.0",
     "paneforge": "^1.0.2",

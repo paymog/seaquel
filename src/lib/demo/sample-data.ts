@@ -109,39 +109,39 @@ INSERT INTO demo.order_items VALUES (17, 10, 12, 1, 14.99);
  * Example queries to show users what they can do.
  */
 export const EXAMPLE_QUERIES = [
-	{
-		name: 'List all customers',
-		query: 'SELECT * FROM demo.customers ORDER BY created_at DESC;'
-	},
-	{
-		name: 'Products by category',
-		query: `SELECT category, COUNT(*) as count, AVG(price) as avg_price
+  {
+    name: "List all customers",
+    query: "SELECT * FROM demo.customers ORDER BY created_at DESC;",
+  },
+  {
+    name: "Products by category",
+    query: `SELECT category, COUNT(*) as count, AVG(price) as avg_price
 FROM demo.products
 GROUP BY category
-ORDER BY count DESC;`
-	},
-	{
-		name: 'Recent orders with customer info',
-		query: `SELECT o.id, c.first_name, c.last_name, o.status, o.total_amount, o.created_at
+ORDER BY count DESC;`,
+  },
+  {
+    name: "Recent orders with customer info",
+    query: `SELECT o.id, c.first_name, c.last_name, o.status, o.total_amount, o.created_at
 FROM demo.orders o
 JOIN demo.customers c ON o.customer_id = c.id
 ORDER BY o.created_at DESC
-LIMIT 10;`
-	},
-	{
-		name: 'Top selling products',
-		query: `SELECT p.name, SUM(oi.quantity) as total_sold, SUM(oi.quantity * oi.unit_price) as revenue
+LIMIT 10;`,
+  },
+  {
+    name: "Top selling products",
+    query: `SELECT p.name, SUM(oi.quantity) as total_sold, SUM(oi.quantity * oi.unit_price) as revenue
 FROM demo.order_items oi
 JOIN demo.products p ON oi.product_id = p.id
 GROUP BY p.id, p.name
-ORDER BY total_sold DESC;`
-	},
-	{
-		name: 'Customer order summary',
-		query: `SELECT c.first_name, c.last_name, COUNT(o.id) as order_count, SUM(o.total_amount) as total_spent
+ORDER BY total_sold DESC;`,
+  },
+  {
+    name: "Customer order summary",
+    query: `SELECT c.first_name, c.last_name, COUNT(o.id) as order_count, SUM(o.total_amount) as total_spent
 FROM demo.customers c
 LEFT JOIN demo.orders o ON c.id = o.customer_id
 GROUP BY c.id, c.first_name, c.last_name
-ORDER BY total_spent DESC;`
-	}
+ORDER BY total_spent DESC;`,
+  },
 ];

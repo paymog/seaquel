@@ -21,16 +21,16 @@
  * );
  */
 export function updateRecordArrayItem<T extends { id: string }>(
-	record: Record<string, T[]>,
-	key: string,
-	itemId: string,
-	updates: Partial<T>
+  record: Record<string, T[]>,
+  key: string,
+  itemId: string,
+  updates: Partial<T>,
 ): Record<string, T[]> {
-	const currentArray = record[key] ?? [];
-	const newArray = currentArray.map((item) =>
-		item.id === itemId ? { ...item, ...updates } : item
-	);
-	return { ...record, [key]: newArray };
+  const currentArray = record[key] ?? [];
+  const newArray = currentArray.map((item) =>
+    item.id === itemId ? { ...item, ...updates } : item,
+  );
+  return { ...record, [key]: newArray };
 }
 
 /**
@@ -44,13 +44,13 @@ export function updateRecordArrayItem<T extends { id: string }>(
  * );
  */
 export function removeRecordArrayItem<T extends { id: string }>(
-	record: Record<string, T[]>,
-	key: string,
-	itemId: string
+  record: Record<string, T[]>,
+  key: string,
+  itemId: string,
 ): Record<string, T[]> {
-	const currentArray = record[key] ?? [];
-	const newArray = currentArray.filter((item) => item.id !== itemId);
-	return { ...record, [key]: newArray };
+  const currentArray = record[key] ?? [];
+  const newArray = currentArray.filter((item) => item.id !== itemId);
+  return { ...record, [key]: newArray };
 }
 
 /**
@@ -64,12 +64,12 @@ export function removeRecordArrayItem<T extends { id: string }>(
  * );
  */
 export function addRecordArrayItem<T>(
-	record: Record<string, T[]>,
-	key: string,
-	item: T
+  record: Record<string, T[]>,
+  key: string,
+  item: T,
 ): Record<string, T[]> {
-	const currentArray = record[key] ?? [];
-	return { ...record, [key]: [...currentArray, item] };
+  const currentArray = record[key] ?? [];
+  return { ...record, [key]: [...currentArray, item] };
 }
 
 /**
@@ -79,6 +79,6 @@ export function addRecordArrayItem<T>(
  * state.tabsByConnection = deleteRecordKey(state.tabsByConnection, connectionId);
  */
 export function deleteRecordKey<T>(record: Record<string, T>, key: string): Record<string, T> {
-	const { [key]: _, ...rest } = record;
-	return rest;
+  const { [key]: _, ...rest } = record;
+  return rest;
 }

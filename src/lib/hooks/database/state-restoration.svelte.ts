@@ -16,7 +16,7 @@ import type { PersistenceManager } from "./persistence-manager.svelte.js";
 export class StateRestorationManager {
   constructor(
     private state: DatabaseState,
-    private persistence: PersistenceManager
+    private persistence: PersistenceManager,
   ) {}
 
   /**

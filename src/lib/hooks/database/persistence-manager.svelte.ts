@@ -247,7 +247,7 @@ export class PersistenceManager {
         autoSave: false,
         defaults: { projects: [] },
       });
-      return (await store.get("projects")) as PersistedProject[] || [];
+      return ((await store.get("projects")) as PersistedProject[]) || [];
     } catch (error) {
       console.error("Failed to load projects:", error);
       return [];
@@ -373,8 +373,8 @@ export class PersistenceManager {
         defaults: {},
       });
       return {
-        savedQueries: (await store.get("savedQueries")) as PersistedSavedQuery[] || [],
-        queryHistory: (await store.get("queryHistory")) as PersistedQueryHistoryItem[] || [],
+        savedQueries: ((await store.get("savedQueries")) as PersistedSavedQuery[]) || [],
+        queryHistory: ((await store.get("queryHistory")) as PersistedQueryHistoryItem[]) || [],
       };
     } catch (error) {
       console.error(`Failed to load data for connection ${connectionId}:`, error);
@@ -406,7 +406,7 @@ export class PersistenceManager {
     activeSchemaTabId: string | null;
     activeExplainTabId: string | null;
     activeErdTabId: string | null;
-    activeView: 'query' | 'schema' | 'explain' | 'erd';
+    activeView: "query" | "schema" | "explain" | "erd";
     savedQueries: PersistedSavedQuery[];
     queryHistory: PersistedQueryHistoryItem[];
   } | null> {
@@ -427,7 +427,7 @@ export class PersistenceManager {
         activeSchemaTabId: string | null;
         activeExplainTabId: string | null;
         activeErdTabId: string | null;
-        activeView: 'query' | 'schema' | 'explain' | 'erd';
+        activeView: "query" | "schema" | "explain" | "erd";
         savedQueries: PersistedSavedQuery[];
         queryHistory: PersistedQueryHistoryItem[];
       };
@@ -455,10 +455,7 @@ export class PersistenceManager {
 
     try {
       // Handle SQLite
-      if (
-        connectionString.startsWith("sqlite://") ||
-        connectionString.startsWith("sqlite:")
-      ) {
+      if (connectionString.startsWith("sqlite://") || connectionString.startsWith("sqlite:")) {
         return connectionString;
       }
 
@@ -486,7 +483,7 @@ export class PersistenceManager {
       saveSshKeyPassphrase?: boolean;
       sshPassword?: string;
       sshKeyPassphrase?: string;
-    }
+    },
   ): Promise<void> {
     await withErrorHandling(
       async () => {
@@ -495,7 +492,9 @@ export class PersistenceManager {
           defaults: { connections: [] },
         });
 
-        const existingConnections = (await store.get("connections")) as PersistedConnection[] | null;
+        const existingConnections = (await store.get("connections")) as
+          | PersistedConnection[]
+          | null;
         const connections = existingConnections || [];
 
         // Remove if already exists (update case)
@@ -548,13 +547,13 @@ export class PersistenceManager {
                 await keyring.deleteSshKeyPassphrase(connection.id);
               }
             },
-            'PERSISTENCE_FAILED',
-            'Could not save password to system keychain'
+            "PERSISTENCE_FAILED",
+            "Could not save password to system keychain",
           );
         }
       },
-      'PERSISTENCE_FAILED',
-      'Failed to save connection to storage'
+      "PERSISTENCE_FAILED",
+      "Failed to save connection to storage",
     );
   }
 
@@ -566,7 +565,9 @@ export class PersistenceManager {
           defaults: { connections: [] },
         });
 
-        const existingConnections = (await store.get("connections")) as PersistedConnection[] | null;
+        const existingConnections = (await store.get("connections")) as
+          | PersistedConnection[]
+          | null;
         const connections = existingConnections || [];
 
         const filtered = connections.filter((c) => c.id !== connectionId);
@@ -586,8 +587,8 @@ export class PersistenceManager {
         // Remove connection data
         await this.removeConnectionData(connectionId);
       },
-      'PERSISTENCE_FAILED',
-      'Failed to delete connection from storage'
+      "PERSISTENCE_FAILED",
+      "Failed to delete connection from storage",
     );
   }
 
@@ -633,7 +634,7 @@ export class PersistenceManager {
         autoSave: false,
         defaults: { repos: [], activeRepoId: null },
       });
-      const repos = (await store.get("repos")) as PersistedSharedQueryRepo[] || [];
+      const repos = ((await store.get("repos")) as PersistedSharedQueryRepo[]) || [];
       const activeRepoId = (await store.get("activeRepoId")) as string | null;
       return { repos, activeRepoId };
     } catch (error) {
@@ -650,7 +651,7 @@ export class PersistenceManager {
         autoSave: false,
         defaults: {},
       });
-      return (await store.get("storageVersion")) as number || 1;
+      return ((await store.get("storageVersion")) as number) || 1;
     } catch {
       return 1;
     }

@@ -14,12 +14,12 @@ export default defineConfig(async ({ mode }) => {
     plugins: [
       tailwindcss(),
       sveltekit(),
-      paraglideVitePlugin({ project: "./project.inlang", outdir: "./src/lib/paraglide" })
+      paraglideVitePlugin({ project: "./project.inlang", outdir: "./src/lib/paraglide" }),
     ],
 
     // Define environment variables
     define: {
-      "import.meta.env.VITE_IS_DEMO": JSON.stringify(isDemoMode)
+      "import.meta.env.VITE_IS_DEMO": JSON.stringify(isDemoMode),
     },
 
     // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
@@ -40,16 +40,24 @@ export default defineConfig(async ({ mode }) => {
             watch: {
               // 3. tell vite to ignore watching `src-tauri` and database files
               // SQLite WAL/SHM files change on connection and trigger full page reloads
-              ignored: ["**/src-tauri/**", "**/*.sqlite", "**/*.sqlite-shm", "**/*.sqlite-wal", "**/*.db"]
-            }
-          }
+              ignored: [
+                "**/src-tauri/**",
+                "**/*.sqlite",
+                "**/*.sqlite-shm",
+                "**/*.sqlite-wal",
+                "**/*.db",
+              ],
+            },
+          },
         }),
 
     // Monaco Editor and DuckDB optimization
     optimizeDeps: {
       include: ["monaco-editor", "monaco-sql-languages"],
       // Include DuckDB-WASM in demo mode
-      ...(isDemoMode ? { include: ["monaco-editor", "monaco-sql-languages", "@duckdb/duckdb-wasm"] } : {})
+      ...(isDemoMode
+        ? { include: ["monaco-editor", "monaco-sql-languages", "@duckdb/duckdb-wasm"] }
+        : {}),
     },
 
     // Build configuration for demo mode
@@ -62,9 +70,9 @@ export default defineConfig(async ({ mode }) => {
               // Don't externalize - let the dynamic imports handle it
               // The environment checks will prevent Tauri code from running
               return false;
-            }
-          }
+            },
+          },
         }
-      : {}
+      : {},
   };
 });

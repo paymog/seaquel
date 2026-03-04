@@ -52,38 +52,38 @@ Works with 6 database engines. No account required. Free and open source.<br>
 
 ## Comparison with Alternatives
 
-| | Seaquel | DBeaver | TablePlus | DataGrip | pgAdmin |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Open source | :white_check_mark: | :white_check_mark: | :x: | :x: | :white_check_mark: |
-| Multi-database | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x: |
-| Browser demo | :white_check_mark: | :x: | :x: | :x: | :x: |
-| ERD generation | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x: |
-| Visual query builder | :white_check_mark: | :white_check_mark: | :x: | :x: | :white_check_mark: |
-| EXPLAIN visualizer | :white_check_mark: | :white_check_mark: | :x: | :white_check_mark: | :white_check_mark: |
-| Free | :white_check_mark: | Freemium | Paid | Paid | :white_check_mark: |
-| Lightweight | :white_check_mark: | :x: | :white_check_mark: | :x: | :white_check_mark: |
+|                      |      Seaquel       |      DBeaver       |     TablePlus      |      DataGrip      |      pgAdmin       |
+| -------------------- | :----------------: | :----------------: | :----------------: | :----------------: | :----------------: |
+| Open source          | :white_check_mark: | :white_check_mark: |        :x:         |        :x:         | :white_check_mark: |
+| Multi-database       | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |        :x:         |
+| Browser demo         | :white_check_mark: |        :x:         |        :x:         |        :x:         |        :x:         |
+| ERD generation       | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |        :x:         |
+| Visual query builder | :white_check_mark: | :white_check_mark: |        :x:         |        :x:         | :white_check_mark: |
+| EXPLAIN visualizer   | :white_check_mark: | :white_check_mark: |        :x:         | :white_check_mark: | :white_check_mark: |
+| Free                 | :white_check_mark: |      Freemium      |        Paid        |        Paid        | :white_check_mark: |
+| Lightweight          | :white_check_mark: |        :x:         | :white_check_mark: |        :x:         | :white_check_mark: |
 
 ## Installation
 
 Download Seaquel for your platform from [seaquel.app/download](https://seaquel.app/download).
 
-| Platform | Architectures |
-|---|---|
-| macOS | Intel (x86_64), Apple Silicon (ARM64) |
-| Linux | x86_64, ARM64 |
-| Windows | x86_64, ARM64 |
+| Platform | Architectures                         |
+| -------- | ------------------------------------- |
+| macOS    | Intel (x86_64), Apple Silicon (ARM64) |
+| Linux    | x86_64, ARM64                         |
+| Windows  | x86_64, ARM64                         |
 
 Want to try it first? Check out the [browser demo](https://seaquel.app/demo) (powered by DuckDB WASM).
 
 ## Database Support
 
-| Feature | PostgreSQL | MySQL | MariaDB | SQLite | MSSQL | DuckDB |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| Connect & query | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Schema browser | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| EXPLAIN visualizer | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| ERD generation | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Inline editing | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Feature              |     PostgreSQL     |       MySQL        |      MariaDB       |       SQLite       |       MSSQL        |       DuckDB       |
+| -------------------- | :----------------: | :----------------: | :----------------: | :----------------: | :----------------: | :----------------: |
+| Connect & query      | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Schema browser       | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| EXPLAIN visualizer   | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| ERD generation       | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Inline editing       | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
 | Statistics dashboard | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
 
 ## Community

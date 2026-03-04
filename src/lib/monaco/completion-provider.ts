@@ -9,10 +9,7 @@ interface TableReference {
 /**
  * Find all tables referenced in FROM and JOIN clauses
  */
-function findTablesInQuery(
-  queryText: string,
-  schema: SchemaTable[],
-): TableReference[] {
+function findTablesInQuery(queryText: string, schema: SchemaTable[]): TableReference[] {
   const tables: TableReference[] = [];
 
   // FROM clause: FROM [schema.]table [AS] [alias]
@@ -44,8 +41,7 @@ function findTablesInQuery(
       "INTERSECT",
       "EXCEPT",
     ];
-    const validAlias =
-      alias && !sqlKeywords.includes(alias.toUpperCase()) ? alias : undefined;
+    const validAlias = alias && !sqlKeywords.includes(alias.toUpperCase()) ? alias : undefined;
 
     const tableMatch = schema.find(
       (t) =>
@@ -66,8 +62,7 @@ function findTablesInQuery(
     const alias = match[3];
 
     const sqlKeywords = ["ON", "WHERE", "AND", "OR", "LEFT", "RIGHT", "INNER"];
-    const validAlias =
-      alias && !sqlKeywords.includes(alias.toUpperCase()) ? alias : undefined;
+    const validAlias = alias && !sqlKeywords.includes(alias.toUpperCase()) ? alias : undefined;
 
     const tableMatch = schema.find(
       (t) =>
@@ -172,9 +167,7 @@ export function createSchemaCompletionProvider(
 
         // Find table by name or alias
         const tableRef = referencedTables.find(
-          (ref) =>
-            ref.table.name.toLowerCase() === prefix ||
-            ref.alias?.toLowerCase() === prefix,
+          (ref) => ref.table.name.toLowerCase() === prefix || ref.alias?.toLowerCase() === prefix,
         );
         const table = tableRef?.table ?? schema.find((t) => t.name.toLowerCase() === prefix);
 

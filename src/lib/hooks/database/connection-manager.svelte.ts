@@ -38,8 +38,14 @@ export class ConnectionManager {
     private stateRestoration: StateRestorationManager,
     private tabOrdering: TabOrderingManager,
     private providers: ProviderRegistry,
-    private onSchemaLoaded: (connectionId: string, schemas: SchemaTable[], adapter: DatabaseAdapter, providerConnectionId?: string, mssqlConnectionId?: string) => void,
-    private onCreateInitialTab: () => void
+    private onSchemaLoaded: (
+      connectionId: string,
+      schemas: SchemaTable[],
+      adapter: DatabaseAdapter,
+      providerConnectionId?: string,
+      mssqlConnectionId?: string,
+    ) => void,
+    private onCreateInitialTab: () => void,
   ) {}
 
   /**
@@ -129,7 +135,7 @@ export class ConnectionManager {
       sshKeyPath?: string;
       sshKeyPassphrase?: string;
     },
-    connectionId: string
+    connectionId: string,
   ): Promise<{ effectiveConnectionString: string | undefined; tunnelLocalPort?: number }> {
     if (!connection.sshTunnel?.enabled) {
       return { effectiveConnectionString: connection.connectionString };
@@ -182,7 +188,7 @@ export class ConnectionManager {
         sshKeyPath: connection.sshKeyPath,
         sshKeyPassphrase: connection.sshKeyPassphrase,
       },
-      connectionId
+      connectionId,
     );
 
     // Connect to database - MSSQL and DuckDB use custom backends, others use provider
@@ -252,7 +258,10 @@ export class ConnectionManager {
         schemasWithTablesDbResult = result.rows;
       } else if (providerConnectionId) {
         const provider = await this.providers.getForType(newConnection.type);
-        schemasWithTablesDbResult = await provider.select(providerConnectionId, adapter.getSchemaQuery());
+        schemasWithTablesDbResult = await provider.select(
+          providerConnectionId,
+          adapter.getSchemaQuery(),
+        );
       } else {
         throw new Error("No connection established");
       }
@@ -281,7 +290,13 @@ export class ConnectionManager {
     };
 
     // Load column metadata asynchronously in the background
-    this.onSchemaLoaded(newConnection.id, schemasWithTables, adapter, newConnection.providerConnectionId, newConnection.mssqlConnectionId);
+    this.onSchemaLoaded(
+      newConnection.id,
+      schemasWithTables,
+      adapter,
+      newConnection.providerConnectionId,
+      newConnection.mssqlConnectionId,
+    );
 
     // Create initial query tab for new connection
     this.onCreateInitialTab();
@@ -325,7 +340,7 @@ export class ConnectionManager {
         sshKeyPath: connection.sshKeyPath,
         sshKeyPassphrase: connection.sshKeyPassphrase,
       },
-      connectionId
+      connectionId,
     );
 
     // Close existing connections
@@ -392,7 +407,9 @@ export class ConnectionManager {
     };
 
     // Replace the old connection with the updated one in the connections array
-    this.state.connections = this.state.connections.map((c) => (c.id === connectionId ? updatedConnection : c));
+    this.state.connections = this.state.connections.map((c) =>
+      c.id === connectionId ? updatedConnection : c,
+    );
 
     this.stateRestoration.ensureConnectionMapsExist(connectionId);
 
@@ -406,7 +423,10 @@ export class ConnectionManager {
         schemasWithTablesDbResult = result.rows;
       } else if (providerConnectionId) {
         const provider = await this.providers.getForType(existingConnection.type);
-        schemasWithTablesDbResult = await provider.select(providerConnectionId, adapter.getSchemaQuery());
+        schemasWithTablesDbResult = await provider.select(
+          providerConnectionId,
+          adapter.getSchemaQuery(),
+        );
       } else {
         throw new Error("No connection established");
       }
@@ -414,7 +434,9 @@ export class ConnectionManager {
     } catch (error) {
       // Revert: set providerConnectionId/mssqlConnectionId back to undefined on the connection
       this.state.connections = this.state.connections.map((c) =>
-        c.id === connectionId ? { ...c, providerConnectionId: undefined, mssqlConnectionId: undefined } : c
+        c.id === connectionId
+          ? { ...c, providerConnectionId: undefined, mssqlConnectionId: undefined }
+          : c,
       );
       if (mssqlConnectionId) {
         await mssqlDisconnect(mssqlConnectionId).catch(() => {});
@@ -433,7 +455,13 @@ export class ConnectionManager {
     };
 
     // Load column metadata asynchronously in the background
-    this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId, mssqlConnectionId);
+    this.onSchemaLoaded(
+      connectionId,
+      schemasWithTables,
+      adapter,
+      providerConnectionId,
+      mssqlConnectionId,
+    );
 
     // Set this as the active connection (only after schema loading succeeds)
     this.setActiveForProject(connectionId, existingConnection.projectId);
@@ -487,7 +515,7 @@ export class ConnectionManager {
 
     // Replace the connection in the array
     this.state.connections = this.state.connections.map((c) =>
-      c.id === connectionId ? updatedConnection : c
+      c.id === connectionId ? updatedConnection : c,
     );
 
     // Persist the updated connection
@@ -604,7 +632,7 @@ export class ConnectionManager {
     // Close provider connection if exists
     if (connection?.providerConnectionId) {
       // Use appropriate provider for disconnect based on type
-      await this.providers.getForType(connection.type).then(provider => {
+      await this.providers.getForType(connection.type).then((provider) => {
         provider.disconnect(connection.providerConnectionId!).catch(console.error);
       });
     }
@@ -629,7 +657,8 @@ export class ConnectionManager {
     // If this was the active connection for its project, switch to another
     if (connection && this.state.activeConnectionIdByProject[connection.projectId] === id) {
       const nextConnection = this.state.connections.find(
-        (c) => c.projectId === connection.projectId && (c.providerConnectionId || c.mssqlConnectionId)
+        (c) =>
+          c.projectId === connection.projectId && (c.providerConnectionId || c.mssqlConnectionId),
       );
       this.setActiveForProject(nextConnection?.id || "", connection.projectId);
     }
@@ -681,11 +710,11 @@ export class ConnectionManager {
 
     // Check if connection already exists (from persisted storage) and update it,
     // otherwise add new connection
-    const existingIndex = this.state.connections.findIndex(c => c.id === connectionId);
+    const existingIndex = this.state.connections.findIndex((c) => c.id === connectionId);
     if (existingIndex >= 0) {
       // Update existing connection with providerConnectionId
-      this.state.connections = this.state.connections.map(c =>
-        c.id === connectionId ? newConnection : c
+      this.state.connections = this.state.connections.map((c) =>
+        c.id === connectionId ? newConnection : c,
       );
     } else {
       // Add new connection
@@ -697,7 +726,10 @@ export class ConnectionManager {
     // Load schema
     const adapter = getAdapter("duckdb");
     const provider = await this.providers.getOrCreateDuckDB();
-    const schemasWithTablesDbResult = await provider.select(providerConnectionId, adapter.getSchemaQuery());
+    const schemasWithTablesDbResult = await provider.select(
+      providerConnectionId,
+      adapter.getSchemaQuery(),
+    );
     const schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
 
     // Set active connection
@@ -827,7 +859,7 @@ export class ConnectionManager {
       // Disconnect provider connection if connected
       if (connection.providerConnectionId) {
         // Use appropriate provider for disconnect based on type
-        await this.providers.getForType(connection.type).then(provider => {
+        await this.providers.getForType(connection.type).then((provider) => {
           provider.disconnect(connection.providerConnectionId!).catch(console.error);
         });
         connection.providerConnectionId = undefined;
@@ -843,7 +875,10 @@ export class ConnectionManager {
         // If disconnecting the active connection for its project, switch to another connected one
         if (this.state.activeConnectionIdByProject[connection.projectId] === id) {
           const nextConnection = this.state.connections.find(
-            (c) => c.projectId === connection.projectId && (c.providerConnectionId || c.mssqlConnectionId) && c.id !== id
+            (c) =>
+              c.projectId === connection.projectId &&
+              (c.providerConnectionId || c.mssqlConnectionId) &&
+              c.id !== id,
           );
           this.setActiveForProject(nextConnection?.id || "", connection.projectId);
         }

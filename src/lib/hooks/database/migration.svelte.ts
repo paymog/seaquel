@@ -120,13 +120,15 @@ export class MigrationManager {
       defaults: { projects: [] },
     });
 
-    await store.set("projects", [{
-      id: project.id,
-      name: project.name,
-      createdAt: project.createdAt.toISOString(),
-      updatedAt: project.updatedAt.toISOString(),
-      customLabels: [],
-    }]);
+    await store.set("projects", [
+      {
+        id: project.id,
+        name: project.name,
+        createdAt: project.createdAt.toISOString(),
+        updatedAt: project.updatedAt.toISOString(),
+        customLabels: [],
+      },
+    ]);
     await store.save();
 
     return project;
@@ -136,14 +138,14 @@ export class MigrationManager {
    * Merge all connection states into a single project state.
    */
   private async mergeConnectionStates(
-    connections: PersistedConnection[]
+    connections: PersistedConnection[],
   ): Promise<PersistedProjectState | null> {
     const allQueryTabs: PersistedQueryTab[] = [];
     const allSchemaTabs: PersistedSchemaTab[] = [];
     const allExplainTabs: PersistedExplainTab[] = [];
     const allErdTabs: PersistedErdTab[] = [];
     const allTabOrder: string[] = [];
-    let activeView: 'query' | 'schema' | 'explain' | 'erd' = 'query';
+    let activeView: "query" | "schema" | "explain" | "erd" = "query";
     let activeQueryTabId: string | null = null;
     let activeSchemaTabId: string | null = null;
     let activeExplainTabId: string | null = null;
@@ -235,10 +237,7 @@ export class MigrationManager {
   /**
    * Save project state directly to storage.
    */
-  private async saveProjectState(
-    projectId: string,
-    state: PersistedProjectState
-  ): Promise<void> {
+  private async saveProjectState(projectId: string, state: PersistedProjectState): Promise<void> {
     const { loadStore } = await import("$lib/storage");
     const store = await loadStore(`project_state_${projectId}.json`, {
       autoSave: true,

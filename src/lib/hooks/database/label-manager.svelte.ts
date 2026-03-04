@@ -9,7 +9,7 @@ import type { PersistenceManager } from "./persistence-manager.svelte.js";
 export class LabelManager {
   constructor(
     private state: DatabaseState,
-    private persistence: PersistenceManager
+    private persistence: PersistenceManager,
   ) {}
 
   /**
@@ -17,10 +17,7 @@ export class LabelManager {
    */
   getLabelsForProject(projectId: string): ConnectionLabel[] {
     const project = this.state.projects.find((p) => p.id === projectId);
-    return [
-      ...Object.values(PREDEFINED_LABELS),
-      ...(project?.customLabels ?? []),
-    ];
+    return [...Object.values(PREDEFINED_LABELS), ...(project?.customLabels ?? [])];
   }
 
   /**

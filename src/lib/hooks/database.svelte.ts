@@ -75,7 +75,9 @@ class UseDatabase {
       this.persistence.scheduleConnectionData(connectionId);
     };
 
-    const setActiveView = (view: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize") => {
+    const setActiveView = (
+      view: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize",
+    ) => {
       this.ui.setActiveView(view);
     };
 
@@ -96,9 +98,25 @@ class UseDatabase {
 
     // Tab managers
     this.queryTabs = new QueryTabManager(this.state, this.tabs, scheduleProjectPersistence);
-    this.schemaTabs = new SchemaTabManager(this.state, this.tabs, scheduleProjectPersistence, providers);
-    this.explainTabs = new ExplainTabManager(this.state, this.tabs, scheduleProjectPersistence, setActiveView, providers);
-    this.erdTabs = new ErdTabManager(this.state, this.tabs, scheduleProjectPersistence, setActiveView);
+    this.schemaTabs = new SchemaTabManager(
+      this.state,
+      this.tabs,
+      scheduleProjectPersistence,
+      providers,
+    );
+    this.explainTabs = new ExplainTabManager(
+      this.state,
+      this.tabs,
+      scheduleProjectPersistence,
+      setActiveView,
+      providers,
+    );
+    this.erdTabs = new ErdTabManager(
+      this.state,
+      this.tabs,
+      scheduleProjectPersistence,
+      setActiveView,
+    );
     this.statisticsTabs = new StatisticsTabManager(
       this.state,
       this.tabs,
@@ -108,10 +126,20 @@ class UseDatabase {
         // Execute query on the active connection and return raw results
         const result = await this.queries.executeRaw(query);
         return result;
-      }
+      },
     );
-    this.canvasTabs = new CanvasTabManager(this.state, this.tabs, scheduleProjectPersistence, setActiveView);
-    this.visualizeTabs = new VisualizeTabManager(this.state, this.tabs, scheduleProjectPersistence, setActiveView);
+    this.canvasTabs = new CanvasTabManager(
+      this.state,
+      this.tabs,
+      scheduleProjectPersistence,
+      setActiveView,
+    );
+    this.visualizeTabs = new VisualizeTabManager(
+      this.state,
+      this.tabs,
+      scheduleProjectPersistence,
+      setActiveView,
+    );
     this.starterTabs = new StarterTabManager(this.state, scheduleProjectPersistence);
 
     // Canvas
@@ -122,7 +150,7 @@ class UseDatabase {
       scheduleProjectPersistence,
       async (query: string) => {
         return await this.queries.executeRaw(query);
-      }
+      },
     );
 
     // Query-related
@@ -130,13 +158,19 @@ class UseDatabase {
       this.state,
       scheduleConnectionDataPersistence,
       (connectionId) => this.labels.getConnectionLabelsById(connectionId),
-      (connectionId) => this.state.connections.find((c) => c.id === connectionId)?.name || ""
+      (connectionId) => this.state.connections.find((c) => c.id === connectionId)?.name || "",
     );
-    this.savedQueries = new SavedQueryManager(this.state, scheduleConnectionDataPersistence, scheduleProjectPersistence);
+    this.savedQueries = new SavedQueryManager(
+      this.state,
+      scheduleConnectionDataPersistence,
+      scheduleProjectPersistence,
+    );
     this.queries = new QueryExecutionManager(this.state, this.history, providers);
 
     // Shared query library
-    this.sharedRepos = new SharedRepoManager(this.state, () => this.persistence.scheduleSharedRepos());
+    this.sharedRepos = new SharedRepoManager(this.state, () =>
+      this.persistence.scheduleSharedRepos(),
+    );
     this.sharedQueries = new SharedQueryManager(this.state, this.sharedRepos);
 
     // Connections (depends on other managers)
@@ -146,10 +180,22 @@ class UseDatabase {
       this._stateRestoration,
       this.tabs,
       providers,
-      (connectionId: string, schemas: SchemaTable[], adapter: DatabaseAdapter, providerConnectionId?: string, mssqlConnectionId?: string) => {
-        void this.schemaTabs.loadTableMetadataInBackground(connectionId, schemas, adapter, providerConnectionId, mssqlConnectionId);
+      (
+        connectionId: string,
+        schemas: SchemaTable[],
+        adapter: DatabaseAdapter,
+        providerConnectionId?: string,
+        mssqlConnectionId?: string,
+      ) => {
+        void this.schemaTabs.loadTableMetadataInBackground(
+          connectionId,
+          schemas,
+          adapter,
+          providerConnectionId,
+          mssqlConnectionId,
+        );
       },
-      () => this.queryTabs.add()
+      () => this.queryTabs.add(),
     );
 
     // Set up cross-manager callbacks
@@ -168,15 +214,13 @@ class UseDatabase {
       },
       (tabId, isExecuting, isAnalyze) => {
         this.queryTabs.setExplainExecuting(tabId, isExecuting, isAnalyze);
-      }
+      },
     );
 
     // Set up embedded visualize callback
-    this.visualizeTabs.setEmbeddedCallback(
-      (tabId, parsedQuery, sourceQuery, parseError) => {
-        this.queryTabs.setVisualizeResult(tabId, parsedQuery, sourceQuery, parseError);
-      }
-    );
+    this.visualizeTabs.setEmbeddedCallback((tabId, parsedQuery, sourceQuery, parseError) => {
+      this.queryTabs.setVisualizeResult(tabId, parsedQuery, sourceQuery, parseError);
+    });
 
     // Initialize: projects first, then connections
     void this.initializeApp();

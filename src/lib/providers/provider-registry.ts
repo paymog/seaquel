@@ -3,8 +3,8 @@
  * Replaces duplicated getOrCreate/getProviderFor patterns across managers.
  */
 
-import type { DatabaseProvider } from './types';
-import { getProvider, getDuckDBProvider } from './index';
+import type { DatabaseProvider } from "./types";
+import { getProvider, getDuckDBProvider } from "./index";
 
 export class ProviderRegistry {
   private provider: DatabaseProvider | null = null;
@@ -15,7 +15,7 @@ export class ProviderRegistry {
    * Lazily initializes and caches provider instances.
    */
   async getForType(dbType: string): Promise<DatabaseProvider> {
-    if (dbType === 'duckdb') {
+    if (dbType === "duckdb") {
       return this.getOrCreateDuckDB();
     }
     return this.getOrCreateDefault();

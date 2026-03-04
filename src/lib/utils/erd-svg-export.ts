@@ -72,7 +72,7 @@ function generateEdgePath(
   sourceX: number,
   sourceY: number,
   targetX: number,
-  targetY: number
+  targetY: number,
 ): string {
   const midX = (sourceX + targetX) / 2;
   return `M ${sourceX} ${sourceY} C ${midX} ${sourceY}, ${midX} ${targetY}, ${targetX} ${targetY}`;
@@ -107,11 +107,7 @@ function abbreviateType(type: string): string {
 /**
  * Generates a clean, lightweight SVG string from ERD nodes and edges.
  */
-export function generateErdSvg(
-  nodes: Node[],
-  edges: Edge[],
-  options: SvgExportOptions
-): string {
+export function generateErdSvg(nodes: Node[], edges: Edge[], options: SvgExportOptions): string {
   const { theme, padding = 40 } = options;
   const colors = THEMES[theme];
 
@@ -188,13 +184,13 @@ export function generateErdSvg(
 
           if (col.isPrimaryKey) {
             icons.push(
-              `<text x="${iconOffset}" y="${colY}" fill="${colors.pkColor}" font-size="10">PK</text>`
+              `<text x="${iconOffset}" y="${colY}" fill="${colors.pkColor}" font-size="10">PK</text>`,
             );
             iconOffset += 20;
           }
           if (col.isForeignKey) {
             icons.push(
-              `<text x="${iconOffset}" y="${colY}" fill="${colors.fkColor}" font-size="10">FK</text>`
+              `<text x="${iconOffset}" y="${colY}" fill="${colors.fkColor}" font-size="10">FK</text>`,
             );
             iconOffset += 20;
           }

@@ -14,7 +14,7 @@ const COLUMN_HEIGHT = 24; // Height per column row
 function calculateNodeHeight(columnCount: number): number {
   const maxVisibleColumns = 15;
   const visibleColumns = Math.min(columnCount, maxVisibleColumns);
-  return NODE_HEIGHT_BASE + (visibleColumns * COLUMN_HEIGHT);
+  return NODE_HEIGHT_BASE + visibleColumns * COLUMN_HEIGHT;
 }
 
 /**
@@ -75,8 +75,8 @@ export function layoutErdDiagram(tables: SchemaTable[]): { nodes: Node[]; edges:
   dagreGraph.setDefaultEdgeLabel(() => ({}));
   dagreGraph.setGraph({
     rankdir: "LR", // Left to right for ERD
-    nodesep: 80,   // Horizontal separation
-    ranksep: 120,  // Vertical separation
+    nodesep: 80, // Horizontal separation
+    ranksep: 120, // Vertical separation
     marginx: 40,
     marginy: 40,
   });

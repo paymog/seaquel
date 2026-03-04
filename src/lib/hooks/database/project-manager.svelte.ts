@@ -15,7 +15,7 @@ export class ProjectManager {
 
   constructor(
     private state: DatabaseState,
-    private persistence: PersistenceManager
+    private persistence: PersistenceManager,
   ) {
     this.migration = new MigrationManager(persistence);
   }
@@ -168,7 +168,7 @@ export class ProjectManager {
    */
   async addCustomLabel(
     projectId: string,
-    label: Omit<ConnectionLabel, "id" | "isPredefined">
+    label: Omit<ConnectionLabel, "id" | "isPredefined">,
   ): Promise<ConnectionLabel> {
     const newLabel: ConnectionLabel = {
       id: `label-${Date.now()}`,
@@ -223,7 +223,7 @@ export class ProjectManager {
   async updateCustomLabel(
     projectId: string,
     labelId: string,
-    updates: Partial<Pick<ConnectionLabel, "name" | "color">>
+    updates: Partial<Pick<ConnectionLabel, "name" | "color">>,
   ): Promise<void> {
     this.state.projects = this.state.projects.map((p) => {
       if (p.id !== projectId) return p;
@@ -303,7 +303,7 @@ export class ProjectManager {
       table: {
         schema: t.schemaName,
         name: t.tableName,
-        type: 'table' as const, // Default to table, will be updated when metadata loads
+        type: "table" as const, // Default to table, will be updated when metadata loads
         columns: [],
         indexes: [],
       },
@@ -354,7 +354,8 @@ export class ProjectManager {
     this.state.activeSchemaTabIdByProject[projectId] = persistedState.activeSchemaTabId;
     this.state.activeExplainTabIdByProject[projectId] = persistedState.activeExplainTabId;
     this.state.activeErdTabIdByProject[projectId] = persistedState.activeErdTabId;
-    this.state.activeStatisticsTabIdByProject[projectId] = persistedState.activeStatisticsTabId ?? null;
+    this.state.activeStatisticsTabIdByProject[projectId] =
+      persistedState.activeStatisticsTabId ?? null;
     this.state.activeCanvasTabIdByProject[projectId] = persistedState.activeCanvasTabId ?? null;
     this.state.activeConnectionIdByProject[projectId] = persistedState.activeConnectionId;
     this.state.activeView = persistedState.activeView;

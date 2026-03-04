@@ -5,12 +5,7 @@
  * @module utils/schema-adapter
  */
 
-import type {
-	TutorialTable,
-	SchemaTable,
-	QueryBuilderTable,
-	QueryBuilderColumn
-} from '$lib/types';
+import type { TutorialTable, SchemaTable, QueryBuilderTable, QueryBuilderColumn } from "$lib/types";
 
 /**
  * Convert a TutorialTable array to QueryBuilderTable array.
@@ -19,17 +14,17 @@ import type {
  * @returns Unified QueryBuilderTable array
  */
 export function tutorialToQueryBuilder(schema: TutorialTable[]): QueryBuilderTable[] {
-	return schema.map((table) => ({
-		name: table.name,
-		columns: table.columns.map((col) => ({
-			name: col.name,
-			type: col.type,
-			primaryKey: col.primaryKey ?? false,
-			foreignKey: col.foreignKey
-				? { table: col.foreignKey.table, column: col.foreignKey.column }
-				: undefined
-		}))
-	}));
+  return schema.map((table) => ({
+    name: table.name,
+    columns: table.columns.map((col) => ({
+      name: col.name,
+      type: col.type,
+      primaryKey: col.primaryKey ?? false,
+      foreignKey: col.foreignKey
+        ? { table: col.foreignKey.table, column: col.foreignKey.column }
+        : undefined,
+    })),
+  }));
 }
 
 /**
@@ -39,17 +34,19 @@ export function tutorialToQueryBuilder(schema: TutorialTable[]): QueryBuilderTab
  * @returns Unified QueryBuilderTable array
  */
 export function schemaToQueryBuilder(schema: SchemaTable[]): QueryBuilderTable[] {
-	return schema.map((table) => ({
-		name: table.name,
-		columns: table.columns.map((col): QueryBuilderColumn => ({
-			name: col.name,
-			type: col.type,
-			primaryKey: col.isPrimaryKey,
-			foreignKey: col.foreignKeyRef
-				? { table: col.foreignKeyRef.referencedTable, column: col.foreignKeyRef.referencedColumn }
-				: undefined
-		}))
-	}));
+  return schema.map((table) => ({
+    name: table.name,
+    columns: table.columns.map(
+      (col): QueryBuilderColumn => ({
+        name: col.name,
+        type: col.type,
+        primaryKey: col.isPrimaryKey,
+        foreignKey: col.foreignKeyRef
+          ? { table: col.foreignKeyRef.referencedTable, column: col.foreignKeyRef.referencedColumn }
+          : undefined,
+      }),
+    ),
+  }));
 }
 
 /**
@@ -59,10 +56,10 @@ export function schemaToQueryBuilder(schema: SchemaTable[]): QueryBuilderTable[]
  * @returns The table or undefined if not found
  */
 export function getQueryBuilderTable(
-	schema: QueryBuilderTable[],
-	name: string
+  schema: QueryBuilderTable[],
+  name: string,
 ): QueryBuilderTable | undefined {
-	return schema.find((t) => t.name === name);
+  return schema.find((t) => t.name === name);
 }
 
 /**
@@ -71,5 +68,5 @@ export function getQueryBuilderTable(
  * @returns Array of table names
  */
 export function getQueryBuilderTableNames(schema: QueryBuilderTable[]): string[] {
-	return schema.map((t) => t.name);
+  return schema.map((t) => t.name);
 }

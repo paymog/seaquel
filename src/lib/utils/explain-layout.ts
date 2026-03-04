@@ -9,7 +9,7 @@ const NODE_HEIGHT = 180;
 
 export function layoutExplainPlan(
   result: ExplainResult,
-  analysis?: HotPathAnalysis
+  analysis?: HotPathAnalysis,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -70,8 +70,8 @@ export function layoutExplainPlan(
   dagreGraph.setDefaultEdgeLabel(() => ({}));
   dagreGraph.setGraph({
     rankdir: "TB", // Top to bottom
-    nodesep: 60,   // Horizontal separation
-    ranksep: 100,  // Vertical separation
+    nodesep: 60, // Horizontal separation
+    ranksep: 100, // Vertical separation
     marginx: 40,
     marginy: 40,
   });

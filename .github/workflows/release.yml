@@ -3,7 +3,7 @@ name: "release"
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 jobs:
   publish-tauri:
@@ -74,7 +74,7 @@ jobs:
       - name: Install Azure Code Signing CLI
         if: runner.os == 'Windows'
         run: cargo install trusted-signing-cli
-   
+
       - name: Transform version for Windows
         if: runner.os == 'Windows'
         shell: pwsh

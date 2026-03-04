@@ -7,8 +7,8 @@ import CanvasChartNode from "./chart-node.svelte";
 export { CanvasTableNode, CanvasQueryNode, CanvasResultNode, CanvasChartNode };
 
 export const canvasNodeTypes: NodeTypes = {
-	tableNode: CanvasTableNode,
-	queryNode: CanvasQueryNode,
-	resultNode: CanvasResultNode,
-	chartNode: CanvasChartNode,
+  tableNode: CanvasTableNode,
+  queryNode: CanvasQueryNode,
+  resultNode: CanvasResultNode,
+  chartNode: CanvasChartNode,
 };

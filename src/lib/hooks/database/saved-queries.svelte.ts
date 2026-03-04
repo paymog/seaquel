@@ -10,10 +10,15 @@ export class SavedQueryManager {
   constructor(
     private state: DatabaseState,
     private schedulePersistence: (connectionId: string | null) => void,
-    private scheduleProjectPersistence: (projectId: string | null) => void
+    private scheduleProjectPersistence: (projectId: string | null) => void,
   ) {}
 
-  saveQuery(name: string, query: string, tabId?: string, parameters?: QueryParameter[]): string | null {
+  saveQuery(
+    name: string,
+    query: string,
+    tabId?: string,
+    parameters?: QueryParameter[],
+  ): string | null {
     if (!this.state.activeConnectionId || !this.state.activeProjectId) return null;
 
     const connectionId = this.state.activeConnectionId;
@@ -33,9 +38,7 @@ export class SavedQueryManager {
       const savedQuery = savedQueries.find((q) => q.id === savedQueryId);
       if (savedQuery) {
         const updatedSavedQueries = savedQueries.map((q) =>
-          q.id === savedQueryId
-            ? { ...q, name, query, parameters, updatedAt: new Date() }
-            : q
+          q.id === savedQueryId ? { ...q, name, query, parameters, updatedAt: new Date() } : q,
         );
         this.state.savedQueriesByConnection = {
           ...this.state.savedQueriesByConnection,
@@ -47,9 +50,7 @@ export class SavedQueryManager {
           const tabs = this.state.queryTabsByProject[projectId] ?? [];
           const tab = tabs.find((t: QueryTab) => t.id === tabId);
           if (tab && tab.name !== name) {
-            const updatedTabs = tabs.map((t: QueryTab) =>
-              t.id === tabId ? { ...t, name } : t
-            );
+            const updatedTabs = tabs.map((t: QueryTab) => (t.id === tabId ? { ...t, name } : t));
             this.state.queryTabsByProject = {
               ...this.state.queryTabsByProject,
               [projectId]: updatedTabs,
@@ -84,9 +85,7 @@ export class SavedQueryManager {
     if (tabId) {
       const tabs = this.state.queryTabsByProject[projectId] ?? [];
       const updatedTabs = tabs.map((t: QueryTab) =>
-        t.id === tabId
-          ? { ...t, savedQueryId: newSavedQuery.id, name }
-          : t
+        t.id === tabId ? { ...t, savedQueryId: newSavedQuery.id, name } : t,
       );
       this.state.queryTabsByProject = {
         ...this.state.queryTabsByProject,
@@ -115,7 +114,7 @@ export class SavedQueryManager {
     // Remove savedQueryId from any tabs using this query
     const tabs = this.state.queryTabsByProject[projectId] ?? [];
     const updatedTabs = tabs.map((tab: QueryTab) =>
-      tab.savedQueryId === id ? { ...tab, savedQueryId: undefined } : tab
+      tab.savedQueryId === id ? { ...tab, savedQueryId: undefined } : tab,
     );
 
     this.state.queryTabsByProject = {

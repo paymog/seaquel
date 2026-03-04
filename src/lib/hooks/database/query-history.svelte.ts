@@ -10,7 +10,7 @@ export class QueryHistoryManager {
     private state: DatabaseState,
     private schedulePersistence: (connectionId: string | null) => void,
     private getConnectionLabels: (connectionId: string) => ConnectionLabel[],
-    private getConnectionName: (connectionId: string) => string
+    private getConnectionName: (connectionId: string) => string,
   ) {}
 
   /**
@@ -59,7 +59,7 @@ export class QueryHistoryManager {
 
     if (item) {
       const updatedHistory = queryHistory.map((h) =>
-        h.id === id ? { ...h, favorite: !h.favorite } : h
+        h.id === id ? { ...h, favorite: !h.favorite } : h,
       );
       this.state.queryHistoryByConnection = {
         ...this.state.queryHistoryByConnection,

@@ -3,10 +3,10 @@
  * Returns the appropriate storage provider based on the runtime environment.
  */
 
-import type { StorageProvider, Store, StoreLoadOptions } from './types';
-import { isTauri } from '$lib/utils/environment';
+import type { StorageProvider, Store, StoreLoadOptions } from "./types";
+import { isTauri } from "$lib/utils/environment";
 
-export type { StorageProvider, Store, StoreLoadOptions } from './types';
+export type { StorageProvider, Store, StoreLoadOptions } from "./types";
 
 let provider: StorageProvider | null = null;
 
@@ -15,17 +15,17 @@ let provider: StorageProvider | null = null;
  * Returns TauriStorageProvider in desktop app, WebStorageProvider in browser.
  */
 export async function getStorageProvider(): Promise<StorageProvider> {
-	if (provider) return provider;
+  if (provider) return provider;
 
-	if (isTauri()) {
-		const { TauriStorageProvider } = await import('./tauri-storage');
-		provider = new TauriStorageProvider();
-	} else {
-		const { WebStorageProvider } = await import('./web-storage');
-		provider = new WebStorageProvider();
-	}
+  if (isTauri()) {
+    const { TauriStorageProvider } = await import("./tauri-storage");
+    provider = new TauriStorageProvider();
+  } else {
+    const { WebStorageProvider } = await import("./web-storage");
+    provider = new WebStorageProvider();
+  }
 
-	return provider;
+  return provider;
 }
 
 /**
@@ -33,8 +33,8 @@ export async function getStorageProvider(): Promise<StorageProvider> {
  * Uses the appropriate storage provider for the current environment.
  */
 export async function loadStore(name: string, options?: StoreLoadOptions): Promise<Store> {
-	const storageProvider = await getStorageProvider();
-	return storageProvider.load(name, options);
+  const storageProvider = await getStorageProvider();
+  return storageProvider.load(name, options);
 }
 
 /**
@@ -42,5 +42,5 @@ export async function loadStore(name: string, options?: StoreLoadOptions): Promi
  * Mainly useful for testing.
  */
 export function resetStorageProvider(): void {
-	provider = null;
+  provider = null;
 }

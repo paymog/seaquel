@@ -1,5 +1,5 @@
-import { LESSONS } from '$lib/tutorial/lessons';
+import { LESSONS } from "$lib/tutorial/lessons";
 
 export function entries() {
-	return Object.keys(LESSONS).map((lessonId) => ({ lessonId }));
+  return Object.keys(LESSONS).map((lessonId) => ({ lessonId }));
 }

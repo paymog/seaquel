@@ -1,4 +1,4 @@
-import { useDatabase } from '$lib/hooks/database.svelte.js';
+import { useDatabase } from "$lib/hooks/database.svelte.js";
 
 /**
  * Shared logic for all canvas node types.
@@ -8,19 +8,19 @@ import { useDatabase } from '$lib/hooks/database.svelte.js';
  * `state_referenced_locally` warning from Svelte 5.
  */
 export function useCanvasNode(getId: () => string) {
-	const db = useDatabase();
+  const db = useDatabase();
 
-	function handleRemove() {
-		db.canvas.removeNode(getId());
-	}
+  function handleRemove() {
+    db.canvas.removeNode(getId());
+  }
 
-	function handleResizeEnd(_event: unknown, params: { width: number; height: number }) {
-		db.canvas.updateNodeDimensions(getId(), params.width, params.height);
-	}
+  function handleResizeEnd(_event: unknown, params: { width: number; height: number }) {
+    db.canvas.updateNodeDimensions(getId(), params.width, params.height);
+  }
 
-	return {
-		db,
-		handleRemove,
-		handleResizeEnd
-	};
+  return {
+    db,
+    handleRemove,
+    handleResizeEnd,
+  };
 }

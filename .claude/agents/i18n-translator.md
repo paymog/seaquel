@@ -48,6 +48,7 @@ You are an expert multilingual translator specializing in software localization 
 ## Output Format
 
 After completing translations, provide a summary:
+
 - Number of strings translated per language
 - Any strings you were uncertain about (flag for human review)
 - Any placeholders or variables preserved
