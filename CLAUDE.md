@@ -79,10 +79,11 @@ This script removes old demo files, builds the demo with `BUILD_TARGET=demo`, an
 Version format: `YYYY.month.patch` (e.g., `2026.1.1`)
 
 1. Update version in these files:
-   - `package.json`
    - `src-tauri/Cargo.toml`
    - `src-tauri/tauri.conf.json`
-   - `src-tauri/Cargo.lock` (auto-updates when running cargo commands)
+   - `src-tauri/Cargo.lock`
+   - `package.json`
+   - `package-lock.json`
 
 2. Commit: `Bump version to X.Y.Z`
 
