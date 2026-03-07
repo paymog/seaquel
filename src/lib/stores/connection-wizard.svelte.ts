@@ -465,8 +465,8 @@ class ConnectionWizardStore {
       this.formData.username = url.username ? decodeURIComponent(url.username) : "";
       this.formData.password = url.password ? decodeURIComponent(url.password) : "";
 
-      // Parse SSL mode from query parameters
-      const sslModeParam = url.searchParams.get("sslmode");
+      // Parse SSL mode from query parameters (PostgreSQL uses "sslmode", MySQL uses "ssl-mode")
+      const sslModeParam = url.searchParams.get("sslmode") || url.searchParams.get("ssl-mode");
       if (sslModeParam) {
         this.formData.sslMode = sslModeParam;
       }
@@ -510,7 +510,17 @@ class ConnectionWizardStore {
       data.sslMode
     ) {
       const separator = connectionString.includes("?") ? "&" : "?";
-      connectionString += `${separator}sslmode=${data.sslMode}`;
+      const isMysql = data.type === "mysql" || data.type === "mariadb";
+      const sslParam = isMysql ? "ssl-mode" : "sslmode";
+      // MySQL uses uppercase values: DISABLED, PREFERRED, REQUIRED, VERIFY_CA, VERIFY_IDENTITY
+      const mysqlSslMap: Record<string, string> = {
+        disable: "DISABLED",
+        allow: "PREFERRED",
+        prefer: "PREFERRED",
+        require: "REQUIRED",
+      };
+      const sslValue = isMysql ? mysqlSslMap[data.sslMode] || data.sslMode : data.sslMode;
+      connectionString += `${separator}${sslParam}=${sslValue}`;
     }
 
     return connectionString;

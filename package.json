@@ -64,6 +64,7 @@
     "clsx": "^2.1.1",
     "lefthook": "^2.1.2",
     "mode-watcher": "^1.1.0",
+    "mysql2": "^3.18.2",
     "oxfmt": "^0.36.0",
     "oxlint": "^1.51.0",
     "oxlint-tsgolint": "^0.16.0",

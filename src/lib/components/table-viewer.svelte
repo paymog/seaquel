@@ -14,16 +14,16 @@
 
 	// Check if the table has primary keys (required for insertable rows)
 	const hasPrimaryKey = $derived(
-		db.state.activeSchemaTab?.table.columns.some(col => col.isPrimaryKey) ?? false
+		db.state.activeSchemaTab?.table?.columns.some(col => col.isPrimaryKey) ?? false
 	);
 
 	// Only allow adding rows to tables (not views) with primary keys
 	const canAddRow = $derived(
-		db.state.activeSchemaTab?.table.type === "table" && hasPrimaryKey
+		db.state.activeSchemaTab?.table?.type === "table" && hasPrimaryKey
 	);
 
 	const handleQueryTable = () => {
-		if (!db.state.activeSchemaTab) return;
+		if (!db.state.activeSchemaTab?.table) return;
 		db.queryTabs.add(`Query ${db.state.activeSchemaTab.table.name}`, `SELECT * FROM ${db.state.activeSchemaTab.table.schema}.${db.state.activeSchemaTab.table.name} LIMIT 100;`);
 		db.ui.setActiveView("query");
 	};
@@ -34,7 +34,7 @@
 </script>
 
 <div class="flex flex-col h-full">
-	{#if db.state.activeSchemaTab}
+	{#if db.state.activeSchemaTab?.table}
 		<div class="flex-1 overflow-auto p-4" transition:fly={{ x: 20, duration: 200 }}>
 			<Card>
 				<CardHeader>
@@ -162,7 +162,7 @@
 </div>
 
 <!-- Insert Row Dialog -->
-{#if db.state.activeSchemaTab && canAddRow}
+{#if db.state.activeSchemaTab?.table && canAddRow}
 	{@const table = db.state.activeSchemaTab.table}
 	{@const primaryKeys = table.columns.filter(c => c.isPrimaryKey).map(c => c.name)}
 	<InsertRowDialog
