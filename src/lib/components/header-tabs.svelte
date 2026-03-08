@@ -354,7 +354,7 @@
 {#if isManagePage}
     {#if db.state.connectionsLoading || db.state.projectsLoading}
         <!-- Loading state - show nothing -->
-    {:else if db.state.activeConnectionId}
+    {:else if db.state.activeConnection}
         <!-- Regular tabs -->
         <div class="flex items-center gap-1 h-full min-w-0">
             <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide">

@@ -12,7 +12,13 @@
     import PlusIcon from "@lucide/svelte/icons/plus";
     import BotIcon from "@lucide/svelte/icons/bot";
     import NetworkIcon from "@lucide/svelte/icons/network";
-    import ThemeToggle from "./theme-toggle.svelte";
+    import SettingsIcon from "@lucide/svelte/icons/settings";
+    import { toast } from "svelte-sonner";
+    import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
+    import CircleDollarSignIcon from "@lucide/svelte/icons/circle-dollar-sign";
+    import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+    import MessageSquareTextIcon from "@lucide/svelte/icons/message-square-text";
+    import BookOpenIcon from "@lucide/svelte/icons/book-open";
     import LanguageToggle from "./language-toggle.svelte";
     import { m } from "$lib/paraglide/messages.js";
     import { DEFAULT_PROJECT_ID } from "$lib/types";
@@ -22,6 +28,49 @@
     import { isTauri } from "$lib/utils/environment";
     import { page } from "$app/state";
     import { resolve } from "$app/paths";
+
+    let appVersion = $state("");
+
+    $effect(() => {
+        if (isTauri()) {
+            import("@tauri-apps/api/app").then(({ getVersion }) => {
+                getVersion().then((v) => {
+                    appVersion = v;
+                });
+            });
+        }
+    });
+
+    let checkingForUpdates = $state(false);
+
+    const checkForUpdates = async () => {
+        checkingForUpdates = true;
+        try {
+            const { checkForUpdate } = await import("$lib/api/tauri");
+            const newVersion = await checkForUpdate();
+            if (!newVersion) {
+                toast.info(`You're on the latest version`, {
+                    description: `Seaquel v${appVersion}`,
+                });
+            }
+            // If newVersion exists, the existing update-downloaded listener in +layout.svelte
+            // will handle showing the update toast once the download completes
+        } catch {
+            toast.error("Failed to check for updates");
+        } finally {
+            checkingForUpdates = false;
+        }
+    };
+
+    const openExternal = (url: string) => {
+        if (isTauri()) {
+            import("$lib/api/tauri").then(({ openPath }) => {
+                openPath(url);
+            });
+        } else {
+            window.open(url, "_blank");
+        }
+    };
 
     const isLearnPage = $derived(page.url.pathname.startsWith(resolve("/learn")));
 
@@ -180,7 +229,57 @@
                 </Button>
             {/if}
             <LanguageToggle />
-            <ThemeToggle />
+            <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                    {#snippet child({ props })}
+                        <Button
+                            {...props}
+                            size="icon"
+                            variant="ghost"
+                            class="size-8"
+                            aria-label="Settings"
+                        >
+                            <SettingsIcon class="size-5" />
+                        </Button>
+                    {/snippet}
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content class="w-52" align="end">
+                    <DropdownMenu.Item onclick={() => settingsDialogStore.open()}>
+                        Settings
+                        <DropdownMenu.Shortcut>⌘,</DropdownMenu.Shortcut>
+                    </DropdownMenu.Item>
+                    <div class="flex items-center gap-2 px-2 py-1.5">
+                        <div class="h-px flex-1 bg-border"></div>
+                        <span class="text-muted-foreground text-xs shrink-0">Seaquel{appVersion ? ` v${appVersion}` : ""}</span>
+                        <div class="h-px flex-1 bg-border"></div>
+                    </div>
+                    {#if isTauri() && licenseStore.status !== "active"}
+                        <DropdownMenu.Item
+                            class="text-emerald-600 dark:text-emerald-400 focus:text-emerald-600 dark:focus:text-emerald-400"
+                            onclick={() => settingsDialogStore.open("license")}
+                        >
+                            <CircleDollarSignIcon class="size-4" />
+                            Purchase License
+                        </DropdownMenu.Item>
+                    {/if}
+                    {#if isTauri()}
+                        <DropdownMenu.Item onclick={checkForUpdates} disabled={checkingForUpdates}>
+                            <RefreshCwIcon class="size-4 {checkingForUpdates ? 'animate-spin' : ''}" />
+                            {checkingForUpdates ? "Checking..." : "Check for Updates"}
+                        </DropdownMenu.Item>
+                    {/if}
+                    <DropdownMenu.Item onclick={() => openExternal("https://github.com/webstonehq/seaquel/issues")}>
+                        <MessageSquareTextIcon class="size-4" />
+                        Feedback
+                        <DropdownMenu.Shortcut><ExternalLinkIcon class="size-3" /></DropdownMenu.Shortcut>
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item onclick={() => openExternal("https://seaquel.app/changelog")}>
+                        <BookOpenIcon class="size-4" />
+                        Changelog
+                        <DropdownMenu.Shortcut><ExternalLinkIcon class="size-3" /></DropdownMenu.Shortcut>
+                    </DropdownMenu.Item>
+                </DropdownMenu.Content>
+            </DropdownMenu.Root>
         </div>
     </div>
 </header>

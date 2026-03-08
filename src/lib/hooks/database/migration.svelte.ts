@@ -10,6 +10,14 @@ import type {
 import { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME } from "$lib/types";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
 import type { PersistedConnection } from "./types.js";
+import {
+  getDatabase,
+  projectsRepo,
+  connectionsRepo,
+  projectStateRepo,
+  savedQueriesRepo,
+  queryHistoryRepo,
+} from "$lib/storage";
 
 /**
  * Current storage version.
@@ -19,8 +27,8 @@ export const CURRENT_STORAGE_VERSION = 2;
 
 /**
  * Handles data migration between storage versions.
- * Version 1: Original format with per-connection tabs
- * Version 2: Projects format with per-project tabs
+ * Version 1: Original format with per-connection tabs (JSON)
+ * Version 2: Projects format with per-project tabs (SQLite)
  */
 export class MigrationManager {
   constructor(private persistence: PersistenceManager) {}
@@ -51,7 +59,7 @@ export class MigrationManager {
    * 1. Create default "Seaquel" project
    * 2. Assign all connections to default project with empty labelIds
    * 3. Merge all connection tabs into single project state
-   * 4. Separate saved queries and history into connection_data files
+   * 4. Separate saved queries and history into connection_data tables
    * 5. Remove old connection_state files
    */
   private async migrateToV2(): Promise<void> {
@@ -71,28 +79,27 @@ export class MigrationManager {
     await this.createDefaultProject();
 
     // 3. Update connections with projectId and labelIds
+    const db = await getDatabase();
     const updatedConnections: PersistedConnection[] = connections.map((conn) => ({
       ...conn,
       projectId: conn.projectId || DEFAULT_PROJECT_ID,
       labelIds: conn.labelIds || [],
     }));
 
+    // Save updated connections to SQLite
+    for (const conn of updatedConnections) {
+      await connectionsRepo.save(db, conn);
+    }
+
     // 4. Load and merge all connection states
     const mergedState = await this.mergeConnectionStates(updatedConnections);
 
-    // 5. Save updated connections
-    for (const _conn of updatedConnections) {
-      // We need to save each connection individually to trigger proper persistence
-      // This is a workaround since we don't have direct access to the store
-      // The connections will be re-saved when the app loads them
-    }
-
-    // 6. Save merged project state
+    // 5. Save merged project state
     if (mergedState) {
-      await this.saveProjectState(DEFAULT_PROJECT_ID, mergedState);
+      await projectStateRepo.save(db, mergedState);
     }
 
-    // 7. Migrate saved queries and history to connection_data files
+    // 6. Migrate saved queries and history to SQLite tables
     for (const conn of connections) {
       await this.migrateConnectionData(conn.id);
     }
@@ -113,23 +120,14 @@ export class MigrationManager {
       customLabels: [],
     };
 
-    // Persist the project
-    const { loadStore } = await import("$lib/storage");
-    const store = await loadStore("projects.json", {
-      autoSave: true,
-      defaults: { projects: [] },
+    const db = await getDatabase();
+    await projectsRepo.save(db, {
+      id: project.id,
+      name: project.name,
+      createdAt: project.createdAt.toISOString(),
+      updatedAt: project.updatedAt.toISOString(),
+      customLabels: [],
     });
-
-    await store.set("projects", [
-      {
-        id: project.id,
-        name: project.name,
-        createdAt: project.createdAt.toISOString(),
-        updatedAt: project.updatedAt.toISOString(),
-        customLabels: [],
-      },
-    ]);
-    await store.save();
 
     return project;
   }
@@ -202,21 +200,16 @@ export class MigrationManager {
   }
 
   /**
-   * Migrate saved queries and history from legacy connection state to new format.
+   * Migrate saved queries and history from legacy connection state to SQLite tables.
    */
   private async migrateConnectionData(connectionId: string): Promise<void> {
     const legacyState = await this.persistence.loadLegacyConnectionState(connectionId);
     if (!legacyState) return;
 
-    // Migrate saved queries and history
     const { savedQueries, queryHistory } = legacyState;
 
     if (savedQueries.length > 0 || queryHistory.length > 0) {
-      const { loadStore } = await import("$lib/storage");
-      const store = await loadStore(`connection_data_${connectionId}.json`, {
-        autoSave: true,
-        defaults: {},
-      });
+      const db = await getDatabase();
 
       // Add missing fields to history items for backwards compatibility
       const migratedHistory: PersistedQueryHistoryItem[] = queryHistory.map((h) => ({
@@ -225,26 +218,11 @@ export class MigrationManager {
         connectionNameSnapshot: (h as any).connectionNameSnapshot || "",
       }));
 
-      await store.set("savedQueries", savedQueries);
-      await store.set("queryHistory", migratedHistory);
-      await store.save();
+      await savedQueriesRepo.saveAll(db, connectionId, savedQueries);
+      await queryHistoryRepo.replaceAll(db, connectionId, migratedHistory);
     }
 
     // Remove legacy connection state file
     await this.persistence.removeLegacyConnectionState(connectionId);
-  }
-
-  /**
-   * Save project state directly to storage.
-   */
-  private async saveProjectState(projectId: string, state: PersistedProjectState): Promise<void> {
-    const { loadStore } = await import("$lib/storage");
-    const store = await loadStore(`project_state_${projectId}.json`, {
-      autoSave: true,
-      defaults: { state: null },
-    });
-
-    await store.set("state", state);
-    await store.save();
   }
 }

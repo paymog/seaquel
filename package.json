@@ -1,7 +1,7 @@
 {
   "name": "seaquel",
   "version": "2026.4.4",
-  "description": "",
+  "description": "Explore, query, and visualize your databases — all in one app.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -41,6 +41,7 @@
     "monaco-sql-languages": "^0.15.1",
     "node-sql-parser": "^5.4.0",
     "sql-formatter": "^15.6.12",
+    "sql.js": "^1.14.1",
     "svelte-dnd-action": "^0.9.69",
     "tauri-plugin-keyring-api": "^0.1.1"
   },

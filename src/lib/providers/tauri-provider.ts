@@ -5,6 +5,7 @@
 
 import Database from "@tauri-apps/plugin-sql";
 import type { DatabaseProvider, ConnectionConfig, ExecuteResult } from "./types";
+import type { SqliteDatabase } from "$lib/storage/sqlite-types";
 
 /**
  * Database provider that uses Tauri's SQL plugin.
@@ -15,9 +16,19 @@ export class TauriDatabaseProvider implements DatabaseProvider {
 
   /** Map of connection IDs to Database instances */
   private connections = new Map<string, Database>();
+  /** Connections that reuse the internal SqliteDatabase instance */
+  private internalConnections = new Map<string, SqliteDatabase>();
 
   isAvailable(): boolean {
     return typeof window !== "undefined" && "__TAURI__" in window;
+  }
+
+  private isInternalDb(config: ConnectionConfig): boolean {
+    return (
+      config.type === "sqlite" &&
+      (config.databaseName?.includes("seaquel.db") ||
+        config.connectionString?.includes("seaquel.db")) === true
+    );
   }
 
   async connect(config: ConnectionConfig): Promise<string> {
@@ -26,12 +37,27 @@ export class TauriDatabaseProvider implements DatabaseProvider {
     }
 
     const connectionId = `tauri-${config.type}-${Date.now()}`;
+
+    // For the internal database, reuse the already-open instance
+    if (this.isInternalDb(config)) {
+      const { getDatabase } = await import("$lib/storage/db");
+      const db = await getDatabase();
+      this.internalConnections.set(connectionId, db);
+      return connectionId;
+    }
+
     const db = await Database.load(config.connectionString);
     this.connections.set(connectionId, db);
     return connectionId;
   }
 
   async disconnect(connectionId: string): Promise<void> {
+    // Don't close the internal database — it's shared with persistence
+    if (this.internalConnections.has(connectionId)) {
+      this.internalConnections.delete(connectionId);
+      return;
+    }
+
     const db = this.connections.get(connectionId);
     if (db) {
       await db.close(db.path);
@@ -44,6 +70,11 @@ export class TauriDatabaseProvider implements DatabaseProvider {
     sql: string,
     params?: unknown[],
   ): Promise<T[]> {
+    const internalDb = this.internalConnections.get(connectionId);
+    if (internalDb) {
+      return internalDb.query<T>(sql, params);
+    }
+
     const db = this.connections.get(connectionId);
     if (!db) {
       throw new Error(`Connection not found: ${connectionId}`);
@@ -52,6 +83,12 @@ export class TauriDatabaseProvider implements DatabaseProvider {
   }
 
   async execute(connectionId: string, sql: string, params?: unknown[]): Promise<ExecuteResult> {
+    const internalDb = this.internalConnections.get(connectionId);
+    if (internalDb) {
+      const rowsAffected = await internalDb.execute(sql, params);
+      return { rowsAffected };
+    }
+
     const db = this.connections.get(connectionId);
     if (!db) {
       throw new Error(`Connection not found: ${connectionId}`);

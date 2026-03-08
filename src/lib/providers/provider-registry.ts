@@ -5,10 +5,12 @@
 
 import type { DatabaseProvider } from "./types";
 import { getProvider, getDuckDBProvider } from "./index";
+import { isTauri } from "$lib/utils/environment";
 
 export class ProviderRegistry {
   private provider: DatabaseProvider | null = null;
   private duckdbProvider: DatabaseProvider | null = null;
+  private webSqliteProvider: DatabaseProvider | null = null;
 
   /**
    * Get the appropriate provider for a given database type.
@@ -17,6 +19,9 @@ export class ProviderRegistry {
   async getForType(dbType: string): Promise<DatabaseProvider> {
     if (dbType === "duckdb") {
       return this.getOrCreateDuckDB();
+    }
+    if (dbType === "sqlite" && !isTauri()) {
+      return this.getOrCreateWebSqlite();
     }
     return this.getOrCreateDefault();
   }
@@ -42,11 +47,23 @@ export class ProviderRegistry {
   }
 
   /**
+   * Get or create the web SQLite provider (browser demo).
+   */
+  async getOrCreateWebSqlite(): Promise<DatabaseProvider> {
+    if (!this.webSqliteProvider) {
+      const { WebSqliteDatabaseProvider } = await import("./web-sqlite-provider");
+      this.webSqliteProvider = new WebSqliteDatabaseProvider();
+    }
+    return this.webSqliteProvider;
+  }
+
+  /**
    * Reset cached provider instances.
    * Call on disconnect or cleanup.
    */
   reset(): void {
     this.provider = null;
     this.duckdbProvider = null;
+    this.webSqliteProvider = null;
   }
 }

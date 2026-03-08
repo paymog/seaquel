@@ -1,4 +1,4 @@
-import { loadStore } from "$lib/storage";
+import { getDatabase, themeRepo } from "$lib/storage";
 import { mode } from "mode-watcher";
 import type { Theme, ThemePreferences, ThemeExport } from "$lib/types/theme";
 import { BUILT_IN_THEMES, DEFAULT_PREFERENCES } from "$lib/themes/presets";
@@ -48,21 +48,18 @@ class ThemeStore {
    */
   async initialize(): Promise<void> {
     try {
-      const store = await loadStore(STORE_FILE, {
-        autoSave: false,
-        defaults: {
-          preferences: DEFAULT_PREFERENCES,
-          userThemes: [],
-        },
-      });
+      const db = await getDatabase();
 
-      const preferences = (await store.get("preferences")) as ThemePreferences | null;
-      const userThemes = (await store.get("userThemes")) as Theme[] | null;
-
-      if (preferences) {
-        this.preferences = preferences;
+      const prefs = await themeRepo.loadPreferences(db);
+      if (prefs) {
+        this.preferences = {
+          lightThemeId: prefs.lightThemeId,
+          darkThemeId: prefs.darkThemeId,
+        };
       }
-      if (userThemes) {
+
+      const userThemes = (await themeRepo.loadUserThemes(db)) as Theme[];
+      if (userThemes.length > 0) {
         this.userThemes = userThemes;
       }
 
@@ -274,17 +271,13 @@ class ThemeStore {
 
   private async persist(): Promise<void> {
     try {
-      const store = await loadStore(STORE_FILE, {
-        autoSave: true,
-        defaults: {
-          preferences: DEFAULT_PREFERENCES,
-          userThemes: [],
-        },
-      });
-
-      await store.set("preferences", this.preferences);
-      await store.set("userThemes", this.userThemes);
-      await store.save();
+      const db = await getDatabase();
+      await themeRepo.savePreferences(
+        db,
+        this.preferences.lightThemeId,
+        this.preferences.darkThemeId,
+      );
+      await themeRepo.saveUserThemes(db, this.userThemes);
     } catch (error) {
       console.error("Failed to persist theme settings:", error);
     }

@@ -1,17 +1,6 @@
-import { load } from "@tauri-apps/plugin-store";
-import { isTauri } from "$lib/utils/environment";
+import { getDatabase, tutorialRepo } from "$lib/storage";
 import { LESSONS } from "$lib/tutorial/lessons";
 import type { SerializableQueryBuilderState } from "$lib/hooks/query-builder.svelte";
-
-interface PersistedTutorialProgress {
-  /** Map of lessonId -> Set of completed challenge IDs */
-  completedChallenges: Record<string, string[]>;
-  /** Map of lessonId -> challengeId -> saved query state */
-  challengeStates: Record<string, Record<string, SerializableQueryBuilderState>>;
-}
-
-const STORE_FILE = "tutorial_progress.json";
-const LOCAL_STORAGE_KEY = "seaquel_tutorial_progress";
 
 class TutorialProgressStore {
   /** Map of lessonId -> Set of completed challenge IDs */
@@ -27,43 +16,30 @@ class TutorialProgressStore {
     if (this.isInitialized) return;
 
     try {
-      if (isTauri()) {
-        const store = await load(STORE_FILE, {
-          autoSave: false,
-          defaults: { state: null },
-        });
+      const db = await getDatabase();
+      const rows = await tutorialRepo.loadAll(db);
 
-        const persisted = (await store.get("state")) as PersistedTutorialProgress | null;
+      const challenges: Record<string, Set<string>> = {};
+      const states: Record<string, Record<string, SerializableQueryBuilderState>> = {};
 
-        if (persisted?.completedChallenges) {
-          // Convert arrays back to Sets
-          const challenges: Record<string, Set<string>> = {};
-          for (const [lessonId, challengeIds] of Object.entries(persisted.completedChallenges)) {
-            challenges[lessonId] = new Set(challengeIds);
-          }
-          this.completedChallenges = challenges;
+      for (const row of rows) {
+        // Build completed challenges sets
+        if (!challenges[row.lessonId]) {
+          challenges[row.lessonId] = new Set();
         }
-        if (persisted?.challengeStates) {
-          this.challengeStates = persisted.challengeStates;
-        }
-      } else {
-        // Browser/demo mode - use localStorage
-        const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (stored) {
-          const persisted = JSON.parse(stored) as PersistedTutorialProgress;
-          if (persisted?.completedChallenges) {
-            const challenges: Record<string, Set<string>> = {};
-            for (const [lessonId, challengeIds] of Object.entries(persisted.completedChallenges)) {
-              challenges[lessonId] = new Set(challengeIds);
-            }
-            this.completedChallenges = challenges;
+        challenges[row.lessonId].add(row.challengeId);
+
+        // Build challenge states
+        if (row.state) {
+          if (!states[row.lessonId]) {
+            states[row.lessonId] = {};
           }
-          if (persisted?.challengeStates) {
-            this.challengeStates = persisted.challengeStates;
-          }
+          states[row.lessonId][row.challengeId] = JSON.parse(row.state);
         }
       }
 
+      this.completedChallenges = challenges;
+      this.challengeStates = states;
       this.isInitialized = true;
     } catch (error) {
       console.error("Failed to load tutorial progress:", error);
@@ -90,7 +66,7 @@ class TutorialProgressStore {
     if (state) {
       await this.saveChallengeState(lessonId, challengeId, state);
     } else {
-      await this.persist();
+      await this.persistSingle(lessonId, challengeId, null);
     }
   }
 
@@ -108,7 +84,7 @@ class TutorialProgressStore {
     this.challengeStates[lessonId][challengeId] = state;
     // Trigger reactivity
     this.challengeStates = { ...this.challengeStates };
-    await this.persist();
+    await this.persistSingle(lessonId, challengeId, JSON.stringify(state));
   }
 
   /**
@@ -175,7 +151,12 @@ class TutorialProgressStore {
       changed = true;
     }
     if (changed) {
-      await this.persist();
+      try {
+        const db = await getDatabase();
+        await tutorialRepo.removeLesson(db, lessonId);
+      } catch (error) {
+        console.error("Failed to reset tutorial lesson:", error);
+      }
     }
   }
 
@@ -185,34 +166,22 @@ class TutorialProgressStore {
   async resetAll(): Promise<void> {
     this.completedChallenges = {};
     this.challengeStates = {};
-    await this.persist();
+    try {
+      const db = await getDatabase();
+      await tutorialRepo.removeAll(db);
+    } catch (error) {
+      console.error("Failed to reset all tutorial progress:", error);
+    }
   }
 
-  private async persist(): Promise<void> {
+  private async persistSingle(
+    lessonId: string,
+    challengeId: string,
+    state: string | null,
+  ): Promise<void> {
     try {
-      // Convert Sets to arrays for serialization
-      const serialized: Record<string, string[]> = {};
-      for (const [lessonId, challengeSet] of Object.entries(this.completedChallenges)) {
-        serialized[lessonId] = Array.from(challengeSet);
-      }
-
-      const state: PersistedTutorialProgress = {
-        completedChallenges: serialized,
-        challengeStates: this.challengeStates,
-      };
-
-      if (isTauri()) {
-        const store = await load(STORE_FILE, {
-          autoSave: true,
-          defaults: { state: null },
-        });
-
-        await store.set("state", state);
-        await store.save();
-      } else {
-        // Browser/demo mode - use localStorage
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
-      }
+      const db = await getDatabase();
+      await tutorialRepo.save(db, lessonId, challengeId, state);
     } catch (error) {
       console.error("Failed to persist tutorial progress:", error);
     }
