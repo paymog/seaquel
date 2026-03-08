@@ -275,8 +275,9 @@ class ConnectionWizardStore {
         this.shouldAutoConnect = true;
         return; // Don't set isOpen = true yet
       } else if (mode === "edit") {
-        // For edit, start at type step to allow modifying all settings
-        this.currentStep = "type";
+        // For edit, skip the database type step (type can't be changed) and start at host
+        const isFileBasedDb = this.formData.type === "sqlite" || this.formData.type === "duckdb";
+        this.currentStep = isFileBasedDb ? "credentials" : "host";
         this.usingConnectionString = false;
       } else if (prefill.connectionString) {
         this.usingConnectionString = true;
@@ -382,6 +383,13 @@ class ConnectionWizardStore {
   // Navigate to previous step
   prevStep(): void {
     if (this.currentStep === "string-choice") return;
+
+    // In edit mode, don't go back past the first editable step
+    if (this.mode === "edit") {
+      const isFileBasedDb = this.formData.type === "sqlite" || this.formData.type === "duckdb";
+      const firstEditStep = isFileBasedDb ? "credentials" : "host";
+      if (this.currentStep === firstEditStep) return;
+    }
 
     // If at first step of a flow, go back to choice
     if (this.currentStep === "string-paste" || this.currentStep === "type") {
