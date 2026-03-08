@@ -31,8 +31,5 @@
 		<DatabaseIcon class="size-5" />
 	</div>
 
-	<div class="space-y-1">
-		<h3 class="font-medium text-sm">{config.label}</h3>
-		<p class="text-xs text-muted-foreground line-clamp-2">{config.description}</p>
-	</div>
+	<h3 class="font-medium text-sm">{config.label}</h3>
 </button>

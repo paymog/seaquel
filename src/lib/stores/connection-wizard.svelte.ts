@@ -2,14 +2,7 @@ import type { DatabaseType, SSHAuthMethod } from "$lib/types";
 import type { ConnectionDialogPrefill } from "./connection-dialog.svelte.js";
 import { getKeyringService } from "$lib/services/keyring";
 
-export type WizardStep =
-  | "string-choice"
-  | "string-paste"
-  | "type"
-  | "host"
-  | "credentials"
-  | "advanced"
-  | "success";
+export type WizardStep = "method" | "details";
 
 export type WizardMode = "wizard" | "quick" | "reconnect" | "edit";
 
@@ -122,16 +115,10 @@ const defaultFormData: WizardFormData = {
   saveSshKeyPassphrase: true,
 };
 
-// Step order for manual flow (after choosing "No" for connection string)
-const manualStepOrder: WizardStep[] = ["type", "host", "credentials", "advanced", "success"];
-
-// Step order for connection string flow (after choosing "Yes")
-const stringStepOrder: WizardStep[] = ["string-paste", "success"];
-
 class ConnectionWizardStore {
   isOpen = $state(false);
   mode = $state<WizardMode>("wizard");
-  currentStep = $state<WizardStep>("string-choice");
+  currentStep = $state<WizardStep>("method");
   formData = $state<WizardFormData>({ ...defaultFormData });
 
   // Reconnection context
@@ -148,47 +135,18 @@ class ConnectionWizardStore {
   // Flag to indicate credentials have been loaded from keyring
   credentialsLoaded = $state(false);
 
-  // Track which flow path the user chose
-  private usingConnectionString = $state(false);
-
-  // Derived: current step number for progress indicator
-  get stepNumber(): number {
-    if (this.currentStep === "string-choice") return 0;
-
-    const steps = this.usingConnectionString ? stringStepOrder : manualStepOrder;
-    const index = steps.indexOf(this.currentStep);
-    return index >= 0 ? index + 1 : 0;
-  }
-
-  // Derived: total steps for progress indicator
-  get totalSteps(): number {
-    if (this.currentStep === "string-choice") return 0;
-    return this.usingConnectionString ? stringStepOrder.length : manualStepOrder.length;
-  }
-
   // Derived: selected database type config
   get selectedDbType(): DatabaseTypeConfig | undefined {
     return databaseTypes.find((t) => t.value === this.formData.type);
   }
 
-  // Derived: can proceed to next step
+  // Derived: can proceed to connect
   get canProceed(): boolean {
     switch (this.currentStep) {
-      case "string-choice":
+      case "method":
         return true;
-      case "string-paste":
-        return this.formData.connectionString.trim().length > 0;
-      case "type":
-        return true; // Type is always selected
-      case "host":
-        if (this.formData.type === "sqlite" || this.formData.type === "duckdb") return true;
-        return this.formData.host.trim().length > 0;
-      case "credentials":
+      case "details":
         return this.formData.databaseName.trim().length > 0 && this.formData.name.trim().length > 0;
-      case "advanced":
-        return true; // Advanced is optional
-      case "success":
-        return true;
       default:
         return false;
     }
@@ -267,31 +225,23 @@ class ConnectionWizardStore {
       }
 
       if (mode === "reconnect") {
-        // For reconnect, go straight to credentials
-        this.currentStep = "credentials";
-        this.usingConnectionString = false;
+        // For reconnect, go straight to details
+        this.currentStep = "details";
         // Enable auto-connect attempt when credentials are loaded
         // Don't open dialog yet - wait for auto-connect attempt
         this.shouldAutoConnect = true;
         return; // Don't set isOpen = true yet
       } else if (mode === "edit") {
-        // For edit, skip the database type step (type can't be changed) and start at host
-        const isFileBasedDb = this.formData.type === "sqlite" || this.formData.type === "duckdb";
-        this.currentStep = isFileBasedDb ? "credentials" : "host";
-        this.usingConnectionString = false;
-      } else if (prefill.connectionString) {
-        this.usingConnectionString = true;
-        this.currentStep = "string-paste";
+        // For edit, go straight to details
+        this.currentStep = "details";
       } else {
-        this.currentStep = "string-choice";
-        this.usingConnectionString = false;
+        this.currentStep = "method";
       }
     } else {
       // New connection
       this.formData = { ...defaultFormData };
       this.reconnectingConnectionId = null;
-      this.currentStep = mode === "quick" ? "type" : "string-choice";
-      this.usingConnectionString = false;
+      this.currentStep = "method";
     }
 
     this.isOpen = true;
@@ -346,87 +296,34 @@ class ConnectionWizardStore {
     this.reconnectingConnectionId = null;
     this.connectionError = null;
     this.connectionSuccess = false;
-    this.currentStep = "string-choice";
-    this.usingConnectionString = false;
+    this.currentStep = "method";
     this.shouldAutoConnect = false;
     this.credentialsLoaded = false;
   }
 
-  // Choose to use connection string (from string-choice step)
-  chooseConnectionString(): void {
-    this.usingConnectionString = true;
-    this.currentStep = "string-paste";
-  }
-
-  // Choose manual entry (from string-choice step)
-  chooseManual(): void {
-    this.usingConnectionString = false;
-    this.currentStep = "type";
-  }
-
-  // Navigate to next step
-  nextStep(): void {
-    const steps = this.usingConnectionString ? stringStepOrder : manualStepOrder;
-    const currentIndex = steps.indexOf(this.currentStep);
-
-    if (currentIndex >= 0 && currentIndex < steps.length - 1) {
-      // Skip host step for SQLite and DuckDB
-      let nextIndex = currentIndex + 1;
-      const isFileBasedDb = this.formData.type === "sqlite" || this.formData.type === "duckdb";
-      if (steps[nextIndex] === "host" && isFileBasedDb) {
-        nextIndex++;
-      }
-      this.currentStep = steps[nextIndex];
-    }
-  }
-
-  // Navigate to previous step
-  prevStep(): void {
-    if (this.currentStep === "string-choice") return;
-
-    // In edit mode, don't go back past the first editable step
-    if (this.mode === "edit") {
-      const isFileBasedDb = this.formData.type === "sqlite" || this.formData.type === "duckdb";
-      const firstEditStep = isFileBasedDb ? "credentials" : "host";
-      if (this.currentStep === firstEditStep) return;
-    }
-
-    // If at first step of a flow, go back to choice
-    if (this.currentStep === "string-paste" || this.currentStep === "type") {
-      this.currentStep = "string-choice";
-      this.usingConnectionString = false;
-      return;
-    }
-
-    const steps = this.usingConnectionString ? stringStepOrder : manualStepOrder;
-    const currentIndex = steps.indexOf(this.currentStep);
-
-    if (currentIndex > 0) {
-      // Skip host step for SQLite and DuckDB when going back
-      let prevIndex = currentIndex - 1;
-      const isFileBasedDb = this.formData.type === "sqlite" || this.formData.type === "duckdb";
-      if (steps[prevIndex] === "host" && isFileBasedDb) {
-        prevIndex--;
-      }
-      if (prevIndex >= 0) {
-        this.currentStep = steps[prevIndex];
-      }
-    }
-  }
-
-  // Go directly to a specific step
-  goToStep(step: WizardStep): void {
-    this.currentStep = step;
-  }
-
-  // Set database type, update port, and proceed to next step
-  setDatabaseType(type: DatabaseType): void {
+  // Select a database type, set default port, and go to details
+  selectDatabaseType(type: DatabaseType): void {
     this.formData.type = type;
     const dbType = databaseTypes.find((t) => t.value === type);
     if (dbType) {
       this.formData.port = dbType.defaultPort;
     }
-    this.nextStep();
+    this.currentStep = "details";
+  }
+
+  // Navigate to next step
+  nextStep(): void {
+    if (this.currentStep === "method") {
+      this.currentStep = "details";
+    }
+  }
+
+  // Navigate to previous step
+  prevStep(): void {
+    if (this.currentStep === "details") {
+      this.formData.connectionString = "";
+      this.currentStep = "method";
+    }
   }
 
   // Parse connection string and populate form data
@@ -583,7 +480,6 @@ class ConnectionWizardStore {
   // Mark connection as successful
   markSuccess(): void {
     this.connectionSuccess = true;
-    this.currentStep = "success";
   }
 
   // Set connection error
