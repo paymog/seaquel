@@ -19,7 +19,6 @@
     import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
     import MessageSquareTextIcon from "@lucide/svelte/icons/message-square-text";
     import BookOpenIcon from "@lucide/svelte/icons/book-open";
-    import ThemeToggle from "./theme-toggle.svelte";
     import LanguageToggle from "./language-toggle.svelte";
     import { m } from "$lib/paraglide/messages.js";
     import { DEFAULT_PROJECT_ID } from "$lib/types";
@@ -230,7 +229,6 @@
                 </Button>
             {/if}
             <LanguageToggle />
-            <ThemeToggle />
             <DropdownMenu.Root>
                 <DropdownMenu.Trigger>
                     {#snippet child({ props })}
