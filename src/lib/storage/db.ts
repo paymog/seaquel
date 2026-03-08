@@ -38,6 +38,14 @@ export async function getDatabase(): Promise<SqliteDatabase> {
 
       // Record schema version after migration
       await db.execute("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
+    } else {
+      // Existing database — check if connections are empty (failed prior migration)
+      // and re-attempt migration from JSON if legacy files still exist
+      const rows = await db.query<{ count: number }>("SELECT COUNT(*) as count FROM connections");
+      if (rows[0].count === 0) {
+        const { migrateJsonToSqlite } = await import("./json-migration");
+        await migrateJsonToSqlite(db);
+      }
     }
 
     instance = db;

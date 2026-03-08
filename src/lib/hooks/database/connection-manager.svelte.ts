@@ -221,8 +221,8 @@ export class ConnectionManager {
         databaseName: connection.databaseName,
       });
     } else if (effectiveConnectionString) {
-      // Use provider for PostgreSQL, SQLite
-      const provider = await this.providers.getOrCreateDefault();
+      // Use appropriate provider for PostgreSQL, SQLite
+      const provider = await this.providers.getForType(connection.type);
       providerConnectionId = await provider.connect({
         type: connection.type,
         connectionString: effectiveConnectionString,
@@ -383,8 +383,8 @@ export class ConnectionManager {
         databaseName: connection.databaseName,
       });
     } else if (effectiveConnectionString) {
-      // Use provider for PostgreSQL, SQLite
-      const provider = await this.providers.getOrCreateDefault();
+      // Use appropriate provider for PostgreSQL, SQLite
+      const provider = await this.providers.getForType(connection.type);
       providerConnectionId = await provider.connect({
         type: connection.type,
         connectionString: effectiveConnectionString,
@@ -596,8 +596,8 @@ export class ConnectionManager {
         // Close the test connection immediately
         await duckdbProvider.disconnect(connId);
       } else if (effectiveConnectionString) {
-        // Use provider for PostgreSQL, SQLite
-        const provider = await this.providers.getOrCreateDefault();
+        // Use appropriate provider for PostgreSQL, SQLite
+        const provider = await this.providers.getForType(connection.type);
         const connId = await provider.connect({
           type: connection.type,
           connectionString: effectiveConnectionString,

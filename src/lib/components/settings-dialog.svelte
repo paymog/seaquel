@@ -320,9 +320,23 @@ import { errorToast } from "$lib/utils/toast";
 			const existing = db.state.projects.find((p) => p.name === "Seaquel Internal");
 			if (existing) {
 				await db.projects.setActive(existing.id);
+				// Find the connection in this project and auto-reconnect if not already connected
+				const internalConnection = db.state.connections.find(
+					(c) => c.projectId === existing.id
+				);
+				if (internalConnection && !internalConnection.providerConnectionId) {
+					await db.connections.autoReconnect(internalConnection.id);
+				} else if (internalConnection) {
+					db.connections.setActive(internalConnection.id);
+				}
 			} else {
-				const dataDir = await getDataDir();
-				const dbPath = `${dataDir}/seaquel.db`;
+				let dbPath: string;
+				if (isTauri()) {
+					const dataDir = await getDataDir();
+					dbPath = `${dataDir}/seaquel.db`;
+				} else {
+					dbPath = "seaquel.db";
+				}
 				const project = await db.projects.add("Seaquel Internal");
 				await db.connections.add({
 					name: "Internal Database",

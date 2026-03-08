@@ -6,6 +6,7 @@ import type {
   PersistedQueryHistoryItem,
   PersistedSharedQueryRepo,
 } from "$lib/types";
+import { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME } from "$lib/types";
 import type { PersistedConnection } from "$lib/hooks/database/types";
 import {
   projectsRepo,
@@ -38,6 +39,7 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
     let hasLegacyData = false;
 
     // === Projects ===
+    let projectIds = new Set<string>();
     try {
       const projectsStore = await loadStore("projects.json", {
         autoSave: false,
@@ -47,6 +49,7 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
       if (projects && projects.length > 0) {
         hasLegacyData = true;
         await projectsRepo.saveAll(db, projects);
+        for (const p of projects) projectIds.add(p.id);
       }
     } catch {
       // No projects file
@@ -62,13 +65,40 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
       const connections = (await connStore.get("connections")) as PersistedConnection[] | null;
       if (connections && connections.length > 0) {
         hasLegacyData = true;
+
+        // Ensure a default project exists for connections that have no projectId
+        // or reference a project that wasn't in the projects.json file
+        const needsDefaultProject = connections.some(
+          (c) => !c.projectId || !projectIds.has(c.projectId),
+        );
+        if (needsDefaultProject && !projectIds.has(DEFAULT_PROJECT_ID)) {
+          const now = new Date().toISOString();
+          await projectsRepo.save(db, {
+            id: DEFAULT_PROJECT_ID,
+            name: DEFAULT_PROJECT_NAME,
+            createdAt: now,
+            updatedAt: now,
+            customLabels: [],
+          });
+          projectIds.add(DEFAULT_PROJECT_ID);
+        }
+
         for (const conn of connections) {
-          await connectionsRepo.save(db, conn);
+          // Default projectId if missing or referencing a non-existent project
+          const safeConn = {
+            ...conn,
+            projectId:
+              conn.projectId && projectIds.has(conn.projectId)
+                ? conn.projectId
+                : DEFAULT_PROJECT_ID,
+            labelIds: conn.labelIds ?? [],
+          };
+          await connectionsRepo.save(db, safeConn);
           connectionIds.push(conn.id);
         }
       }
-    } catch {
-      // No connections file
+    } catch (error) {
+      console.error("Failed to migrate connections:", error);
     }
 
     if (!hasLegacyData) {

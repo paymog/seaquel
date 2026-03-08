@@ -5,8 +5,7 @@
 	import { Button } from "$lib/components/ui/button";
 	import { Separator } from "$lib/components/ui/separator";
 	import { KeyIcon, DatabaseIcon, ListIcon, PlusIcon } from "@lucide/svelte";
-	import { fly } from "svelte/transition";
-	import { m } from "$lib/paraglide/messages.js";
+import { m } from "$lib/paraglide/messages.js";
 	import InsertRowDialog from "$lib/components/insert-row-dialog.svelte";
 
 	const db = useDatabase();
@@ -35,7 +34,7 @@
 
 <div class="flex flex-col h-full">
 	{#if db.state.activeSchemaTab?.table}
-		<div class="flex-1 overflow-auto p-4" transition:fly={{ x: 20, duration: 200 }}>
+		<div class="flex-1 overflow-auto p-4">
 			<Card>
 				<CardHeader>
 					<div class="flex items-start justify-between">

@@ -76,7 +76,7 @@ const DDL_STATEMENTS = [
 
   // All tab types (discriminated by tab_type)
   `CREATE TABLE IF NOT EXISTS tabs (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     tab_type TEXT NOT NULL,
     name TEXT NOT NULL,
@@ -88,7 +88,8 @@ const DDL_STATEMENTS = [
     source_query TEXT,
     connection_id TEXT,
     starter_type TEXT,
-    closable INTEGER
+    closable INTEGER,
+    PRIMARY KEY (id, project_id)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_tabs_project ON tabs(project_id)`,
 
