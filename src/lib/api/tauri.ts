@@ -67,6 +67,10 @@ export async function installUpdate(): Promise<void> {
   await invoke("install_update");
 }
 
+export async function checkForUpdate(): Promise<string | null> {
+  return invoke<string | null>("check_for_update_command");
+}
+
 export async function readDbeaverConfig(): Promise<string | null> {
   return invoke<string | null>("read_dbeaver_config");
 }

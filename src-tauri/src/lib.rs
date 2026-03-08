@@ -203,6 +203,29 @@ async fn install_update(
     Ok(())
 }
 
+#[tauri::command]
+async fn check_for_update_command(
+    app: tauri::AppHandle,
+) -> Result<Option<String>, CommandError> {
+    let update = app
+        .updater()
+        .map_err(|e| CommandError {
+            message: format!("Failed to get updater: {}", e),
+            code: "UPDATE_ERROR".to_string(),
+        })?
+        .check()
+        .await
+        .map_err(|e| CommandError {
+            message: format!("Failed to check for update: {}", e),
+            code: "UPDATE_ERROR".to_string(),
+        })?;
+
+    match update {
+        Some(u) => Ok(Some(u.version.clone())),
+        None => Ok(None),
+    }
+}
+
 fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // Load and decode the app icon for the About dialog
     let icon = {
@@ -318,6 +341,7 @@ pub fn run() {
             get_data_dir,
             get_username,
             install_update,
+            check_for_update_command,
             read_dbeaver_config,
             read_tableplus_config,
             ssh_tunnel::create_ssh_tunnel,
