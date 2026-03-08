@@ -1,13 +1,6 @@
-import { load } from "@tauri-apps/plugin-store";
+import { getDatabase, importStateRepo } from "$lib/storage";
 import type { TablePlusImportableConnection } from "$lib/types/tableplus";
 import { discoverTablePlusConnections } from "$lib/services/tableplus-import";
-
-interface PersistedTablePlusImportState {
-  hasOfferedImport: boolean;
-  lastCheckTimestamp?: string;
-}
-
-const STORE_FILE = "tableplus_import_state.json";
 
 class TablePlusImportStore {
   // Dialog state
@@ -30,11 +23,8 @@ class TablePlusImportStore {
 
     // Load persisted state
     try {
-      const store = await load(STORE_FILE, {
-        autoSave: false,
-        defaults: { state: null },
-      });
-      const persisted = (await store.get("state")) as PersistedTablePlusImportState | null;
+      const db = await getDatabase();
+      const persisted = await importStateRepo.load(db, "tableplus");
 
       if (persisted) {
         this.hasOfferedImport = persisted.hasOfferedImport;
@@ -125,18 +115,8 @@ class TablePlusImportStore {
    */
   private async persist(): Promise<void> {
     try {
-      const store = await load(STORE_FILE, {
-        autoSave: true,
-        defaults: { state: null },
-      });
-
-      const state: PersistedTablePlusImportState = {
-        hasOfferedImport: this.hasOfferedImport,
-        lastCheckTimestamp: new Date().toISOString(),
-      };
-
-      await store.set("state", state);
-      await store.save();
+      const db = await getDatabase();
+      await importStateRepo.save(db, "tableplus", this.hasOfferedImport, new Date().toISOString());
     } catch (error) {
       console.error("Failed to persist TablePlus import state:", error);
     }

@@ -18,19 +18,23 @@ import { serializeRepo } from "$lib/types";
 import type { SavedCanvas } from "$lib/types/canvas";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistedConnection } from "./types.js";
-import { loadStore } from "$lib/storage";
+import {
+  getDatabase,
+  projectsRepo,
+  appStateRepo,
+  connectionsRepo,
+  projectStateRepo,
+  savedQueriesRepo,
+  queryHistoryRepo,
+  sharedReposRepo,
+} from "$lib/storage";
 import { getKeyringService } from "$lib/services/keyring";
 
 /**
- * Manages persistence of projects, connections, and their state to Tauri store.
+ * Manages persistence of projects, connections, and their state to SQLite.
  * Handles serialization, debounced saving, and state loading.
  *
- * Storage structure:
- * - projects.json: All projects
- * - app_state.json: Global app state (last active project, etc.)
- * - database_connections.json: All connections (with projectId)
- * - project_state_{projectId}.json: Tabs and UI state per project
- * - connection_data_{connectionId}.json: Query history and saved queries per connection
+ * Storage: single seaquel.db SQLite database with tables for each domain.
  */
 export class PersistenceManager {
   private persistenceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -42,7 +46,6 @@ export class PersistenceManager {
 
   /**
    * Schedule persistence with debouncing to avoid excessive I/O.
-   * Now persists project state instead of connection state.
    */
   scheduleProject(projectId: string | null): void {
     if (!projectId) return;
@@ -220,10 +223,7 @@ export class PersistenceManager {
 
   async persistProjects(): Promise<void> {
     try {
-      const store = await loadStore("projects.json", {
-        autoSave: true,
-        defaults: { projects: [] },
-      });
+      const db = await getDatabase();
 
       const projects: PersistedProject[] = this.state.projects.map((p) => ({
         id: p.id,
@@ -234,8 +234,7 @@ export class PersistenceManager {
         customLabels: p.customLabels,
       }));
 
-      await store.set("projects", projects);
-      await store.save();
+      await projectsRepo.saveAll(db, projects);
     } catch (error) {
       console.error("Failed to persist projects:", error);
     }
@@ -243,11 +242,8 @@ export class PersistenceManager {
 
   async loadProjects(): Promise<PersistedProject[]> {
     try {
-      const store = await loadStore("projects.json", {
-        autoSave: false,
-        defaults: { projects: [] },
-      });
-      return ((await store.get("projects")) as PersistedProject[]) || [];
+      const db = await getDatabase();
+      return await projectsRepo.loadAll(db);
     } catch (error) {
       console.error("Failed to load projects:", error);
       return [];
@@ -258,13 +254,8 @@ export class PersistenceManager {
 
   async persistAppState(): Promise<void> {
     try {
-      const store = await loadStore("app_state.json", {
-        autoSave: true,
-        defaults: {},
-      });
-
-      await store.set("lastActiveProjectId", this.state.activeProjectId);
-      await store.save();
+      const db = await getDatabase();
+      await appStateRepo.set(db, "lastActiveProjectId", this.state.activeProjectId);
     } catch (error) {
       console.error("Failed to persist app state:", error);
     }
@@ -272,11 +263,8 @@ export class PersistenceManager {
 
   async getLastActiveProjectId(): Promise<string | null> {
     try {
-      const store = await loadStore("app_state.json", {
-        autoSave: false,
-        defaults: {},
-      });
-      return (await store.get("lastActiveProjectId")) as string | null;
+      const db = await getDatabase();
+      return await appStateRepo.get(db, "lastActiveProjectId");
     } catch (error) {
       console.error("Failed to load last active project:", error);
       return null;
@@ -287,10 +275,7 @@ export class PersistenceManager {
 
   async persistProjectState(projectId: string): Promise<void> {
     try {
-      const store = await loadStore(`project_state_${projectId}.json`, {
-        autoSave: true,
-        defaults: { state: null },
-      });
+      const db = await getDatabase();
 
       const state: PersistedProjectState = {
         projectId,
@@ -314,8 +299,7 @@ export class PersistenceManager {
         savedCanvases: this.serializeSavedCanvases(projectId),
       };
 
-      await store.set("state", state);
-      await store.save();
+      await projectStateRepo.save(db, state);
     } catch (error) {
       console.error(`Failed to persist state for project ${projectId}:`, error);
     }
@@ -323,11 +307,8 @@ export class PersistenceManager {
 
   async loadProjectState(projectId: string): Promise<PersistedProjectState | null> {
     try {
-      const store = await loadStore(`project_state_${projectId}.json`, {
-        autoSave: false,
-        defaults: { state: null },
-      });
-      return (await store.get("state")) as PersistedProjectState | null;
+      const db = await getDatabase();
+      return await projectStateRepo.load(db, projectId);
     } catch (error) {
       console.error(`Failed to load persisted state for project ${projectId}:`, error);
       return null;
@@ -336,11 +317,8 @@ export class PersistenceManager {
 
   async removeProjectState(projectId: string): Promise<void> {
     try {
-      const store = await loadStore(`project_state_${projectId}.json`, {
-        autoSave: false,
-        defaults: { state: null },
-      });
-      await store.delete();
+      const db = await getDatabase();
+      await projectStateRepo.remove(db, projectId);
     } catch (error) {
       console.error(`Failed to remove persisted state for project ${projectId}:`, error);
     }
@@ -350,14 +328,9 @@ export class PersistenceManager {
 
   async persistConnectionData(connectionId: string): Promise<void> {
     try {
-      const store = await loadStore(`connection_data_${connectionId}.json`, {
-        autoSave: true,
-        defaults: {},
-      });
-
-      await store.set("savedQueries", this.serializeSavedQueries(connectionId));
-      await store.set("queryHistory", this.serializeQueryHistory(connectionId));
-      await store.save();
+      const db = await getDatabase();
+      await savedQueriesRepo.saveAll(db, connectionId, this.serializeSavedQueries(connectionId));
+      await queryHistoryRepo.replaceAll(db, connectionId, this.serializeQueryHistory(connectionId));
     } catch (error) {
       console.error(`Failed to persist data for connection ${connectionId}:`, error);
     }
@@ -368,13 +341,10 @@ export class PersistenceManager {
     queryHistory: PersistedQueryHistoryItem[];
   }> {
     try {
-      const store = await loadStore(`connection_data_${connectionId}.json`, {
-        autoSave: false,
-        defaults: {},
-      });
+      const db = await getDatabase();
       return {
-        savedQueries: ((await store.get("savedQueries")) as PersistedSavedQuery[]) || [],
-        queryHistory: ((await store.get("queryHistory")) as PersistedQueryHistoryItem[]) || [],
+        savedQueries: await savedQueriesRepo.loadByConnection(db, connectionId),
+        queryHistory: await queryHistoryRepo.loadByConnection(db, connectionId),
       };
     } catch (error) {
       console.error(`Failed to load data for connection ${connectionId}:`, error);
@@ -384,11 +354,9 @@ export class PersistenceManager {
 
   async removeConnectionData(connectionId: string): Promise<void> {
     try {
-      const store = await loadStore(`connection_data_${connectionId}.json`, {
-        autoSave: false,
-        defaults: {},
-      });
-      await store.delete();
+      const db = await getDatabase();
+      await savedQueriesRepo.removeByConnection(db, connectionId);
+      await queryHistoryRepo.removeByConnection(db, connectionId);
     } catch (error) {
       console.error(`Failed to remove data for connection ${connectionId}:`, error);
     }
@@ -411,6 +379,7 @@ export class PersistenceManager {
     queryHistory: PersistedQueryHistoryItem[];
   } | null> {
     try {
+      const { loadStore } = await import("$lib/storage/legacy");
       const store = await loadStore(`connection_state_${connectionId}.json`, {
         autoSave: false,
         defaults: { state: null },
@@ -438,6 +407,7 @@ export class PersistenceManager {
 
   async removeLegacyConnectionState(connectionId: string): Promise<void> {
     try {
+      const { loadStore } = await import("$lib/storage/legacy");
       const store = await loadStore(`connection_state_${connectionId}.json`, {
         autoSave: false,
         defaults: { state: null },
@@ -487,20 +457,8 @@ export class PersistenceManager {
   ): Promise<void> {
     await withErrorHandling(
       async () => {
-        const store = await loadStore("database_connections.json", {
-          autoSave: true,
-          defaults: { connections: [] },
-        });
+        const db = await getDatabase();
 
-        const existingConnections = (await store.get("connections")) as
-          | PersistedConnection[]
-          | null;
-        const connections = existingConnections || [];
-
-        // Remove if already exists (update case)
-        const filtered = connections.filter((c) => c.id !== connection.id);
-
-        // Create persisted version without password and database instance
         const persistedConnection: PersistedConnection = {
           id: connection.id,
           name: connection.name,
@@ -520,9 +478,7 @@ export class PersistenceManager {
           labelIds: connection.labelIds,
         };
 
-        filtered.push(persistedConnection);
-        await store.set("connections", filtered);
-        await store.save();
+        await connectionsRepo.save(db, persistedConnection);
 
         // Save passwords to keyring if enabled
         const keyring = getKeyringService();
@@ -560,19 +516,8 @@ export class PersistenceManager {
   async removePersistedConnection(connectionId: string): Promise<void> {
     await withErrorHandling(
       async () => {
-        const store = await loadStore("database_connections.json", {
-          autoSave: true,
-          defaults: { connections: [] },
-        });
-
-        const existingConnections = (await store.get("connections")) as
-          | PersistedConnection[]
-          | null;
-        const connections = existingConnections || [];
-
-        const filtered = connections.filter((c) => c.id !== connectionId);
-        await store.set("connections", filtered);
-        await store.save();
+        const db = await getDatabase();
+        await connectionsRepo.remove(db, connectionId);
 
         // Delete passwords from keyring
         const keyring = getKeyringService();
@@ -594,12 +539,8 @@ export class PersistenceManager {
 
   async loadPersistedConnections(): Promise<PersistedConnection[]> {
     try {
-      const store = await loadStore("database_connections.json", {
-        autoSave: true,
-        defaults: { connections: [] },
-      });
-      const persistedConnections = (await store.get("connections")) as PersistedConnection[] | null;
-      return persistedConnections || [];
+      const db = await getDatabase();
+      return await connectionsRepo.loadAll(db);
     } catch (error) {
       console.error("Failed to load persisted connections:", error);
       return [];
@@ -610,16 +551,9 @@ export class PersistenceManager {
 
   async persistSharedRepos(): Promise<void> {
     try {
-      const store = await loadStore("shared_repos.json", {
-        autoSave: true,
-        defaults: { repos: [], activeRepoId: null },
-      });
-
+      const db = await getDatabase();
       const repos: PersistedSharedQueryRepo[] = this.state.sharedRepos.map(serializeRepo);
-
-      await store.set("repos", repos);
-      await store.set("activeRepoId", this.state.activeRepoId);
-      await store.save();
+      await sharedReposRepo.saveAll(db, repos, this.state.activeRepoId);
     } catch (error) {
       console.error("Failed to persist shared repos:", error);
     }
@@ -630,13 +564,8 @@ export class PersistenceManager {
     activeRepoId: string | null;
   }> {
     try {
-      const store = await loadStore("shared_repos.json", {
-        autoSave: false,
-        defaults: { repos: [], activeRepoId: null },
-      });
-      const repos = ((await store.get("repos")) as PersistedSharedQueryRepo[]) || [];
-      const activeRepoId = (await store.get("activeRepoId")) as string | null;
-      return { repos, activeRepoId };
+      const db = await getDatabase();
+      return await sharedReposRepo.loadAll(db);
     } catch (error) {
       console.error("Failed to load shared repos:", error);
       return { repos: [], activeRepoId: null };
@@ -647,24 +576,20 @@ export class PersistenceManager {
 
   async getStorageVersion(): Promise<number> {
     try {
-      const store = await loadStore("app_state.json", {
-        autoSave: false,
-        defaults: {},
-      });
-      return ((await store.get("storageVersion")) as number) || 1;
+      const db = await getDatabase();
+      const rows = await db.query<{ version: number }>(
+        "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
+      );
+      return rows.length > 0 ? rows[0].version : 0;
     } catch {
-      return 1;
+      return 0;
     }
   }
 
   async setStorageVersion(version: number): Promise<void> {
     try {
-      const store = await loadStore("app_state.json", {
-        autoSave: true,
-        defaults: {},
-      });
-      await store.set("storageVersion", version);
-      await store.save();
+      const db = await getDatabase();
+      await db.execute("INSERT INTO schema_version (version) VALUES (?)", [version]);
     } catch (error) {
       console.error("Failed to set storage version:", error);
     }

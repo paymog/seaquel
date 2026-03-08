@@ -1,8 +1,8 @@
-import { load } from "@tauri-apps/plugin-store";
 import { hostname } from "@tauri-apps/plugin-os";
 import { getKeyringService } from "$lib/services/keyring";
 import { activateLicense, validateLicense, deactivateLicense, getUsername } from "$lib/api/tauri";
 import type { LicenseResponse } from "$lib/api/tauri";
+import { getDatabase, licenseRepo } from "$lib/storage";
 
 export type LicenseStatus = "personal" | "active" | "expired" | "invalid";
 export type LicenseTier = "personal" | "individual" | "business";
@@ -17,7 +17,6 @@ interface PersistedLicenseState {
   lastValidatedAt: string | null;
 }
 
-const STORE_FILE = "license.json";
 const REVALIDATION_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
 const RETRY_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -58,12 +57,8 @@ class LicenseStore {
     if (this.initialized) return;
 
     try {
-      const store = await load(STORE_FILE, {
-        autoSave: false,
-        defaults: { state: null },
-      });
-
-      const persisted = (await store.get("state")) as PersistedLicenseState | null;
+      const db = await getDatabase();
+      const persisted = (await licenseRepo.load(db)) as PersistedLicenseState | null;
 
       if (persisted) {
         this.status = persisted.status;
@@ -289,11 +284,7 @@ class LicenseStore {
 
   private async persist(): Promise<void> {
     try {
-      const store = await load(STORE_FILE, {
-        autoSave: true,
-        defaults: { state: null },
-      });
-
+      const db = await getDatabase();
       const state: PersistedLicenseState = {
         status: this.status,
         tier: this.tier,
@@ -303,9 +294,7 @@ class LicenseStore {
         expiresAt: this.expiresAt,
         lastValidatedAt: this.lastValidatedAt,
       };
-
-      await store.set("state", state);
-      await store.save();
+      await licenseRepo.save(db, state);
     } catch (error) {
       console.error("Failed to persist license state:", error);
     }

@@ -1,13 +1,6 @@
-import { load } from "@tauri-apps/plugin-store";
+import { getDatabase, importStateRepo } from "$lib/storage";
 import type { ImportableConnection } from "$lib/types/dbeaver";
 import { discoverDbeaverConnections } from "$lib/services/dbeaver-import";
-
-interface PersistedDbeaverImportState {
-  hasOfferedImport: boolean;
-  lastCheckTimestamp?: string;
-}
-
-const STORE_FILE = "dbeaver_import_state.json";
 
 class DbeaverImportStore {
   // Dialog state
@@ -30,11 +23,8 @@ class DbeaverImportStore {
 
     // Load persisted state
     try {
-      const store = await load(STORE_FILE, {
-        autoSave: false,
-        defaults: { state: null },
-      });
-      const persisted = (await store.get("state")) as PersistedDbeaverImportState | null;
+      const db = await getDatabase();
+      const persisted = await importStateRepo.load(db, "dbeaver");
 
       if (persisted) {
         this.hasOfferedImport = persisted.hasOfferedImport;
@@ -126,18 +116,8 @@ class DbeaverImportStore {
    */
   private async persist(): Promise<void> {
     try {
-      const store = await load(STORE_FILE, {
-        autoSave: true,
-        defaults: { state: null },
-      });
-
-      const state: PersistedDbeaverImportState = {
-        hasOfferedImport: this.hasOfferedImport,
-        lastCheckTimestamp: new Date().toISOString(),
-      };
-
-      await store.set("state", state);
-      await store.save();
+      const db = await getDatabase();
+      await importStateRepo.save(db, "dbeaver", this.hasOfferedImport, new Date().toISOString());
     } catch (error) {
       console.error("Failed to persist DBeaver import state:", error);
     }

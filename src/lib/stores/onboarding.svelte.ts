@@ -1,4 +1,4 @@
-import { load } from "@tauri-apps/plugin-store";
+import { getDatabase, onboardingRepo } from "$lib/storage";
 
 export type UserBackground = "none" | "datagrip" | "dbeaver";
 
@@ -10,8 +10,6 @@ interface PersistedOnboardingState {
   dismissedHints: string[];
   learnEnabled: boolean;
 }
-
-const STORE_FILE = "onboarding_state.json";
 
 class OnboardingStore {
   isFirstRun = $state(true);
@@ -27,12 +25,8 @@ class OnboardingStore {
     if (this.initialized) return;
 
     try {
-      const store = await load(STORE_FILE, {
-        autoSave: false,
-        defaults: { state: null },
-      });
-
-      const persisted = (await store.get("state")) as PersistedOnboardingState | null;
+      const db = await getDatabase();
+      const persisted = (await onboardingRepo.load(db)) as PersistedOnboardingState | null;
 
       if (persisted) {
         this.isFirstRun = persisted.isFirstRun;
@@ -84,11 +78,7 @@ class OnboardingStore {
 
   private async persist(): Promise<void> {
     try {
-      const store = await load(STORE_FILE, {
-        autoSave: true,
-        defaults: { state: null },
-      });
-
+      const db = await getDatabase();
       const state: PersistedOnboardingState = {
         isFirstRun: this.isFirstRun,
         userBackground: this.userBackground,
@@ -97,9 +87,7 @@ class OnboardingStore {
         dismissedHints: this.dismissedHints,
         learnEnabled: this.learnEnabled,
       };
-
-      await store.set("state", state);
-      await store.save();
+      await onboardingRepo.save(db, state);
     } catch (error) {
       console.error("Failed to persist onboarding state:", error);
     }
