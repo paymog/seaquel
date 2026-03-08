@@ -4,6 +4,7 @@
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
 	import { CopyIcon } from "@lucide/svelte";
 	import { m } from "$lib/paraglide/messages.js";
+	import { detectColumnTypes } from "$lib/utils/cell-type";
 
 	interface Props {
 		columns: string[];
@@ -33,6 +34,9 @@
 		onCellRightClick = () => {},
 		compact = false,
 	}: Props = $props();
+
+	// Column type detection for formatted cells
+	const columnTypes = $derived(detectColumnTypes(columns, rows));
 
 	// Virtual scrolling state
 	const ROW_HEIGHT = $derived(compact ? 28 : 37);
@@ -181,6 +185,7 @@
 								<EditableCell
 									value={row[column]}
 									{isEditable}
+									columnType={columnTypes[column]}
 									onSave={(newValue) => onCellSave(rowIndex, column, newValue)}
 								/>
 							</div>

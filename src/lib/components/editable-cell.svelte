@@ -1,14 +1,17 @@
 <script lang="ts">
 	import { Input } from "$lib/components/ui/input";
 	import { LoaderIcon } from "@lucide/svelte";
+	import FormattedCell from "$lib/components/formatted-cell.svelte";
+	import type { CellType } from "$lib/utils/cell-type";
 
 	interface Props {
 		value: unknown;
 		isEditable?: boolean;
+		columnType?: CellType;
 		onSave: (newValue: string) => Promise<void>;
 	}
 
-	let { value, isEditable = false, onSave }: Props = $props();
+	let { value, isEditable = false, columnType = 'text', onSave }: Props = $props();
 
 	let isEditing = $state(false);
 	let editValue = $state('');
@@ -79,20 +82,12 @@
 {:else}
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<span
-		class={isEditable ? "cursor-pointer hover:bg-muted rounded px-1 -mx-1" : ""}
+		class={[isEditable ? "cursor-pointer hover:bg-muted rounded px-1 -mx-1" : "", (columnType === 'integer' || columnType === 'float') && "w-full text-right"]}
 		ondblclick={startEditing}
 		role={isEditable ? "button" : undefined}
 		tabindex={isEditable ? 0 : undefined}
 		onkeydown={(e) => e.key === 'Enter' && startEditing()}
 	>
-		{#if value === null}
-			<span class="text-muted-foreground italic">NULL</span>
-		{:else if value === undefined || value === ''}
-			<span class="text-muted-foreground">&nbsp;</span>
-		{:else if typeof value === 'object'}
-			{JSON.stringify(value)}
-		{:else}
-			{value}
-		{/if}
+		<FormattedCell {value} {columnType} {isEditable} {onSave} />
 	</span>
 {/if}
