@@ -293,6 +293,7 @@
   "params_select_value": "Seleccionar...",
   "sidebar_tab_schema": "Esquema",
   "sidebar_tab_queries": "Consultas",
+  "sidebar_refresh_schema": "Actualizar esquema",
   "sidebar_search_tables": "Buscar tablas...",
   "sidebar_search_queries": "Buscar consultas...",
   "sidebar_no_connection": "Sin conexión activa",

@@ -302,6 +302,7 @@
   "params_select_value": "Select...",
   "sidebar_tab_schema": "Schema",
   "sidebar_tab_queries": "Queries",
+  "sidebar_refresh_schema": "Refresh schema",
   "sidebar_search_tables": "Search tables...",
   "sidebar_search_queries": "Search queries...",
   "sidebar_no_connection": "No active connection",

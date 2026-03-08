@@ -849,6 +849,53 @@ export class ConnectionManager {
   }
 
   /**
+   * Refresh the schema for a connected database (re-fetches tables/columns/indexes).
+   */
+  async refreshSchema(connectionId: string): Promise<void> {
+    const connection = this.state.connections.find((c) => c.id === connectionId);
+    if (!connection) {
+      throw new Error("Connection not found");
+    }
+
+    const { providerConnectionId, mssqlConnectionId } = connection;
+    if (!providerConnectionId && !mssqlConnectionId) {
+      throw new Error("Connection is not active");
+    }
+
+    const adapter = getAdapter(connection.type);
+
+    let schemasWithTablesDbResult: unknown[];
+    if (connection.type === "mssql" && mssqlConnectionId) {
+      const result = await mssqlQuery(mssqlConnectionId, adapter.getSchemaQuery());
+      schemasWithTablesDbResult = result.rows;
+    } else if (providerConnectionId) {
+      const provider = await this.providers.getForType(connection.type);
+      schemasWithTablesDbResult = await provider.select(
+        providerConnectionId,
+        adapter.getSchemaQuery(),
+      );
+    } else {
+      throw new Error("No connection established");
+    }
+
+    const schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
+
+    this.state.schemas = {
+      ...this.state.schemas,
+      [connectionId]: schemasWithTables,
+    };
+
+    // Reload column metadata in the background
+    this.onSchemaLoaded(
+      connectionId,
+      schemasWithTables,
+      adapter,
+      providerConnectionId,
+      mssqlConnectionId,
+    );
+  }
+
+  /**
    * Toggle connection state (disconnect if connected).
    */
   async toggle(id: string): Promise<void> {

@@ -293,6 +293,7 @@
   "params_select_value": "اختر...",
   "sidebar_tab_schema": "المخطط",
   "sidebar_tab_queries": "الاستعلامات",
+  "sidebar_refresh_schema": "تحديث المخطط",
   "sidebar_search_tables": "البحث في الجداول...",
   "sidebar_search_queries": "البحث في الاستعلامات...",
   "sidebar_no_connection": "لا يوجد اتصال نشط",

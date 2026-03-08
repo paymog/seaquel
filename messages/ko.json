@@ -293,6 +293,7 @@
   "params_select_value": "선택...",
   "sidebar_tab_schema": "스키마",
   "sidebar_tab_queries": "쿼리",
+  "sidebar_refresh_schema": "스키마 새로 고침",
   "sidebar_search_tables": "테이블 검색...",
   "sidebar_search_queries": "쿼리 검색...",
   "sidebar_no_connection": "활성 연결 없음",

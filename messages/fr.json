@@ -293,6 +293,7 @@
   "params_select_value": "Sélectionner...",
   "sidebar_tab_schema": "Schéma",
   "sidebar_tab_queries": "Requêtes",
+  "sidebar_refresh_schema": "Actualiser le schéma",
   "sidebar_search_tables": "Rechercher des tables...",
   "sidebar_search_queries": "Rechercher des requêtes...",
   "sidebar_no_connection": "Aucune connexion active",

@@ -7,7 +7,7 @@
 	import { Button } from "$lib/components/ui/button";
 	import { Input } from "$lib/components/ui/input";
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
-	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon } from "@lucide/svelte";
+	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon } from "@lucide/svelte";
 	import { SharedQueryLibrary } from "$lib/components/shared-queries";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -36,6 +36,7 @@
 	let sharedExpanded = $state(true);
 	let searchQuery = $state("");
 	let schemaSearchQuery = $state("");
+	let isRefreshingSchema = $state(false);
 
 	// Remove connection confirmation dialog state
 	let showRemoveDialog = $state(false);
@@ -75,6 +76,18 @@
 		});
 		return grouped;
 	});
+
+	const handleRefreshSchema = async () => {
+		if (!db.state.activeConnectionId || isRefreshingSchema) return;
+		isRefreshingSchema = true;
+		try {
+			await db.connections.refreshSchema(db.state.activeConnectionId);
+		} catch (error) {
+			console.error("Failed to refresh schema:", error);
+		} finally {
+			isRefreshingSchema = false;
+		}
+	};
 
 	const handleTableClick = (table: (typeof db.state.activeSchema)[0]) => {
 		db.schemaTabs.add(table);
@@ -316,13 +329,25 @@
 			inert={sidebarTab !== "schema" ? true : undefined}
 		>
 			<div class="px-4 py-2">
-				<div class="relative">
-					<SearchIcon class="absolute start-2 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-					<Input
-						bind:value={schemaSearchQuery}
-						placeholder={m.sidebar_search_tables()}
-						class="ps-8 h-8 text-sm"
-					/>
+				<div class="flex items-center gap-1">
+					<div class="relative flex-1">
+						<SearchIcon class="absolute start-2 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+						<Input
+							bind:value={schemaSearchQuery}
+							placeholder={m.sidebar_search_tables()}
+							class="ps-8 h-8 text-sm"
+						/>
+					</div>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Button {...props} variant="ghost" size="icon" class="size-8 shrink-0" onclick={handleRefreshSchema} disabled={isRefreshingSchema}>
+									<RefreshCwIcon class={["size-4", isRefreshingSchema && "animate-spin"]} />
+								</Button>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>{m.sidebar_refresh_schema()}</Tooltip.Content>
+					</Tooltip.Root>
 				</div>
 			</div>
 			<Sidebar.Group>
