@@ -34,7 +34,7 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
     // Try loading the legacy storage module
     const { loadStore } = await import("./legacy");
 
-    // Check if any legacy data exists by trying to load projects
+    // Check if any legacy data exists by trying to load projects and connections
     let hasLegacyData = false;
 
     // === Projects ===
@@ -50,6 +50,25 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
       }
     } catch {
       // No projects file
+    }
+
+    // === Connections ===
+    let connectionIds: string[] = [];
+    try {
+      const connStore = await loadStore("database_connections.json", {
+        autoSave: false,
+        defaults: { connections: [] },
+      });
+      const connections = (await connStore.get("connections")) as PersistedConnection[] | null;
+      if (connections && connections.length > 0) {
+        hasLegacyData = true;
+        for (const conn of connections) {
+          await connectionsRepo.save(db, conn);
+          connectionIds.push(conn.id);
+        }
+      }
+    } catch {
+      // No connections file
     }
 
     if (!hasLegacyData) {
@@ -72,24 +91,6 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
       }
     } catch {
       // No app state file
-    }
-
-    // === Connections ===
-    let connectionIds: string[] = [];
-    try {
-      const connStore = await loadStore("database_connections.json", {
-        autoSave: false,
-        defaults: { connections: [] },
-      });
-      const connections = (await connStore.get("connections")) as PersistedConnection[] | null;
-      if (connections && connections.length > 0) {
-        for (const conn of connections) {
-          await connectionsRepo.save(db, conn);
-          connectionIds.push(conn.id);
-        }
-      }
-    } catch {
-      // No connections file
     }
 
     // === Project States (dynamic filenames) ===

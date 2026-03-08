@@ -12,6 +12,7 @@
     import PlusIcon from "@lucide/svelte/icons/plus";
     import BotIcon from "@lucide/svelte/icons/bot";
     import NetworkIcon from "@lucide/svelte/icons/network";
+    import SettingsIcon from "@lucide/svelte/icons/settings";
     import ThemeToggle from "./theme-toggle.svelte";
     import LanguageToggle from "./language-toggle.svelte";
     import { m } from "$lib/paraglide/messages.js";
@@ -181,6 +182,15 @@
             {/if}
             <LanguageToggle />
             <ThemeToggle />
+            <Button
+                size="icon"
+                variant="ghost"
+                class="size-8"
+                aria-label="Settings"
+                onclick={() => settingsDialogStore.open()}
+            >
+                <SettingsIcon class="size-5" />
+            </Button>
         </div>
     </div>
 </header>

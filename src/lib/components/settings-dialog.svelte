@@ -51,6 +51,11 @@ import { errorToast } from "$lib/utils/toast";
 	import { goto } from "$app/navigation";
 	import { resolve } from "$app/paths";
 	import { page } from "$app/state";
+	import { useDatabase } from "$lib/hooks/database.svelte.js";
+	import { getDataDir } from "$lib/api/tauri";
+	import DatabaseIcon from "@lucide/svelte/icons/database";
+
+	const db = useDatabase();
 
 	// App info state
 	let appVersion = $state<string>("");
@@ -306,6 +311,39 @@ import { errorToast } from "$lib/utils/toast";
 		}
 	}
 
+	// Internal database connection
+	let isConnectingInternal = $state(false);
+
+	async function connectToInternalDatabase() {
+		isConnectingInternal = true;
+		try {
+			const existing = db.state.projects.find((p) => p.name === "Seaquel Internal");
+			if (existing) {
+				await db.projects.setActive(existing.id);
+			} else {
+				const dataDir = await getDataDir();
+				const dbPath = `${dataDir}/seaquel.db`;
+				const project = await db.projects.add("Seaquel Internal");
+				await db.connections.add({
+					name: "Internal Database",
+					type: "sqlite",
+					host: "",
+					port: 0,
+					databaseName: dbPath,
+					username: "",
+					password: "",
+					connectionString: `sqlite://${dbPath}`,
+					projectId: project.id,
+				});
+			}
+			settingsDialogStore.close();
+		} catch (error) {
+			errorToast(`Failed to connect: ${error instanceof Error ? error.message : String(error)}`);
+		} finally {
+			isConnectingInternal = false;
+		}
+	}
+
 	// Theme display helpers
 	const lightThemeLabel = $derived(themeStore.selectedLightTheme.name);
 	const darkThemeLabel = $derived(themeStore.selectedDarkTheme.name);
@@ -408,6 +446,16 @@ import { errorToast } from "$lib/utils/toast";
 									<span class="font-mono text-xs break-all select-all">{dataPath || "..."}</span>
 								</div>
 							</div>
+
+							<Button
+								variant="outline"
+								size="sm"
+								onclick={connectToInternalDatabase}
+								disabled={isConnectingInternal}
+							>
+								<DatabaseIcon class="size-4 mr-1" />
+								Connect to Internal Database
+							</Button>
 						</div>
 					{/if}
 
