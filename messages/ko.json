@@ -93,6 +93,8 @@
   "header_add_new_connection": "새 연결 추가",
   "header_view_erd": "ERD 보기",
   "header_toggle_ai": "AI 어시스턴트 전환",
+  "header_settings": "설정",
+  "header_change_language": "언어 변경",
   "header_delete_dialog_title": "연결 삭제",
   "header_delete_dialog_description": "\"{name}\"을(를) 삭제하시겠습니까? 저장된 연결과 모든 관련 데이터가 삭제됩니다.",
   "header_button_cancel": "취소",

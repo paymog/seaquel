@@ -93,6 +93,8 @@
   "header_add_new_connection": "Neue Verbindung hinzufügen",
   "header_view_erd": "ERD anzeigen",
   "header_toggle_ai": "KI-Assistent umschalten",
+  "header_settings": "Einstellungen",
+  "header_change_language": "Sprache ändern",
   "header_delete_dialog_title": "Verbindung löschen",
   "header_delete_dialog_description": "Möchten Sie \"{name}\" wirklich löschen? Dies löscht die gespeicherte Verbindung und alle zugehörigen Daten.",
   "header_button_cancel": "Abbrechen",

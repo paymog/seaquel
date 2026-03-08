@@ -211,21 +211,22 @@
                 <Button
                     size="icon"
                     variant="ghost"
-                    class="size-8"
+                    class="size-6"
                     title={m.header_view_erd()}
                     aria-label={m.header_view_erd()}
                     onclick={() => db.erdTabs.add()}
                 >
-                    <NetworkIcon class="size-5" />
+                    <NetworkIcon class="size-3.5" />
                 </Button>
                 <Button
                     size="icon"
                     variant="ghost"
-                    class="size-8"
+                    class="size-6"
+                    title={m.header_toggle_ai()}
                     aria-label={m.header_toggle_ai()}
                     onclick={() => db.ui.toggleAI()}
                 >
-                    <BotIcon class="size-5" />
+                    <BotIcon class="size-3.5" />
                 </Button>
             {/if}
             <LanguageToggle />
@@ -236,10 +237,11 @@
                             {...props}
                             size="icon"
                             variant="ghost"
-                            class="size-8"
-                            aria-label="Settings"
+                            class="size-6"
+                            title={m.header_settings()}
+                            aria-label={m.header_settings()}
                         >
-                            <SettingsIcon class="size-5" />
+                            <SettingsIcon class="size-3.5" />
                         </Button>
                     {/snippet}
                 </DropdownMenu.Trigger>

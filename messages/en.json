@@ -93,6 +93,8 @@
   "header_add_new_connection": "Add new connection",
   "header_view_erd": "View ERD",
   "header_toggle_ai": "Toggle AI Assistant",
+  "header_settings": "Settings",
+  "header_change_language": "Change language",
   "header_delete_dialog_title": "Delete Connection",
   "header_delete_dialog_description": "Are you sure you want to delete \"{name}\"? This will delete the saved connection and all associated data.",
   "header_button_cancel": "Cancel",

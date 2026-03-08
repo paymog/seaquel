@@ -93,6 +93,8 @@
   "header_add_new_connection": "Agregar nueva conexión",
   "header_view_erd": "Ver ERD",
   "header_toggle_ai": "Alternar asistente de IA",
+  "header_settings": "Configuración",
+  "header_change_language": "Cambiar idioma",
   "header_delete_dialog_title": "Eliminar conexión",
   "header_delete_dialog_description": "¿Estás seguro de que deseas eliminar \"{name}\"? Esto eliminará la conexión guardada y todos los datos asociados.",
   "header_button_cancel": "Cancelar",

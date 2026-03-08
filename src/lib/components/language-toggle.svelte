@@ -5,6 +5,7 @@
     import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
     import { buttonVariants } from "$lib/components/ui/button/index.js";
     import { locales, getLocale, setLocale } from "$lib/paraglide/runtime";
+    import { m } from "$lib/paraglide/messages.js";
 
     // Strongly typed: TS will error if a new locale is added but not mapped here
     const languages: Record<(typeof locales)[number], { name: string; flag: string }> = {
@@ -19,10 +20,11 @@
 
 <DropdownMenu.Root>
     <DropdownMenu.Trigger
-        class={buttonVariants({ variant: "ghost", size: "icon" })}
+        class="{buttonVariants({ variant: 'ghost', size: 'icon' })} !size-6"
+        title={m.header_change_language()}
     >
-        <GlobeIcon class="h-[1.2rem] w-[1.2rem]" />
-        <span class="sr-only">Change language</span>
+        <GlobeIcon class="size-3.5" />
+        <span class="sr-only">{m.header_change_language()}</span>
     </DropdownMenu.Trigger>
     <DropdownMenu.Content align="end">
         {#each locales as locale (locale)}

@@ -93,6 +93,8 @@
   "header_add_new_connection": "إضافة اتصال جديد",
   "header_view_erd": "عرض ERD",
   "header_toggle_ai": "تبديل مساعد الذكاء الاصطناعي",
+  "header_settings": "الإعدادات",
+  "header_change_language": "تغيير اللغة",
   "header_delete_dialog_title": "حذف الاتصال",
   "header_delete_dialog_description": "هل أنت متأكد من حذف \"{name}\"؟ سيؤدي هذا إلى حذف الاتصال المحفوظ وجميع البيانات المرتبطة به.",
   "header_button_cancel": "إلغاء",
