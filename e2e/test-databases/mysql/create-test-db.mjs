@@ -25,6 +25,7 @@ const [rows] = await connection.query(`
     UNION ALL SELECT 'users', COUNT(*) FROM users
     UNION ALL SELECT 'orders', COUNT(*) FROM orders
     UNION ALL SELECT 'order_items', COUNT(*) FROM order_items
+    UNION ALL SELECT 'all_types', COUNT(*) FROM all_types
   `);
 
 for (const { tbl, cnt } of rows) {

@@ -2,6 +2,7 @@
 -- This script creates and populates a test database for end-to-end tests
 
 -- Drop tables if they exist
+DROP TABLE IF EXISTS all_types;
 DROP TABLE IF EXISTS order_items;
 DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS products;
@@ -1878,6 +1879,52 @@ INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES
     (500, 20, 3, 49.99),
     (500, 5, 2, 449.99),
     (500, 4, 1, 149.99);
+
+-- All types table (regression coverage for every SQLite type affinity)
+CREATE TABLE all_types (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    col_integer INTEGER,
+    col_real REAL,
+    col_text TEXT,
+    col_blob BLOB,
+    col_numeric NUMERIC,
+    col_boolean BOOLEAN,
+    col_date DATE,
+    col_datetime DATETIME,
+    col_timestamp TIMESTAMP,
+    col_decimal DECIMAL(10,2),
+    col_varchar VARCHAR(255),
+    col_char CHAR(10),
+    col_clob CLOB,
+    col_float FLOAT,
+    col_double DOUBLE,
+    col_smallint SMALLINT,
+    col_mediumint MEDIUMINT,
+    col_bigint BIGINT,
+    col_tinyint TINYINT,
+    col_int2 INT2,
+    col_int8 INT8,
+    col_unsigned_big_int UNSIGNED BIG INT,
+    col_native_character NATIVE CHARACTER(70),
+    col_nchar NCHAR(55),
+    col_nvarchar NVARCHAR(100)
+);
+
+INSERT INTO all_types (
+    col_integer, col_real, col_text, col_blob, col_numeric, col_boolean,
+    col_date, col_datetime, col_timestamp, col_decimal,
+    col_varchar, col_char, col_clob,
+    col_float, col_double,
+    col_smallint, col_mediumint, col_bigint, col_tinyint, col_int2, col_int8,
+    col_unsigned_big_int, col_native_character, col_nchar, col_nvarchar
+) VALUES (
+    42, 3.14, 'hello world', X'DEADBEEF', 123.456, 1,
+    '2026-03-08', '2026-03-08 12:30:00', '2026-03-08 12:30:00', 99999.99,
+    'variable length string', 'fixed     ', 'large text content',
+    2.718, 1.41421356,
+    32000, 8388607, 9223372036854775807, 127, 255, 1024,
+    18446744073709551615, 'native character data', 'nchar data', 'nvarchar data'
+);
 
 -- Create indexes
 CREATE INDEX idx_products_category ON products(category_id);
