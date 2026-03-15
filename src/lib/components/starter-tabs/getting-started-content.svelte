@@ -71,22 +71,23 @@
 		</div>
 
 		<!-- Quick Actions -->
-		<div class="flex flex-col gap-3">
+		<div class="flex flex-col items-center gap-4">
 			{#if features.newConnections}
-				<Button size="lg" class="w-full" onclick={() => connectionDialogStore.open()}>
-					<PlusIcon class="size-4 me-2" />
+				<Button size="lg" onclick={() => connectionDialogStore.open()}>
+					<PlusIcon class="size-4" />
 					{m.starter_add_connection()}
 				</Button>
 			{/if}
 			{#if isTauri()}
-				<Button size="lg" variant="outline" class="w-full" onclick={handleImportDbeaver}>
-					<DownloadIcon class="size-4 me-2" />
-					{m.starter_import_dbeaver()}
-				</Button>
-				<Button size="lg" variant="outline" class="w-full" onclick={handleImportTablePlus}>
-					<DownloadIcon class="size-4 me-2" />
-					{m.starter_import_tableplus()}
-				</Button>
+				<div class="flex items-center gap-3 text-sm text-muted-foreground">
+					<button class="hover:text-foreground transition-colors cursor-pointer" onclick={handleImportDbeaver}>
+						{m.starter_import_dbeaver()}
+					</button>
+					<span class="text-muted-foreground/50">|</span>
+					<button class="hover:text-foreground transition-colors cursor-pointer" onclick={handleImportTablePlus}>
+						{m.starter_import_tableplus()}
+					</button>
+				</div>
 			{/if}
 		</div>
 
