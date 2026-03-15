@@ -6,5 +6,6 @@ pre-commit:
       run: npm run lint {staged_files}
       stage_fixed: true
     format:
+      glob: "*.{js,jsx,ts,tsx,mjs,cjs,json,css,html}"
       run: npm run format {staged_files}
       stage_fixed: true
