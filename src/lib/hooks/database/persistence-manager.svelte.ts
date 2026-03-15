@@ -331,6 +331,15 @@ export class PersistenceManager {
     }
   }
 
+  async removeProject(projectId: string): Promise<void> {
+    try {
+      const db = await getDatabase();
+      await projectsRepo.remove(db, projectId);
+    } catch (error) {
+      console.error(`Failed to remove project ${projectId}:`, error);
+    }
+  }
+
   // === CONNECTION DATA PERSISTENCE (history, saved queries) ===
 
   async persistConnectionData(connectionId: string): Promise<void> {

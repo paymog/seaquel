@@ -128,12 +128,12 @@ export class ProjectManager {
       }
     }
 
-    // Remove project state
+    // Remove project and its state from database
     await this.persistence.removeProjectState(id);
+    await this.persistence.removeProject(id);
 
-    // Remove from state
+    // Remove from in-memory state
     this.state.projects = this.state.projects.filter((p) => p.id !== id);
-    await this.persistence.persistProjects();
 
     // Switch active project if needed
     if (this.state.activeProjectId === id) {

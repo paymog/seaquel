@@ -37,7 +37,7 @@
 
 			// Add x-axis value
 			if (data.chartConfig.xAxis) {
-				item.x = row[data.chartConfig.xAxis];
+				item.x = row[data.chartConfig.xAxis] ?? `Row ${index + 1}`;
 			} else {
 				item.x = `Row ${index + 1}`;
 			}

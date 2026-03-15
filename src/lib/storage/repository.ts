@@ -52,8 +52,12 @@ export const projectsRepo = {
 
   async save(db: SqliteDatabase, project: PersistedProject): Promise<void> {
     await db.execute(
-      `INSERT OR REPLACE INTO projects (id, name, description, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO projects (id, name, description, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         description = excluded.description,
+         updated_at = excluded.updated_at`,
       [project.id, project.name, project.description ?? null, project.createdAt, project.updatedAt],
     );
 
@@ -149,11 +153,26 @@ export const connectionsRepo = {
 
   async save(db: SqliteDatabase, conn: PersistedConnection): Promise<void> {
     await db.execute(
-      `INSERT OR REPLACE INTO connections
+      `INSERT INTO connections
        (id, project_id, name, type, host, port, database_name, username, ssl_mode,
         connection_string, last_connected, ssh_tunnel, save_password, save_ssh_password,
         save_ssh_key_passphrase)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         project_id = excluded.project_id,
+         name = excluded.name,
+         type = excluded.type,
+         host = excluded.host,
+         port = excluded.port,
+         database_name = excluded.database_name,
+         username = excluded.username,
+         ssl_mode = excluded.ssl_mode,
+         connection_string = excluded.connection_string,
+         last_connected = excluded.last_connected,
+         ssh_tunnel = excluded.ssh_tunnel,
+         save_password = excluded.save_password,
+         save_ssh_password = excluded.save_ssh_password,
+         save_ssh_key_passphrase = excluded.save_ssh_key_passphrase`,
       [
         conn.id,
         conn.projectId,

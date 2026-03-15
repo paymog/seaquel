@@ -23,8 +23,11 @@ import { m } from "$lib/paraglide/messages.js";
 
 	const handleQueryTable = () => {
 		if (!db.state.activeSchemaTab?.table) return;
-		db.queryTabs.add(`Query ${db.state.activeSchemaTab.table.name}`, `SELECT * FROM ${db.state.activeSchemaTab.table.schema}.${db.state.activeSchemaTab.table.name} LIMIT 100;`);
+		const tabId = db.queryTabs.add(`Query ${db.state.activeSchemaTab.table.name}`, `SELECT * FROM ${db.state.activeSchemaTab.table.schema}.${db.state.activeSchemaTab.table.name} LIMIT 100;`);
 		db.ui.setActiveView("query");
+		if (tabId) {
+			db.queries.execute(tabId);
+		}
 	};
 
 	const handleAddRow = () => {

@@ -22,7 +22,7 @@
 
 			// Add x-axis value
 			if (chartConfig.xAxis) {
-				item.x = row[chartConfig.xAxis];
+				item.x = row[chartConfig.xAxis] ?? `Row ${index + 1}`;
 			} else {
 				item.x = `Row ${index + 1}`;
 			}
