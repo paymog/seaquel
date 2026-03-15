@@ -33,8 +33,28 @@
     // For editing query tab names
     let editingTabId = $state<string | null>(null);
     let editingTabName = $state("");
+    let editingInitialWidth = $state(0);
+    let editingFont = $state("");
 
-    const startEditing = (tabId: string, currentName: string) => {
+    const autofocus = () => (el: HTMLInputElement) => {
+        el.focus();
+        el.select();
+    };
+
+    const measureTextWidth = (text: string, font: string) => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d")!;
+        ctx.font = font;
+        return ctx.measureText(text).width;
+    };
+
+    const editingInputWidth = $derived(
+        Math.max(editingInitialWidth, measureTextWidth(editingTabName, editingFont) + 22)
+    );
+
+    const startEditing = (tabId: string, currentName: string, spanEl: HTMLElement) => {
+        editingInitialWidth = spanEl.offsetWidth;
+        editingFont = getComputedStyle(spanEl).font;
         editingTabId = tabId;
         editingTabName = currentName;
     };
@@ -359,7 +379,7 @@
         <div class="flex items-center gap-1 h-full min-w-0">
             <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide">
                 <div
-                    class="flex items-center gap-1 w-max"
+                    class="flex items-center gap-2 w-max"
                     use:dndzone={{
                         items: displayTabs,
                         flipDurationMs,
@@ -388,19 +408,21 @@
                                     >
                                         <FileCodeIcon class="size-3 text-muted-foreground" />
                                         {#if editingTabId === id}
-                                            <Input
+                                            <input
                                                 bind:value={editingTabName}
-                                                class="h-5 px-1 text-xs w-24"
-                                                onblur={finishEditing}
+                                                class="h-5 px-1 text-xs pr-4 outline-none ring-0"
+                                                style="width: {editingInputWidth}px"
                                                 onkeydown={handleKeydown}
+                                                onblur={finishEditing}
                                                 onclick={(e) => e.stopPropagation()}
+                                                {@attach autofocus()}
                                             />
                                         {:else}
                                             <span
                                                 class="pr-4"
                                                 ondblclick={(e) => {
                                                     e.stopPropagation();
-                                                    startEditing(id, queryTab.name);
+                                                    startEditing(id, queryTab.name, e.currentTarget);
                                                 }}
                                             >
                                                 {queryTab.name}{db.queryTabs.hasUnsavedChanges(id) ? " *" : ""}

@@ -47,7 +47,7 @@
 <SidebarLeft />
 
 <SidebarInset class="flex flex-col h-full overflow-hidden">
-    <div class="h-8 flex items-center border-b shrink-0">
+    <div class="h-8 flex items-center border-b shrink-0 pl-2">
         <HeaderTabs />
     </div>
     {#if db.state.connectionsLoading || db.state.projectsLoading}
