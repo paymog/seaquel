@@ -16,7 +16,6 @@
 	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 	import { m } from "$lib/paraglide/messages.js";
 	import { isDemo, getFeatures } from "$lib/features";
-	import { connectionDialogStore } from "$lib/stores/connection-dialog.svelte.js";
 	import ConnectionLabelPicker from "$lib/components/connection-label-picker.svelte";
 
 	interface Props {
@@ -120,7 +119,7 @@
 			}
 
 			// Fall back to dialog if auto-reconnect fails or password not saved
-			connectionDialogStore.open({
+			void db.connectionTabs.open({
 				id: connection.id,
 				name: connection.name,
 				type: connection.type,
@@ -179,7 +178,7 @@
 						size="icon"
 						variant="ghost"
 						class="size-5 [&_svg:not([class*='size-'])]:size-3"
-						onclick={() => connectionDialogStore.open()}
+						onclick={() => void db.connectionTabs.open()}
 						title={m.sidebar_connections_add()}
 					>
 						<PlusIcon />
@@ -270,7 +269,7 @@
 										</ContextMenu.Item>
 									{/if}
 									<ContextMenu.Separator />
-									<ContextMenu.Item onclick={() => connectionDialogStore.open(connection, "edit")}>
+									<ContextMenu.Item onclick={() => void db.connectionTabs.open(connection, "edit")}>
 										<PencilIcon class="size-4 me-2" />
 										{m.sidebar_connection_edit()}
 									</ContextMenu.Item>

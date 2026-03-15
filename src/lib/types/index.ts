@@ -43,6 +43,9 @@ export type { ExplainPlanNode, ExplainResult, ExplainTab } from "./explain";
 // ERD types
 export type { ErdTab } from "./erd";
 
+// Connection tab types
+export type { ConnectionTab, ConnectionTabMode, ConnectionFormData } from "./connection-tab";
+
 // Chart types
 export type { ChartType, ChartConfig, ResultViewMode } from "./chart";
 
@@ -85,6 +88,7 @@ export type {
   PersistedQueryParameter,
   PersistedSavedQuery,
   PersistedQueryHistoryItem,
+  PersistedConnectionTab,
   PersistedConnectionState,
   ActiveViewType,
 } from "./persisted";

@@ -128,4 +128,8 @@ export interface PersistedProjectState {
   activeStarterTabId?: string | null;
   /** Saved canvases for this project */
   savedCanvases?: import("./canvas").SavedCanvas[];
+  /** Connection tabs (transient, not restored) */
+  connectionTabs?: import("./persisted").PersistedConnectionTab[];
+  /** Active connection tab ID (transient, not restored) */
+  activeConnectionTabId?: string | null;
 }

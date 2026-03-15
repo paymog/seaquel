@@ -10,7 +10,6 @@
 	import Trash2Icon from "@lucide/svelte/icons/trash-2";
 	import type { DatabaseConnection } from "$lib/types";
 	import { formatRelativeTime } from "$lib/utils.js";
-	import { connectionDialogStore } from "$lib/stores/connection-dialog.svelte.js";
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
 	import { m } from "$lib/paraglide/messages.js";
 	import { isFeatureEnabled } from "$lib/features";
@@ -37,7 +36,7 @@
 			}
 
 			// Fall back to dialog if auto-reconnect fails or password not saved
-			connectionDialogStore.open({
+			void db.connectionTabs.open({
 				id: connection.id,
 				name: connection.name,
 				type: connection.type,
@@ -57,7 +56,7 @@
 
 	const handleEdit = (e: Event) => {
 		e.stopPropagation();
-		connectionDialogStore.open(
+		void db.connectionTabs.open(
 			{
 				id: connection.id,
 				name: connection.name,

@@ -7,7 +7,7 @@
     import { isTauri } from "$lib/utils/environment";
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
-    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, LayoutGridIcon, GitBranchIcon } from "@lucide/svelte";
+    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, LayoutGridIcon, GitBranchIcon, CableIcon } from "@lucide/svelte";
     import { RocketIcon } from "@lucide/svelte";
     import { useDatabase } from "$lib/hooks/database.svelte.js";
     import { useShortcuts, findShortcut } from "$lib/shortcuts/index.js";
@@ -17,7 +17,7 @@
     import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
     import BatchUnsavedDialog from "$lib/components/batch-unsaved-dialog.svelte";
     import SaveQueryDialog from "$lib/components/save-query-dialog.svelte";
-    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, CanvasTab, VisualizeTab } from "$lib/types";
+    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, CanvasTab, VisualizeTab, ConnectionTab } from "$lib/types";
 
     const db = useDatabase();
     const shortcuts = useShortcuts();
@@ -123,6 +123,11 @@
         db.ui.setActiveView("visualize");
     };
 
+    const handleConnectionTabClick = (tabId: string) => {
+        db.connectionTabs.setActive(tabId);
+        db.ui.setActiveView("connection");
+    };
+
     // Get ordered tabs from db (uses custom order with timestamp fallback)
     const allTabs = $derived.by(() => {
         const ordered = db.tabs.ordered;
@@ -131,7 +136,8 @@
 
     // Drag and drop configuration
     const flipDurationMs = 150;
-    type DndItem = { id: string; type: 'query' | 'schema' | 'explain' | 'erd' | 'statistics' | 'canvas' | 'visualize'; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | CanvasTab | VisualizeTab };
+    type TabType = 'query' | 'schema' | 'explain' | 'erd' | 'statistics' | 'canvas' | 'visualize' | 'connection';
+    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | CanvasTab | VisualizeTab | import('$lib/types').ConnectionTab };
 
     // State for dragging
     let draggedItems = $state<DndItem[]>([]);
@@ -173,6 +179,9 @@
         if (db.state.activeView === 'visualize' && db.state.activeVisualizeTabId) {
             return allTabs.findIndex(t => t.type === 'visualize' && t.id === db.state.activeVisualizeTabId);
         }
+        if (db.state.activeView === 'connection' && db.state.activeConnectionTabId) {
+            return allTabs.findIndex(t => t.type === 'connection' && t.id === db.state.activeConnectionTabId);
+        }
         return -1;
     });
 
@@ -193,6 +202,9 @@
             handleCanvasTabClick(tab.id);
         } else if (tab.type === 'visualize') {
             handleVisualizeTabClick(tab.id);
+        } else if (tab.type === 'connection') {
+            db.connectionTabs.setActive(tab.id);
+            db.ui.setActiveView('connection');
         }
     };
 
@@ -202,11 +214,11 @@
     let showSaveDialogForClose = $state(false);
 
     // Batch close dialog state
-    let pendingBatchCloseTabs = $state<{id: string, type: 'query' | 'schema' | 'explain' | 'erd' | 'statistics' | 'canvas' | 'visualize'}[]>([]);
+    let pendingBatchCloseTabs = $state<{id: string, type: TabType}[]>([]);
     let unsavedTabsInBatch = $state<string[]>([]);
     let showBatchUnsavedDialog = $state(false);
 
-    const closeTabDirect = (id: string, type: 'query' | 'schema' | 'explain' | 'erd' | 'statistics' | 'canvas' | 'visualize') => {
+    const closeTabDirect = (id: string, type: TabType) => {
         if (type === 'query') db.queryTabs.remove(id);
         else if (type === 'schema') db.schemaTabs.remove(id);
         else if (type === 'explain') db.explainTabs.remove(id);
@@ -214,6 +226,7 @@
         else if (type === 'statistics') db.statisticsTabs.remove(id);
         else if (type === 'canvas') db.canvasTabs.remove(id);
         else if (type === 'visualize') db.visualizeTabs.remove(id);
+        else if (type === 'connection') db.connectionTabs.remove(id);
     };
 
     const tryCloseQueryTab = (tabId: string) => {
@@ -248,7 +261,7 @@
         showSaveDialogForClose = false;
     };
 
-    const tryBatchClose = (tabsToClose: {id: string, type: 'query' | 'schema' | 'explain' | 'erd' | 'statistics' | 'canvas' | 'visualize'}[]) => {
+    const tryBatchClose = (tabsToClose: {id: string, type: TabType}[]) => {
         const unsaved = tabsToClose
             .filter(t => t.type === 'query' && db.queryTabs.hasUnsavedChanges(t.id))
             .map(t => t.id);
@@ -288,10 +301,12 @@
             db.canvasTabs.remove(db.state.activeCanvasTabId);
         } else if (db.state.activeView === 'visualize' && db.state.activeVisualizeTabId) {
             db.visualizeTabs.remove(db.state.activeVisualizeTabId);
+        } else if (db.state.activeView === 'connection' && db.state.activeConnectionTabId) {
+            db.connectionTabs.remove(db.state.activeConnectionTabId);
         }
     };
 
-    const closeTab = (id: string, type: 'query' | 'schema' | 'explain' | 'erd' | 'statistics' | 'canvas' | 'visualize') => {
+    const closeTab = (id: string, type: TabType) => {
         if (type === 'query') tryCloseQueryTab(id);
         else if (type === 'schema') db.schemaTabs.remove(id);
         else if (type === 'explain') db.explainTabs.remove(id);
@@ -299,6 +314,7 @@
         else if (type === 'statistics') db.statisticsTabs.remove(id);
         else if (type === 'canvas') db.canvasTabs.remove(id);
         else if (type === 'visualize') db.visualizeTabs.remove(id);
+        else if (type === 'connection') db.connectionTabs.remove(id);
     };
 
     const closeOtherTabs = (id: string) => {
@@ -686,6 +702,45 @@
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
+                        {:else if type === 'connection'}
+                            {@const connectionTab = tab as ConnectionTab}
+                            <ContextMenu.Root>
+                                <ContextMenu.Trigger>
+                                    <div
+                                        class={[
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
+                                            activeTabType === "connection" && db.state.activeConnectionTabId === id
+                                                ? "bg-muted shadow-sm"
+                                                : "hover:bg-muted/50",
+                                        ]}
+                                        onclick={() => handleConnectionTabClick(id)}
+                                    >
+                                        <CableIcon class="size-3 text-muted-foreground" />
+                                        <span class="pr-4">{connectionTab.name}</span>
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
+                                            onclick={(e) => {
+                                                e.stopPropagation();
+                                                db.connectionTabs.remove(id);
+                                            }}
+                                        >
+                                            <XIcon />
+                                        </Button>
+                                    </div>
+                                </ContextMenu.Trigger>
+                                <ContextMenu.Portal>
+                                    <ContextMenu.Content class="w-40">
+                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
+                                        <ContextMenu.Separator />
+                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                    </ContextMenu.Content>
+                                </ContextMenu.Portal>
+                            </ContextMenu.Root>
                         {/if}
                         </div>
                     {/each}
@@ -718,7 +773,7 @@
             </Tooltip.Root>
         </div>
     {:else}
-        <!-- No active connection - show starter tabs -->
+        <!-- No active connection - show starter tabs + any connection tabs -->
         <div class="flex items-center gap-1 h-full min-w-0">
             <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide">
                 <div class="flex items-center gap-1 w-max">
@@ -727,11 +782,14 @@
                         <div
                             class={[
                                 "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors cursor-pointer",
-                                db.state.activeStarterTabId === starterTab.id
+                                db.state.activeView !== "connection" && db.state.activeStarterTabId === starterTab.id
                                     ? "bg-muted shadow-sm"
                                     : "hover:bg-muted/50",
                             ]}
-                            onclick={() => db.starterTabs.setActive(starterTab.id)}
+                            onclick={() => {
+                                db.starterTabs.setActive(starterTab.id);
+                                db.ui.setActiveView("query");
+                            }}
                         >
                             <RocketIcon class="size-3 text-muted-foreground" />
                             <span class="pr-4">{starterTab.name}</span>
@@ -748,6 +806,32 @@
                                     <XIcon />
                                 </Button>
                             {/if}
+                        </div>
+                    {/each}
+                    {#each db.state.connectionTabs as connectionTab (connectionTab.id)}
+                        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+                        <div
+                            class={[
+                                "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors cursor-pointer",
+                                db.state.activeView === "connection" && db.state.activeConnectionTabId === connectionTab.id
+                                    ? "bg-muted shadow-sm"
+                                    : "hover:bg-muted/50",
+                            ]}
+                            onclick={() => handleConnectionTabClick(connectionTab.id)}
+                        >
+                            <CableIcon class="size-3 text-muted-foreground" />
+                            <span class="pr-4">{connectionTab.name}</span>
+                            <Button
+                                size="icon"
+                                variant="ghost"
+                                class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
+                                onclick={(e) => {
+                                    e.stopPropagation();
+                                    db.connectionTabs.remove(connectionTab.id);
+                                }}
+                            >
+                                <XIcon />
+                            </Button>
                         </div>
                     {/each}
                 </div>

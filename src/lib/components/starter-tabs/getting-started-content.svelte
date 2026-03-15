@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { Button } from "$lib/components/ui/button";
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "$lib/components/ui/card";
-	import { connectionDialogStore } from "$lib/stores/connection-dialog.svelte.js";
 	import { dbeaverImportStore } from "$lib/stores/dbeaver-import.svelte.js";
 	import { tablePlusImportStore } from "$lib/stores/tableplus-import.svelte.js";
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
@@ -42,7 +41,7 @@
 			if (autoReconnected) {
 				return;
 			}
-			connectionDialogStore.open({
+			void db.connectionTabs.open({
 				id: connection.id,
 				name: connection.name,
 				type: connection.type,
@@ -73,7 +72,7 @@
 		<!-- Quick Actions -->
 		<div class="flex flex-col items-center gap-4">
 			{#if features.newConnections}
-				<Button size="lg" onclick={() => connectionDialogStore.open()}>
+				<Button size="lg" onclick={() => void db.connectionTabs.open()}>
 					<PlusIcon class="size-4" />
 					{m.starter_add_connection()}
 				</Button>

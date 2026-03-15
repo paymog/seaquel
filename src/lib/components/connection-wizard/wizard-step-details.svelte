@@ -299,7 +299,7 @@
 				</button>
 
 				{#if advancedExpanded}
-					<div class="px-3 pb-3 space-y-4">
+					<div class="px-3 pt-1 pb-3 space-y-4">
 						<!-- SSL Mode -->
 						{#if supportsSSL}
 							<div class="grid gap-2">

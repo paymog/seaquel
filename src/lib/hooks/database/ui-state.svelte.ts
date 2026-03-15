@@ -40,7 +40,15 @@ export class UIStateManager {
   }
 
   setActiveView(
-    view: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize",
+    view:
+      | "query"
+      | "schema"
+      | "explain"
+      | "erd"
+      | "statistics"
+      | "canvas"
+      | "visualize"
+      | "connection",
   ) {
     this.state.activeView = view;
     this.schedulePersistence(this.state.activeProjectId);

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { Button } from "$lib/components/ui/button";
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
-	import { connectionDialogStore } from "$lib/stores/connection-dialog.svelte.js";
 	import { m } from "$lib/paraglide/messages.js";
 	import { getFeatures } from "$lib/features";
 	import { LayoutDashboardIcon, PlusIcon } from "@lucide/svelte";
@@ -21,7 +20,7 @@
 				{m.starter_show_getting_started()}
 			</Button>
 			{#if features.newConnections}
-				<Button onclick={() => connectionDialogStore.open()}>
+				<Button onclick={() => void db.connectionTabs.open()}>
 					<PlusIcon class="size-4 me-1" />
 					{m.starter_add_connection()}
 				</Button>

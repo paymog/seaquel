@@ -6,6 +6,7 @@ import type {
   StatisticsTab,
   CanvasTab,
   VisualizeTab,
+  ConnectionTab,
 } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 
@@ -108,8 +109,24 @@ export class TabOrderingManager {
    */
   get ordered(): Array<{
     id: string;
-    type: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize";
-    tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | CanvasTab | VisualizeTab;
+    type:
+      | "query"
+      | "schema"
+      | "explain"
+      | "erd"
+      | "statistics"
+      | "canvas"
+      | "visualize"
+      | "connection";
+    tab:
+      | QueryTab
+      | SchemaTab
+      | ExplainTab
+      | ErdTab
+      | StatisticsTab
+      | CanvasTab
+      | VisualizeTab
+      | ConnectionTab;
   }> {
     if (!this.state.activeProjectId) return [];
 
@@ -122,10 +139,28 @@ export class TabOrderingManager {
     const canvasTabs = this.state.canvasTabs || [];
     const visualizeTabs = this.state.visualizeTabs || [];
 
+    const connectionTabs = this.state.connectionTabs || [];
+
     const allTabsUnordered: Array<{
       id: string;
-      type: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize";
-      tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | CanvasTab | VisualizeTab;
+      type:
+        | "query"
+        | "schema"
+        | "explain"
+        | "erd"
+        | "statistics"
+        | "canvas"
+        | "visualize"
+        | "connection";
+      tab:
+        | QueryTab
+        | SchemaTab
+        | ExplainTab
+        | ErdTab
+        | StatisticsTab
+        | CanvasTab
+        | VisualizeTab
+        | ConnectionTab;
     }> = [];
 
     for (const t of queryTabs) {
@@ -148,6 +183,9 @@ export class TabOrderingManager {
     }
     for (const t of visualizeTabs) {
       allTabsUnordered.push({ id: t.id, type: "visualize", tab: t });
+    }
+    for (const t of connectionTabs) {
+      allTabsUnordered.push({ id: t.id, type: "connection", tab: t });
     }
 
     const order = this.state.tabOrderByProject[this.state.activeProjectId] ?? [];

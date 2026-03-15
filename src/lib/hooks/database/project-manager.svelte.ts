@@ -282,6 +282,8 @@ export class ProjectManager {
       this.state.activeStatisticsTabIdByProject[projectId] = null;
       this.state.activeCanvasTabIdByProject[projectId] = null;
       this.state.activeConnectionIdByProject[projectId] = null;
+      this.state.connectionTabsByProject[projectId] = [];
+      this.state.activeConnectionTabIdByProject[projectId] = null;
       // Initialize starter tabs for new projects
       this.initializeStarterTabs?.(projectId);
       return;
@@ -373,5 +375,9 @@ export class ProjectManager {
       // Initialize default starter tabs if none persisted
       this.initializeStarterTabs?.(projectId);
     }
+
+    // Connection tabs are transient - always initialize empty
+    this.state.connectionTabsByProject[projectId] = [];
+    this.state.activeConnectionTabIdByProject[projectId] = null;
   }
 }

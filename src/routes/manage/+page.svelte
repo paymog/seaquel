@@ -18,6 +18,7 @@
     import { StatisticsDashboard } from "$lib/components/statistics";
     import CanvasView from "$lib/components/canvas/canvas-view.svelte";
     import QueryVisualViewer from "$lib/components/query-visual-viewer.svelte";
+    import ConnectionTabView from "$lib/components/connection-tab-view.svelte";
     import HeaderTabs from "$lib/components/header-tabs.svelte";
 
     const db = useDatabase();
@@ -52,6 +53,13 @@
     </div>
     {#if db.state.connectionsLoading || db.state.projectsLoading}
         <!-- Loading state - show nothing to prevent flash -->
+    {:else if activeTabType === "connection" && db.state.activeConnectionTab}
+        <!-- Connection tab takes priority -->
+        <div class="flex-1 min-h-0 flex flex-col">
+            {#key db.state.activeConnectionTab.id}
+                <ConnectionTabView tab={db.state.activeConnectionTab} />
+            {/key}
+        </div>
     {:else if db.state.activeConnection}
         <!-- Content Area -->
         <div class="flex-1 min-h-0 flex flex-col">

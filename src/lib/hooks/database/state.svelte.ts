@@ -11,6 +11,7 @@ import type {
   StatisticsTab,
   CanvasTab,
   VisualizeTab,
+  ConnectionTab,
   Project,
   StarterTab,
   SharedQueryRepo,
@@ -70,6 +71,9 @@ export class DatabaseState {
   visualizeTabsByProject = $state<Record<string, VisualizeTab[]>>({});
   activeVisualizeTabIdByProject = $state<Record<string, string | null>>({});
 
+  connectionTabsByProject = $state<Record<string, ConnectionTab[]>>({});
+  activeConnectionTabIdByProject = $state<Record<string, string | null>>({});
+
   // Saved canvases per project
   savedCanvasesByProject = $state<Record<string, SavedCanvas[]>>({});
 
@@ -97,7 +101,7 @@ export class DatabaseState {
 
   // === VIEW STATE ===
   activeView = $state<
-    "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize"
+    "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize" | "connection"
   >("query");
 
   // === PROJECT DERIVED VALUES ===
@@ -252,6 +256,25 @@ export class DatabaseState {
   // Derived: active visualize tab object
   activeVisualizeTab = $derived(
     this.visualizeTabs.find((t) => t.id === this.activeVisualizeTabId) || null,
+  );
+
+  // === CONNECTION TAB DERIVED VALUES ===
+
+  // Derived: connection tabs for active project
+  connectionTabs = $derived(
+    this.activeProjectId ? (this.connectionTabsByProject[this.activeProjectId] ?? []) : [],
+  );
+
+  // Derived: active connection tab ID for active project
+  activeConnectionTabId = $derived(
+    this.activeProjectId
+      ? (this.activeConnectionTabIdByProject[this.activeProjectId] ?? null)
+      : null,
+  );
+
+  // Derived: active connection tab object
+  activeConnectionTab = $derived(
+    this.connectionTabs.find((t) => t.id === this.activeConnectionTabId) || null,
   );
 
   // === STARTER TAB DERIVED VALUES ===

@@ -173,6 +173,17 @@ export interface PersistedQueryHistoryItem {
 /**
  * View type options for the main workspace.
  */
+/**
+ * Persisted connection tab state.
+ * Only stores minimal data since connection tabs are transient.
+ */
+export interface PersistedConnectionTab {
+  /** Tab identifier */
+  id: string;
+  /** Tab display name */
+  name: string;
+}
+
 export type ActiveViewType =
   | "query"
   | "schema"
@@ -180,7 +191,8 @@ export type ActiveViewType =
   | "erd"
   | "statistics"
   | "canvas"
-  | "visualize";
+  | "visualize"
+  | "connection";
 
 /**
  * Complete persisted state for a single connection.

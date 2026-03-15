@@ -16,6 +16,7 @@ src/lib/paraglide
 project.inlang/cache/
 
 docs/data
+docs/plans
 
 # E2E test databases
 e2e/test-databases/duckdb/test_duckdb.duckdb

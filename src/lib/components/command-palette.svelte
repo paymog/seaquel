@@ -2,7 +2,6 @@
 	import * as Command from "$lib/components/ui/command";
 	import { useDatabase } from "$lib/hooks/database.svelte";
 	import { useShortcuts } from "$lib/shortcuts/shortcuts.svelte";
-	import { connectionDialogStore } from "$lib/stores/connection-dialog.svelte";
 	import { goto } from "$app/navigation";
 	import { LESSONS, LESSON_SECTIONS } from "$lib/tutorial/lessons";
 	import {
@@ -84,7 +83,7 @@
 		runAndClose(() => db.ui.toggleAI());
 	}
 
-	function goToTab(tabId: string, type: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize") {
+	function goToTab(tabId: string, type: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize" | "connection") {
 		runAndClose(() => {
 			switch (type) {
 				case "query":
@@ -114,6 +113,10 @@
 				case "visualize":
 					db.visualizeTabs.setActive(tabId);
 					db.ui.setActiveView("visualize");
+					break;
+				case "connection":
+					db.connectionTabs.setActive(tabId);
+					db.ui.setActiveView("connection");
 					break;
 			}
 		});
@@ -175,7 +178,7 @@
 			}
 
 			// Fall back to dialog if auto-reconnect fails or password not saved
-			connectionDialogStore.open({
+			void db.connectionTabs.open({
 				id: connection.id,
 				name: connection.name,
 				type: connection.type,

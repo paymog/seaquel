@@ -8,7 +8,7 @@
     import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
     import CheckIcon from "@lucide/svelte/icons/check";
     import { useDatabase } from "$lib/hooks/database.svelte.js";
-    import ConnectionWizard from "$lib/components/connection-wizard/connection-wizard.svelte";
+
     import PlusIcon from "@lucide/svelte/icons/plus";
     import BotIcon from "@lucide/svelte/icons/bot";
     import NetworkIcon from "@lucide/svelte/icons/network";
@@ -285,8 +285,6 @@
         </div>
     </div>
 </header>
-
-<ConnectionWizard />
 
 <!-- New Project Dialog -->
 <Dialog.Root bind:open={showNewProjectDialog}>

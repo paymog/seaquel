@@ -187,6 +187,11 @@ export class PersistenceManager {
     }));
   }
 
+  serializeConnectionTabs(_projectId: string): [] {
+    // Connection tabs are transient and not persisted (they contain passwords)
+    return [];
+  }
+
   serializeSavedCanvases(projectId: string): SavedCanvas[] {
     return this.state.savedCanvasesByProject[projectId] ?? [];
   }
@@ -297,6 +302,8 @@ export class PersistenceManager {
         starterTabs: this.serializeStarterTabs(projectId),
         activeStarterTabId: this.state.activeStarterTabIdByProject[projectId] ?? null,
         savedCanvases: this.serializeSavedCanvases(projectId),
+        connectionTabs: [],
+        activeConnectionTabId: null,
       };
 
       await projectStateRepo.save(db, state);

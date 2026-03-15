@@ -7,10 +7,12 @@
 	import NetworkIcon from "@lucide/svelte/icons/network";
 	import BotIcon from "@lucide/svelte/icons/bot";
 	import PlusIcon from "@lucide/svelte/icons/plus";
-	import { connectionDialogStore } from "$lib/stores/connection-dialog.svelte.js";
+	import { useDatabase } from "$lib/hooks/database.svelte.js";
 	import { onboardingStore } from "$lib/stores/onboarding.svelte.js";
 	import MigrationTrackSelector from "$lib/components/onboarding/migration-track-selector.svelte";
 	import { m } from "$lib/paraglide/messages.js";
+
+	const db = useDatabase();
 
 	// Only show migration selector on first run
 	const showMigrationSelector = $derived(onboardingStore.isFirstRun);
@@ -51,7 +53,7 @@
 				<h1 class="text-2xl font-semibold">{m.empty_states_welcome_title()}</h1>
 				<p class="text-muted-foreground mt-1">{m.empty_states_welcome_subtitle()}</p>
 			</div>
-			<Button size="lg" onclick={() => connectionDialogStore.open()}>
+			<Button size="lg" onclick={() => void db.connectionTabs.open()}>
 				<PlusIcon class="size-4 me-2" />
 				{m.empty_states_welcome_add_first_connection()}
 			</Button>

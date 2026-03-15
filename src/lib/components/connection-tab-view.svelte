@@ -1,0 +1,318 @@
+<script lang="ts">
+	import { Button } from "$lib/components/ui/button";
+	import { m } from "$lib/paraglide/messages.js";
+	import { useDatabase } from "$lib/hooks/database.svelte.js";
+	import { databaseTypes } from "$lib/stores/connection-wizard.svelte.js";
+	import { onboardingStore } from "$lib/stores/onboarding.svelte.js";
+	import { toast } from "svelte-sonner";
+	import { extractErrorMessage } from "$lib/errors/types";
+	import {
+		getConnectionData,
+		parseConnectionString,
+		hasAllCredentials,
+	} from "$lib/utils/connection-string.js";
+	import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
+
+	import WizardStepMethod from "./connection-wizard/wizard-step-method.svelte";
+	import WizardStepDetails from "./connection-wizard/wizard-step-details.svelte";
+
+	import type { ConnectionTab, ConnectionFormData } from "$lib/types";
+	import type { WizardFormData } from "$lib/stores/connection-wizard.svelte.js";
+	import type { DatabaseType } from "$lib/types";
+
+	interface Props {
+		tab: ConnectionTab;
+	}
+
+	let { tab }: Props = $props();
+
+	const db = useDatabase();
+
+	// Local reactive copy of formData for two-way binding with wizard step components.
+	// We use $derived.by for initial values that come from the tab prop, then track locally.
+	let formDataInitialized = $state(false);
+	let formData = $state<WizardFormData>({
+		name: "",
+		type: "postgres",
+		host: "localhost",
+		port: 5432,
+		databaseName: "",
+		username: "",
+		password: "",
+		sslMode: "disable",
+		connectionString: "",
+		sshEnabled: false,
+		sshHost: "",
+		sshPort: 22,
+		sshUsername: "",
+		sshAuthMethod: "password",
+		sshPassword: "",
+		sshKeyPath: "",
+		sshKeyPassphrase: "",
+		savePassword: true,
+		saveSshPassword: true,
+		saveSshKeyPassphrase: true,
+	});
+	let currentStep = $state<"method" | "details">("method");
+	let isConnecting = $state(false);
+	let isTesting = $state(false);
+	let connectionError = $state<string | null>(null);
+
+	// Initialize local state from the tab prop (runs once since formDataInitialized gates it).
+	$effect(() => {
+		if (!formDataInitialized) {
+			formData = { ...tab.formData } as WizardFormData;
+			currentStep = tab.currentStep;
+			connectionError = tab.error;
+			formDataInitialized = true;
+		}
+	});
+
+	// When credentials are loaded from keyring, sync non-empty values to local state.
+	$effect(() => {
+		if (tab.credentialsLoaded && tab.formData.password && tab.formData.password !== formData.password) {
+			formData.password = tab.formData.password;
+		}
+		if (tab.credentialsLoaded && tab.formData.sshPassword && tab.formData.sshPassword !== formData.sshPassword) {
+			formData.sshPassword = tab.formData.sshPassword;
+		}
+		if (tab.credentialsLoaded && tab.formData.sshKeyPassphrase && tab.formData.sshKeyPassphrase !== formData.sshKeyPassphrase) {
+			formData.sshKeyPassphrase = tab.formData.sshKeyPassphrase;
+		}
+	});
+
+	// Derived: selected database type config
+	const selectedDbType = $derived(databaseTypes.find((t) => t.value === formData.type));
+
+	// Derived: can proceed to connect
+	const canProceed = $derived(
+		formData.databaseName.trim().length > 0 && formData.name.trim().length > 0,
+	);
+
+	const isReconnecting = $derived(tab.connectionId !== null && tab.mode !== "edit");
+	const isEditing = $derived(tab.mode === "edit");
+
+	const showBack = $derived(
+		currentStep === "details" && !isReconnecting && !isEditing,
+	);
+
+	// Auto-connect when credentials are loaded in reconnect mode
+	$effect(() => {
+		if (
+			tab.mode === "reconnect" &&
+			tab.credentialsLoaded &&
+			!isConnecting &&
+			!connectionError
+		) {
+			// Check if all credentials are present using local formData
+			if (hasAllCredentials(formData as ConnectionFormData)) {
+				handleAutoConnect();
+			}
+		}
+	});
+
+	const handleAutoConnect = async () => {
+		isConnecting = true;
+		try {
+			const connectionData = getConnectionData(formData as ConnectionFormData);
+			if (tab.connectionId) {
+				await db.connections.reconnect(tab.connectionId, connectionData);
+			}
+			// Mark onboarding as complete
+			onboardingStore.completeWizard();
+			// Show toast
+			if (db.state.activeSchema.length === 0) {
+				toast.warning(m.wizard_connect_empty());
+			} else {
+				toast.success(m.wizard_connect_success());
+			}
+			// Close the connection tab on success
+			db.connectionTabs.remove(tab.id);
+		} catch (error) {
+			// Auto-connect failed, show the error and let the user edit
+			isConnecting = false;
+			connectionError = extractErrorMessage(error);
+		}
+	};
+
+	const validate = (): boolean => {
+		connectionError = null;
+
+		if (!formData.name.trim()) {
+			connectionError = m.connection_dialog_error_name_required();
+			return false;
+		}
+
+		if (formData.type !== "sqlite" && !formData.host.trim()) {
+			connectionError = m.connection_dialog_error_host_required();
+			return false;
+		}
+
+		if (!formData.databaseName.trim()) {
+			connectionError = m.connection_dialog_error_database_required();
+			return false;
+		}
+
+		return true;
+	};
+
+	const handleTestConnection = async () => {
+		if (!validate()) return;
+
+		isTesting = true;
+		try {
+			const connectionData = getConnectionData(formData as ConnectionFormData);
+			await db.connections.test(connectionData);
+			toast.success(m.wizard_test_success());
+		} catch (error) {
+			connectionError = extractErrorMessage(error);
+		} finally {
+			isTesting = false;
+		}
+	};
+
+	const handleConnect = async () => {
+		if (!validate()) return;
+
+		isConnecting = true;
+		try {
+			const connectionData = getConnectionData(formData as ConnectionFormData);
+
+			if (tab.mode === "edit" && tab.connectionId) {
+				// Edit mode - just update settings without reconnecting
+				await db.connections.update(tab.connectionId, connectionData);
+				toast.success(m.wizard_edit_success());
+			} else if (tab.connectionId) {
+				await db.connections.reconnect(tab.connectionId, connectionData);
+				// Mark onboarding as complete
+				onboardingStore.completeWizard();
+				// Show toast
+				if (db.state.activeSchema.length === 0) {
+					toast.warning(m.wizard_connect_empty());
+				} else {
+					toast.success(m.wizard_connect_success());
+				}
+			} else {
+				await db.connections.add(connectionData);
+				// Mark onboarding as complete
+				onboardingStore.completeWizard();
+				// Show toast
+				if (db.state.activeSchema.length === 0) {
+					toast.warning(m.wizard_connect_empty());
+				} else {
+					toast.success(m.wizard_connect_success());
+				}
+			}
+
+			// Close the connection tab on success
+			db.connectionTabs.remove(tab.id);
+		} catch (error) {
+			connectionError = extractErrorMessage(error);
+		} finally {
+			isConnecting = false;
+		}
+	};
+
+	const handleParse = (connStr: string): boolean => {
+		const result = parseConnectionString(connStr, formData as ConnectionFormData);
+		if (result.success) {
+			Object.assign(formData, result.formData);
+			connectionError = null;
+			return true;
+		} else {
+			connectionError = result.error;
+			return false;
+		}
+	};
+
+	const selectDatabaseType = (type: DatabaseType) => {
+		formData.type = type;
+		const dbType = databaseTypes.find((t) => t.value === type);
+		if (dbType) {
+			formData.port = dbType.defaultPort;
+		}
+		currentStep = "details";
+	};
+
+	const goBack = () => {
+		formData.connectionString = "";
+		currentStep = "method";
+	};
+</script>
+
+<div class="flex-1 flex flex-col min-h-0">
+	<div class="flex-1 overflow-y-auto">
+		<div class="max-w-lg mx-auto py-8 px-4">
+			<!-- Title -->
+			<div class="mb-6">
+				<h1 class="text-xl font-semibold text-center">
+					{#if isEditing}
+						{m.wizard_dialog_title_edit()}
+					{:else if isReconnecting}
+						{m.connection_dialog_title_reconnect()}
+					{:else}
+						{m.wizard_dialog_title()}
+					{/if}
+				</h1>
+			</div>
+
+			<!-- Step Content -->
+			<div class="min-h-[300px]">
+				{#if currentStep === "method"}
+					<WizardStepMethod
+						bind:formData
+						onParse={handleParse}
+						onSelectType={selectDatabaseType}
+						onContinue={() => (currentStep = "details")}
+						error={connectionError}
+					/>
+				{:else if currentStep === "details"}
+					<WizardStepDetails
+						bind:formData
+						{selectedDbType}
+						{isReconnecting}
+						{isEditing}
+						{isTesting}
+						onTest={handleTestConnection}
+						error={connectionError}
+					/>
+				{/if}
+			</div>
+
+			<!-- Footer (details step only) -->
+			{#if currentStep === "details"}
+				<div class="flex justify-between gap-2 mt-6">
+					<div>
+						{#if showBack}
+							<Button
+								variant="ghost"
+								onclick={goBack}
+								disabled={isConnecting}
+							>
+								<ArrowLeftIcon class="size-4 me-2" />
+								{m.wizard_back()}
+							</Button>
+						{/if}
+					</div>
+
+					<div class="flex gap-2">
+						<Button
+							onclick={handleConnect}
+							disabled={!canProceed || isConnecting || isTesting}
+						>
+							{#if isConnecting}
+								{m.connection_dialog_button_connecting()}
+							{:else if isEditing}
+								{m.wizard_save()}
+							{:else if isReconnecting}
+								{m.connection_dialog_button_reconnect()}
+							{:else}
+								{m.wizard_connect()}
+							{/if}
+						</Button>
+					</div>
+				</div>
+			{/if}
+		</div>
+	</div>
+</div>

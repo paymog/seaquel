@@ -1,7 +1,6 @@
 <script lang="ts">
 	import PlusIcon from "@lucide/svelte/icons/plus";
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
-	import { connectionDialogStore } from "$lib/stores/connection-dialog.svelte.js";
 	import ConnectionCard from "./connection-card.svelte";
 	import MigrationTrackSelector from "$lib/components/onboarding/migration-track-selector.svelte";
 	import { m } from "$lib/paraglide/messages.js";
@@ -30,7 +29,7 @@
 				<button
 					type="button"
 					class="w-full h-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/25 hover:border-muted-foreground/50 hover:bg-muted/50 transition-colors cursor-pointer"
-					onclick={() => connectionDialogStore.open()}
+					onclick={() => void db.connectionTabs.open()}
 				>
 					<PlusIcon class="size-8 text-muted-foreground" />
 					<span class="text-sm text-muted-foreground">{m.empty_states_connections_grid_add_connection()}</span>

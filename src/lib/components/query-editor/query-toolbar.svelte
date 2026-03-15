@@ -6,7 +6,6 @@
 	import ShortcutKeys from "$lib/components/shortcut-keys.svelte";
 	import { findShortcut } from "$lib/shortcuts/index.js";
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
-	import { connectionDialogStore } from "$lib/stores/connection-dialog.svelte.js";
 	import {
 		PlayIcon,
 		SaveIcon,
@@ -75,7 +74,7 @@
 			}
 
 			// Fall back to dialog if auto-reconnect fails or password not saved
-			connectionDialogStore.open({
+			void db.connectionTabs.open({
 				id: connection.id,
 				name: connection.name,
 				type: connection.type,
