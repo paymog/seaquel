@@ -7,7 +7,7 @@
 	import { Button } from "$lib/components/ui/button";
 	import { Input } from "$lib/components/ui/input";
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
-	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon } from "@lucide/svelte";
+	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon } from "@lucide/svelte";
 	import { SharedQueryLibrary } from "$lib/components/shared-queries";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -199,12 +199,18 @@
 											]}
 											onclick={() => handleConnectionClick(connection)}
 										>
-											<span
-												class={[
-													"size-2 rounded-full shrink-0",
-													(connection.database || connection.mssqlConnectionId || connection.providerConnectionId) ? "bg-green-500" : "bg-gray-400"
-												]}
-											></span>
+												<span class="flex size-2 items-center justify-center shrink-0">
+												{#if db.connections.connectingIds.has(connection.id)}
+													<LoaderIcon class="size-3 animate-spin text-muted-foreground" />
+												{:else}
+													<span
+														class={[
+															"size-2 rounded-full",
+															(connection.database || connection.mssqlConnectionId || connection.providerConnectionId) ? "bg-green-500" : "bg-gray-400"
+														]}
+													></span>
+												{/if}
+											</span>
 											<span class="flex-1 truncate text-sm">{connection.name}</span>
 											{#if getConnectionLabels(connection).length > 0}
 												<Tooltip.Root>

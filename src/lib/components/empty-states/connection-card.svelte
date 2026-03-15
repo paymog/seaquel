@@ -5,6 +5,7 @@
 	import { Badge } from "$lib/components/ui/badge/index.js";
 	import { Button } from "$lib/components/ui/button/index.js";
 	import DatabaseIcon from "@lucide/svelte/icons/database";
+	import LoaderIcon from "@lucide/svelte/icons/loader";
 	import MoreVerticalIcon from "@lucide/svelte/icons/more-vertical";
 	import PencilIcon from "@lucide/svelte/icons/pencil";
 	import Trash2Icon from "@lucide/svelte/icons/trash-2";
@@ -104,16 +105,24 @@
 			<Card.Header class="pb-2">
 				<div class="flex items-center gap-2">
 					<span
-						class={[
-							"size-2 rounded-full shrink-0",
-							connection.database || connection.providerConnectionId
-								? "bg-green-500"
-								: "bg-gray-400",
-						]}
+						class="flex size-2 items-center justify-center shrink-0"
 						title={connection.database || connection.providerConnectionId
 							? m.empty_states_connection_card_connected()
 							: m.empty_states_connection_card_disconnected()}
-					></span>
+					>
+						{#if db.connections.connectingIds.has(connection.id)}
+							<LoaderIcon class="size-3 animate-spin text-muted-foreground" />
+						{:else}
+							<span
+								class={[
+									"size-2 rounded-full",
+									connection.database || connection.providerConnectionId
+										? "bg-green-500"
+										: "bg-gray-400",
+								]}
+							></span>
+						{/if}
+					</span>
 					<DatabaseIcon class="size-4 text-muted-foreground" />
 					<Card.Title class="text-sm font-medium truncate line-clamp-1 text-ellipsis flex-1">
 						{connection.name}

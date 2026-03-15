@@ -12,6 +12,7 @@ import { mssqlConnect, mssqlDisconnect, mssqlQuery } from "$lib/services/mssql";
 import type { ProviderRegistry } from "$lib/providers";
 import { isTauri, isDemo } from "$lib/utils/environment";
 import { getKeyringService } from "$lib/services/keyring";
+import { SvelteSet } from "svelte/reactivity";
 
 type ConnectionInput = Omit<DatabaseConnection, "id" | "projectId" | "labelIds"> & {
   projectId?: string;
@@ -31,6 +32,9 @@ type ConnectionInput = Omit<DatabaseConnection, "id" | "projectId" | "labelIds">
 export class ConnectionManager {
   // Map connection IDs to their SSH tunnel IDs for cleanup
   private tunnelIds = new Map<string, string>();
+
+  // Track which connections are currently being connected (for UI loading indicators)
+  readonly connectingIds = new SvelteSet<string>();
 
   constructor(
     private state: DatabaseState,
@@ -333,15 +337,28 @@ export class ConnectionManager {
       this.tunnelIds.delete(connectionId);
     }
 
-    const { effectiveConnectionString, tunnelLocalPort } = await this.setupSshTunnel(
-      connection,
-      {
-        sshPassword: connection.sshPassword,
-        sshKeyPath: connection.sshKeyPath,
-        sshKeyPassphrase: connection.sshKeyPassphrase,
-      },
-      connectionId,
-    );
+    const { effectiveConnectionString: rawConnectionString, tunnelLocalPort } =
+      await this.setupSshTunnel(
+        connection,
+        {
+          sshPassword: connection.sshPassword,
+          sshKeyPath: connection.sshKeyPath,
+          sshKeyPassphrase: connection.sshKeyPassphrase,
+        },
+        connectionId,
+      );
+
+    // Inject password into connection string if provided separately
+    let effectiveConnectionString = rawConnectionString;
+    if (effectiveConnectionString && connection.password) {
+      try {
+        const url = new URL(effectiveConnectionString.replace("postgresql://", "postgres://"));
+        url.password = encodeURIComponent(connection.password);
+        effectiveConnectionString = url.toString();
+      } catch {
+        // Not a URL-based connection string (e.g., file path), skip
+      }
+    }
 
     // Close existing connections
     if (existingConnection.mssqlConnectionId) {
@@ -761,6 +778,18 @@ export class ConnectionManager {
       return false;
     }
 
+    this.connectingIds.add(connectionId);
+    try {
+      return await this._autoReconnect(connectionId, connection);
+    } finally {
+      this.connectingIds.delete(connectionId);
+    }
+  }
+
+  private async _autoReconnect(
+    connectionId: string,
+    connection: DatabaseConnection,
+  ): Promise<boolean> {
     // SQLite and DuckDB don't require passwords, always auto-reconnect
     if (connection.type === "sqlite" || connection.type === "duckdb") {
       try {
@@ -778,17 +807,20 @@ export class ConnectionManager {
         return true;
       } catch (error) {
         console.warn(`Auto-reconnect failed for ${connection.type}:`, error);
+        console.log("B");
         return false;
       }
     }
 
     // For other databases, check if password is saved
     if (!connection.savePassword) {
+      console.log("C");
       return false;
     }
 
     const keyring = getKeyringService();
     if (!keyring.isAvailable()) {
+      console.log("D");
       return false;
     }
 
@@ -796,6 +828,7 @@ export class ConnectionManager {
       // Load credentials from keyring
       const password = await keyring.getDbPassword(connectionId);
       if (!password) {
+        console.log("E");
         return false;
       }
 
@@ -813,10 +846,12 @@ export class ConnectionManager {
 
         // If SSH is enabled but credentials not saved, we can't auto-reconnect
         if (connection.sshTunnel.authMethod === "password" && !sshPassword) {
+          console.log("F");
           return false;
         }
         if (connection.sshTunnel.authMethod === "key" && !connection.sshTunnel.keyPath) {
           // SSH key auth requires keyPath to be stored
+          console.log("G");
           return false;
         }
       }
@@ -844,6 +879,7 @@ export class ConnectionManager {
       return true;
     } catch (error) {
       console.warn("Auto-reconnect failed:", error);
+      console.log("Z");
       return false;
     }
   }

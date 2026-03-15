@@ -154,12 +154,18 @@
 									<CheckIcon class="size-4" />
 								{/if}
 							</span>
-							<span
-								class={[
-									"size-2 rounded-full shrink-0",
-									isConnected(connection) ? "bg-green-500" : "bg-gray-400"
-								]}
-							></span>
+							<span class="flex size-2 items-center justify-center shrink-0">
+								{#if db.connections.connectingIds.has(connection.id)}
+									<LoaderIcon class="size-3 animate-spin text-muted-foreground" />
+								{:else}
+									<span
+										class={[
+											"size-2 rounded-full",
+											isConnected(connection) ? "bg-green-500" : "bg-gray-400"
+										]}
+									></span>
+								{/if}
+							</span>
 							<span class="flex-1 truncate">{connection.name}</span>
 							{#if getConnectionLabels(connection.id).length > 0}
 								<div class="flex items-center" title={getConnectionLabels(connection.id).map(l => l.name).join(', ')}>

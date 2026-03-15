@@ -7,7 +7,7 @@
 	import { m } from "$lib/paraglide/messages.js";
 	import { isTauri } from "$lib/utils/environment";
 	import { getFeatures } from "$lib/features";
-	import { PlusIcon, DownloadIcon, DatabaseIcon, PlugIcon } from "@lucide/svelte";
+	import { PlusIcon, DownloadIcon, DatabaseIcon, PlugIcon, LoaderIcon } from "@lucide/svelte";
 
 	const db = useDatabase();
 	const features = getFeatures();
@@ -101,12 +101,18 @@
 							onclick={() => handleConnectionClick(connection)}
 						>
 							<CardContent class="p-3 flex items-center gap-3">
-								<span
-									class={[
-										"size-2 rounded-full shrink-0",
-										(connection.database || connection.mssqlConnectionId || connection.providerConnectionId) ? "bg-green-500" : "bg-gray-400"
-									]}
-								></span>
+								<span class="flex size-2 items-center justify-center shrink-0">
+									{#if db.connections.connectingIds.has(connection.id)}
+										<LoaderIcon class="size-3 animate-spin text-muted-foreground" />
+									{:else}
+										<span
+											class={[
+												"size-2 rounded-full",
+												(connection.database || connection.mssqlConnectionId || connection.providerConnectionId) ? "bg-green-500" : "bg-gray-400"
+											]}
+										></span>
+									{/if}
+								</span>
 								<div class="flex-1 min-w-0">
 									<p class="font-medium truncate">{connection.name}</p>
 									<p class="text-xs text-muted-foreground truncate">

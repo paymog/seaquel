@@ -10,6 +10,7 @@
 		Save,
 		Table2,
 		Database,
+		Loader,
 		History,
 		FileText,
 		Sparkles,
@@ -428,7 +429,11 @@
 			<Command.Group heading={m.command_group_connections()}>
 				{#each connections as connection}
 					<Command.Item value="connection-{connection.id}" onSelect={() => switchConnection(connection.id)}>
-						<Database class="size-4" />
+						{#if db.connections.connectingIds.has(connection.id)}
+							<Loader class="size-4 animate-spin" />
+						{:else}
+							<Database class="size-4" />
+						{/if}
 						<span>
 							{#if connection.id === db.state.activeConnectionId}
 								{connection.name}
