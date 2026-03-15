@@ -15,9 +15,11 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
+    "tauri:dev": "tauri dev --config '{\"identifier\":\"app.seaquel.desktop.dev\"}'",
     "e2e:db:sqlite": "node e2e/test-databases/sqlite/create-test-db.mjs",
     "demos:db:create": "rm -f docs/demos.db && sqlite3 docs/demos.db < docs/sample-data.sql",
-    "demos:start": "SEAQUEL_DATA_DIR=~/projects/github/webstonehq/seaquel/docs/data tauri dev"
+    "demos:start": "SEAQUEL_DATA_DIR=~/projects/github/webstonehq/seaquel/docs/data tauri dev --config '{\"identifier\":\"app.seaquel.desktop.dev\"}'",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.8",
