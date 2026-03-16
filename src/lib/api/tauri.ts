@@ -63,12 +63,18 @@ export async function getDataDir(): Promise<string> {
   return invoke<string>("get_data_dir");
 }
 
+export interface UpdateInfo {
+  version: string;
+  date: string | null;
+  size: number | null;
+}
+
 export async function installUpdate(): Promise<void> {
   await invoke("install_update");
 }
 
-export async function checkForUpdate(): Promise<string | null> {
-  return invoke<string | null>("check_for_update_command");
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  return invoke<UpdateInfo | null>("check_for_update_command");
 }
 
 export async function readDbeaverConfig(): Promise<string | null> {

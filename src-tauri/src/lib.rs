@@ -16,6 +16,13 @@ use duckdb_commands::DuckDBState;
 use mssql::MssqlConnectionManager;
 use ssh_tunnel::TunnelManager;
 
+#[derive(Debug, Clone, serde::Serialize)]
+struct UpdateInfo {
+    version: String,
+    date: Option<String>,
+    size: Option<u64>,
+}
+
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct CommandError {
     message: String,
@@ -206,7 +213,7 @@ async fn install_update(
 #[tauri::command]
 async fn check_for_update_command(
     app: tauri::AppHandle,
-) -> Result<Option<String>, CommandError> {
+) -> Result<Option<UpdateInfo>, CommandError> {
     let update = app
         .updater()
         .map_err(|e| CommandError {
@@ -221,7 +228,21 @@ async fn check_for_update_command(
         })?;
 
     match update {
-        Some(u) => Ok(Some(u.version.clone())),
+        Some(u) => {
+            let info = UpdateInfo {
+                version: u.version.clone(),
+                date: u.date.map(|d| d.to_string()),
+                size: None,
+            };
+
+            // Spawn background download so badge appears immediately
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = check_for_update(handle).await;
+            });
+
+            Ok(Some(info))
+        }
         None => Ok(None),
     }
 }
@@ -400,12 +421,15 @@ pub fn run() {
 async fn check_for_update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
     if let Some(update) = app.updater()?.check().await? {
         let mut downloaded = 0;
-        let version = update.version.clone();
+        let mut total_size: Option<u64> = None;
 
         let bytes = update
             .download(
                 |chunk_length, content_length| {
                     downloaded += chunk_length;
+                    if total_size.is_none() {
+                        total_size = content_length;
+                    }
                     println!("downloaded {downloaded} from {content_length:?}");
                 },
                 || {
@@ -414,13 +438,19 @@ async fn check_for_update(app: tauri::AppHandle) -> tauri_plugin_updater::Result
             )
             .await?;
 
+        let info = UpdateInfo {
+            version: update.version.clone(),
+            date: update.date.map(|d| d.to_string()),
+            size: total_size,
+        };
+
         println!("update downloaded, notifying frontend");
 
         // Store the bytes for later installation
         let pending = app.state::<PendingUpdate>();
         *pending.bytes.lock().expect("Failed to lock pending update bytes") = Some(bytes);
 
-        let _ = app.emit("update-downloaded", version);
+        let _ = app.emit("update-downloaded", info);
     }
 
     Ok(())

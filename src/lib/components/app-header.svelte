@@ -24,10 +24,12 @@
     import { DEFAULT_PROJECT_ID } from "$lib/types";
     import { Badge } from "$lib/components/ui/badge/index.js";
     import { licenseStore } from "$lib/stores/license.svelte.js";
+    import { updateStore } from "$lib/stores/update.svelte.js";
     import { settingsDialogStore } from "$lib/stores/settings-dialog.svelte.js";
     import { isTauri } from "$lib/utils/environment";
     import { page } from "$app/state";
     import { resolve } from "$app/paths";
+    import UpdateBadge from "./update-badge.svelte";
 
     let appVersion = $state("");
 
@@ -47,14 +49,12 @@
         checkingForUpdates = true;
         try {
             const { checkForUpdate } = await import("$lib/api/tauri");
-            const newVersion = await checkForUpdate();
-            if (!newVersion) {
-                toast.info(`You're on the latest version`, {
-                    description: `Seaquel v${appVersion}`,
-                });
+            const info = await checkForUpdate();
+            if (info) {
+                updateStore.setUpdateAvailable(info);
+            } else {
+                updateStore.showUpToDate();
             }
-            // If newVersion exists, the existing update-downloaded listener in +layout.svelte
-            // will handle showing the update toast once the download completes
         } catch {
             toast.error("Failed to check for updates");
         } finally {
@@ -228,6 +228,9 @@
                 >
                     <BotIcon class="size-3.5" />
                 </Button>
+            {/if}
+            {#if isTauri()}
+                <UpdateBadge />
             {/if}
             <LanguageToggle />
             <DropdownMenu.Root>

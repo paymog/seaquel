@@ -29,7 +29,8 @@
     import { tutorialProgressStore } from "$lib/stores/tutorial-progress.svelte.js";
     import { isTauri } from "$lib/utils/environment";
     import { initializeDemo } from "$lib/demo/init";
-    import UpdateToastLink from "$lib/components/update-toast-link.svelte";
+    import { updateStore } from "$lib/stores/update.svelte.js";
+    import type { UpdateInfo } from "$lib/api/tauri";
 
     setDatabase();
 
@@ -53,6 +54,7 @@
             await licenseStore.initialize();
             await dbeaverImportStore.initialize();
             await tablePlusImportStore.initialize();
+            await updateStore.initialize();
         } else {
             // Browser demo: initialize DuckDB with sample data
             try {
@@ -91,21 +93,12 @@
 
         (async () => {
             const { listen } = await import("@tauri-apps/api/event");
-            const { installUpdate } = await import("$lib/api/tauri");
 
             // Listen for app updates
-            const unlistenUpdate = await listen<string>(
+            const unlistenUpdate = await listen<UpdateInfo>(
                 "update-downloaded",
                 (event) => {
-                    toast.success(`v${event.payload} downloaded`, {
-                        description: UpdateToastLink,
-                        componentProps: { version: event.payload },
-                        action: {
-                            label: "Install & Restart",
-                            onClick: () => installUpdate(),
-                        },
-                        duration: Infinity,
-                    });
+                    updateStore.setUpdateDownloaded(event.payload);
                 },
             );
             cleanupFns.push(unlistenUpdate);
@@ -193,7 +186,9 @@
         class="[--header-height:calc(--spacing(8))] flex-col h-svh overflow-hidden"
         style={onboardingStore.learnEnabled ? "--sidebar-width: 20rem" : ""}
     >
-        <AppHeader />
+        {#if !db.state.isDashboardFullscreen}
+            <AppHeader />
+        {/if}
         <div class="flex w-full flex-1 min-h-0 overflow-hidden">
             {@render children()}
         </div>
