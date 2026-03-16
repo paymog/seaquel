@@ -29,6 +29,7 @@
     import { tutorialProgressStore } from "$lib/stores/tutorial-progress.svelte.js";
     import { isTauri } from "$lib/utils/environment";
     import { initializeDemo } from "$lib/demo/init";
+    import { createDemoDashboard } from "$lib/demo/sample-dashboard";
     import { updateStore } from "$lib/stores/update.svelte.js";
     import type { UpdateInfo } from "$lib/api/tauri";
 
@@ -63,6 +64,7 @@
                     await db.connections.addDemoConnection(
                         providerConnectionId,
                     );
+                    await createDemoDashboard(db);
                     toast.success("Demo database loaded with sample data");
                 }
             } catch (error) {

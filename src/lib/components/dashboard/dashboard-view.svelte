@@ -5,8 +5,8 @@
 	import DashboardCanvas from './dashboard-canvas.svelte';
 	import DashboardWidgetEditor from './dashboard-widget-editor.svelte';
 	import { Loader2Icon } from '@lucide/svelte';
-	import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 	import { ChartBarIcon, GaugeIcon, TypeIcon } from '@lucide/svelte';
+	import { isTauri } from '$lib/utils/environment';
 
 	const db = useDatabase();
 
@@ -20,7 +20,12 @@
 	let editingWidget = $state<DashboardWidget | null>(null);
 	let pendingWidget = $state<DashboardWidget | null>(null);
 	const isFullscreen = $derived(db.state.isDashboardFullscreen);
-	const appWindow = getCurrentWebviewWindow();
+
+	async function getAppWindow() {
+		if (!isTauri()) return null;
+		const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+		return getCurrentWebviewWindow();
+	}
 
 	// Context menu state
 	let contextMenuOpen = $state(false);
@@ -135,6 +140,8 @@
 	}
 
 	async function handleToggleFullscreen() {
+		const appWindow = await getAppWindow();
+		if (!appWindow) return;
 		const newState = !isFullscreen;
 		await appWindow.setFullscreen(newState);
 		db.state.isDashboardFullscreen = newState;
@@ -142,6 +149,8 @@
 
 	async function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape' && isFullscreen) {
+			const appWindow = await getAppWindow();
+			if (!appWindow) return;
 			await appWindow.setFullscreen(false);
 			db.state.isDashboardFullscreen = false;
 		}
