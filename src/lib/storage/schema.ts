@@ -171,6 +171,19 @@ const DDL_STATEMENTS = [
     has_offered_import INTEGER NOT NULL DEFAULT 0,
     last_check_timestamp TEXT
   )`,
+
+  // Dashboards
+  `CREATE TABLE IF NOT EXISTS dashboards (
+    id TEXT PRIMARY KEY,
+    connection_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    viewport TEXT NOT NULL DEFAULT '{"x":0,"y":0,"zoom":1}',
+    widgets TEXT NOT NULL DEFAULT '[]',
+    date_filter TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_dashboards_connection ON dashboards(connection_id)`,
 ];
 
 /**
@@ -184,7 +197,8 @@ export async function initializeSchema(db: SqliteDatabase): Promise<boolean> {
   );
 
   if (existing.length > 0) {
-    // Schema already initialized
+    // Schema already initialized — run incremental DDL for any new tables/indexes
+    await upgradeSchema(db);
     return false;
   }
 
@@ -194,6 +208,34 @@ export async function initializeSchema(db: SqliteDatabase): Promise<boolean> {
   await db.transaction(statements);
 
   return true;
+}
+
+/**
+ * Run all DDL statements on an existing database.
+ * Every statement uses IF NOT EXISTS, so this is safe to run repeatedly.
+ * This ensures new tables/indexes added to DDL_STATEMENTS are created
+ * on existing databases without requiring a data migration.
+ */
+async function upgradeSchema(db: SqliteDatabase): Promise<void> {
+  for (const sql of DDL_STATEMENTS) {
+    await db.execute(sql);
+  }
+
+  // Column additions (ALTER TABLE doesn't support IF NOT EXISTS)
+  const columnUpgrades = [
+    {
+      table: "project_state",
+      column: "active_dashboard_tab_id",
+      sql: "ALTER TABLE project_state ADD COLUMN active_dashboard_tab_id TEXT",
+    },
+  ];
+
+  for (const upgrade of columnUpgrades) {
+    const cols = await db.query<{ name: string }>(`PRAGMA table_info(${upgrade.table})`);
+    if (!cols.some((c) => c.name === upgrade.column)) {
+      await db.execute(upgrade.sql);
+    }
+  }
 }
 
 export { SCHEMA_VERSION };

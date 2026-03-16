@@ -3,7 +3,10 @@
 	import type { CanvasChartNodeData } from "$lib/types/canvas";
 	import type { ChartType } from "$lib/types";
 	import { useCanvasNode } from "./use-canvas-node.svelte.js";
-	import { BarChart, LineChart, PieChart, ScatterChart } from "layerchart";
+	import {
+		BarChart, LineChart, PieChart, ScatterChart,
+		LinearGradient, Area, Bars, Spline
+	} from "layerchart";
 	import ChartBarIcon from "@lucide/svelte/icons/chart-bar";
 	import ChartLineIcon from "@lucide/svelte/icons/chart-line";
 	import ChartPieIcon from "@lucide/svelte/icons/chart-pie";
@@ -190,7 +193,17 @@
 					xAxis: { label: data.chartConfig.xAxis ?? "Index" },
 					yAxis: { label: data.chartConfig.yAxis[0] ?? "Value" },
 				}}
-			/>
+			>
+				{#snippet marks({ visibleSeries, getBarsProps })}
+					{#each visibleSeries as s, i (s.key)}
+						<LinearGradient stops={[`color-mix(in oklch, ${s.color}, white 30%)`, s.color] as string[]} vertical>
+							{#snippet children({ gradient })}
+								<Bars {...getBarsProps(s, i)} fill={gradient} />
+							{/snippet}
+						</LinearGradient>
+					{/each}
+				{/snippet}
+			</BarChart>
 		{:else if data.chartConfig.type === "line"}
 			<LineChart
 				data={chartData}
@@ -203,7 +216,17 @@
 					xAxis: { label: data.chartConfig.xAxis ?? "Index" },
 					yAxis: { label: data.chartConfig.yAxis[0] ?? "Value" },
 				}}
-			/>
+			>
+				{#snippet belowMarks({ visibleSeries, getSplineProps })}
+					{#each visibleSeries as s, i (s.key)}
+						<LinearGradient stops={[s.color, 'transparent'] as string[]} vertical>
+							{#snippet children({ gradient })}
+								<Area y1={s.value ?? s.key} fill={gradient} fillOpacity={0.3} line={false} />
+							{/snippet}
+						</LinearGradient>
+					{/each}
+				{/snippet}
+			</LineChart>
 		{:else if data.chartConfig.type === "pie"}
 			<PieChart data={pieData} key="name" value="value" label="name" c="color" legend tooltip />
 		{:else if data.chartConfig.type === "scatter"}

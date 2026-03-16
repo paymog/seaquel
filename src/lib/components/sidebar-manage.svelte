@@ -7,7 +7,7 @@
 	import { Button } from "$lib/components/ui/button";
 	import { Input } from "$lib/components/ui/input";
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
-	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon } from "@lucide/svelte";
+	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon } from "@lucide/svelte";
 	import { SharedQueryLibrary } from "$lib/components/shared-queries";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -27,7 +27,7 @@
 	const db = useDatabase();
 	const features = getFeatures();
 
-	let sidebarTab = $state<"schema" | "queries">("schema");
+	let sidebarTab = $state<"schema" | "queries" | "dashboards">("schema");
 	let connectionsExpanded = $state(true);
 	let expandedSchemas = new SvelteSet<string>();
 	let historyExpanded = $state(true);
@@ -268,6 +268,16 @@
 											<LayoutGridIcon class="size-4 me-2" />
 											{m.sidebar_canvas_workspace()}
 										</ContextMenu.Item>
+										<ContextMenu.Item onclick={async () => {
+											db.connections.setActive(connection.id);
+											const dashboard = await db.dashboards.createDashboard("New Dashboard");
+											if (dashboard) {
+												db.dashboardTabs.add(dashboard.id, dashboard.name);
+											}
+										}}>
+											<LayoutDashboardIcon class="size-4 me-2" />
+											Dashboards
+										</ContextMenu.Item>
 									{:else}
 										<ContextMenu.Item onclick={() => handleConnectionClick(connection)}>
 											<PlugIcon class="size-4 me-2" />
@@ -311,14 +321,51 @@
 	{#if db.state.activeConnectionId}
 		<Tabs bind:value={sidebarTab} class="w-full px-2">
 			<TabsList class="w-full justify-start rounded-none h-10 bg-transparent px-2">
-				<TabsTrigger value="schema" class="text-xs data-[state=active]:bg-background">
-					<DatabaseIcon class="size-3 me-1" />
-					{m.sidebar_tab_schema()}
-				</TabsTrigger>
-				<TabsTrigger value="queries" class="text-xs data-[state=active]:bg-background">
-					<FileTextIcon class="size-3 me-1" />
-					{m.sidebar_tab_queries()}
-				</TabsTrigger>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<TabsTrigger {...props} value="schema" class="text-xs data-[state=active]:bg-background">
+								<DatabaseIcon class="size-3" />
+								{#if sidebarTab === "schema"}
+									{m.sidebar_tab_schema()}
+								{/if}
+							</TabsTrigger>
+						{/snippet}
+					</Tooltip.Trigger>
+					{#if sidebarTab !== "schema"}
+						<Tooltip.Content>{m.sidebar_tab_schema()}</Tooltip.Content>
+					{/if}
+				</Tooltip.Root>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<TabsTrigger {...props} value="queries" class="text-xs data-[state=active]:bg-background">
+								<FileTextIcon class="size-3" />
+								{#if sidebarTab === "queries"}
+									{m.sidebar_tab_queries()}
+								{/if}
+							</TabsTrigger>
+						{/snippet}
+					</Tooltip.Trigger>
+					{#if sidebarTab !== "queries"}
+						<Tooltip.Content>{m.sidebar_tab_queries()}</Tooltip.Content>
+					{/if}
+				</Tooltip.Root>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<TabsTrigger {...props} value="dashboards" class="text-xs data-[state=active]:bg-background">
+								<LayoutDashboardIcon class="size-3" />
+								{#if sidebarTab === "dashboards"}
+									Dashboards
+								{/if}
+							</TabsTrigger>
+						{/snippet}
+					</Tooltip.Trigger>
+					{#if sidebarTab !== "dashboards"}
+						<Tooltip.Content>Dashboards</Tooltip.Content>
+					{/if}
+				</Tooltip.Root>
 			</TabsList>
 		</Tabs>
 	{/if}
@@ -586,6 +633,90 @@
 				</Sidebar.GroupContent>
 			</Sidebar.Group>
 		</div>
+
+		<!-- Dashboards Tab Panel -->
+		<div
+			class={["flex flex-col", sidebarTab !== "dashboards" && "hidden"]}
+			aria-hidden={sidebarTab !== "dashboards"}
+			inert={sidebarTab !== "dashboards" ? true : undefined}
+		>
+			<Sidebar.Group>
+				<Sidebar.GroupContent>
+					<div class="px-4 py-2">
+						<Button
+							variant="outline"
+							size="sm"
+							class="w-full text-xs"
+							onclick={async () => {
+								const dashboard = await db.dashboards.createDashboard("New Dashboard");
+								if (dashboard) {
+									db.dashboardTabs.add(dashboard.id, dashboard.name);
+								}
+							}}
+						>
+							<PlusIcon class="size-3 me-1" />
+							New Dashboard
+						</Button>
+					</div>
+					<Sidebar.Menu>
+						{#each db.state.activeConnectionDashboards as dashboard (dashboard.id)}
+							<Sidebar.MenuItem>
+								<ContextMenu.Root>
+									<ContextMenu.Trigger>
+										<Sidebar.MenuButton
+											class="text-xs"
+											onclick={() => {
+												db.dashboardTabs.add(dashboard.id, dashboard.name);
+											}}
+										>
+											<LayoutDashboardIcon class="size-3" />
+											<span class="flex-1 truncate">{dashboard.name}</span>
+											<Badge variant="secondary" class="text-xs px-1 py-0">
+												{dashboard.widgets.length}
+											</Badge>
+										</Sidebar.MenuButton>
+									</ContextMenu.Trigger>
+									<ContextMenu.Content class="w-40">
+										<ContextMenu.Item
+											onclick={() => {
+												const newName = prompt("Rename dashboard:", dashboard.name);
+												if (newName?.trim()) {
+													db.dashboards.renameDashboard(dashboard.id, newName.trim());
+												}
+											}}
+										>
+											<PencilIcon class="size-4 me-2" />
+											Rename
+										</ContextMenu.Item>
+										<ContextMenu.Separator />
+										<ContextMenu.Item
+											class="text-destructive focus:text-destructive"
+											onclick={() => {
+												db.dashboards.deleteDashboard(dashboard.id);
+												// Close any tabs for this dashboard
+												const tabsToClose = db.state.dashboardTabs.filter(
+													(t) => t.dashboardId === dashboard.id
+												);
+												for (const t of tabsToClose) {
+													db.dashboardTabs.remove(t.id);
+												}
+											}}
+										>
+											<Trash2Icon class="size-4 me-2" />
+											Delete
+										</ContextMenu.Item>
+									</ContextMenu.Content>
+								</ContextMenu.Root>
+							</Sidebar.MenuItem>
+						{:else}
+							<div class="px-4 py-6 text-center text-xs text-muted-foreground">
+								No dashboards yet. Create one to get started.
+							</div>
+						{/each}
+					</Sidebar.Menu>
+				</Sidebar.GroupContent>
+			</Sidebar.Group>
+		</div>
 	{/if}
 </Sidebar.Content>
 
@@ -596,6 +727,8 @@
 			{#if db.state.activeConnection}
 				{#if sidebarTab === "schema"}
 					{m.sidebar_tables_count({ count: db.state.activeSchema.length })}
+				{:else if sidebarTab === "dashboards"}
+					{db.state.activeConnectionDashboards.length} dashboard{db.state.activeConnectionDashboards.length !== 1 ? 's' : ''}
 				{:else}
 					{m.sidebar_queries_stats({ executed: db.state.activeConnectionQueryHistory.length, saved: db.state.activeConnectionSavedQueries.length })}
 				{/if}

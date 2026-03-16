@@ -19,6 +19,7 @@
     import CanvasView from "$lib/components/canvas/canvas-view.svelte";
     import QueryVisualViewer from "$lib/components/query-visual-viewer.svelte";
     import ConnectionTabView from "$lib/components/connection-tab-view.svelte";
+    import { DashboardView } from "$lib/components/dashboard";
     import HeaderTabs from "$lib/components/header-tabs.svelte";
 
     const db = useDatabase();
@@ -45,12 +46,16 @@
     });
 </script>
 
-<SidebarLeft />
+{#if !db.state.isDashboardFullscreen}
+    <SidebarLeft />
+{/if}
 
 <SidebarInset class="flex flex-col h-full overflow-hidden">
-    <div class="h-8 flex items-center border-b shrink-0 pl-2">
-        <HeaderTabs />
-    </div>
+    {#if !db.state.isDashboardFullscreen}
+        <div class="h-8 flex items-center border-b shrink-0 pl-2">
+            <HeaderTabs />
+        </div>
+    {/if}
     {#if db.state.connectionsLoading || db.state.projectsLoading}
         <!-- Loading state - show nothing to prevent flash -->
     {:else if activeTabType === "connection" && db.state.activeConnectionTab}
@@ -83,6 +88,10 @@
                 {/if}
             {:else if activeTabType === "visualize"}
                 <QueryVisualViewer />
+            {:else if activeTabType === "dashboard"}
+                {#if db.state.activeDashboardTab}
+                    <DashboardView />
+                {/if}
             {/if}
         </div>
     {:else}
@@ -99,4 +108,6 @@
     {/if}
 </SidebarInset>
 
-<AIAssistant />
+{#if !db.state.isDashboardFullscreen}
+    <AIAssistant />
+{/if}

@@ -132,4 +132,8 @@ export interface PersistedProjectState {
   connectionTabs?: import("./persisted").PersistedConnectionTab[];
   /** Active connection tab ID (transient, not restored) */
   activeConnectionTabId?: string | null;
+  /** Dashboard tabs */
+  dashboardTabs?: import("./persisted").PersistedDashboardTab[];
+  /** Currently active dashboard tab */
+  activeDashboardTabId?: string | null;
 }

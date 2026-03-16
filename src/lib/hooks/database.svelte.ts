@@ -21,6 +21,8 @@ import { ConnectionTabManager } from "./database/connection-tabs.svelte.js";
 import { ProjectManager } from "./database/project-manager.svelte.js";
 import { LabelManager } from "./database/label-manager.svelte.js";
 import { StarterTabManager } from "./database/starter-tabs.svelte.js";
+import { DashboardTabManager } from "./database/dashboard-tabs.svelte.js";
+import { DashboardManager } from "./database/dashboard-manager.svelte.js";
 import { CanvasState } from "./database/canvas-state.svelte.js";
 import { CanvasManager } from "./database/canvas-manager.svelte.js";
 import { SharedRepoManager } from "./database/shared-repo-manager.svelte.js";
@@ -58,6 +60,8 @@ class UseDatabase {
   readonly canvasTabs: CanvasTabManager;
   readonly visualizeTabs: VisualizeTabManager;
   readonly starterTabs: StarterTabManager;
+  readonly dashboardTabs: DashboardTabManager;
+  readonly dashboards: DashboardManager;
   readonly canvasState: CanvasState;
   readonly canvas: CanvasManager;
   readonly sharedRepos: SharedRepoManager;
@@ -86,7 +90,8 @@ class UseDatabase {
         | "statistics"
         | "canvas"
         | "visualize"
-        | "connection",
+        | "connection"
+        | "dashboard",
     ) => {
       this.ui.setActiveView(view);
     };
@@ -156,7 +161,22 @@ class UseDatabase {
       scheduleProjectPersistence,
       setActiveView,
     );
+    this.dashboardTabs = new DashboardTabManager(
+      this.state,
+      this.tabs,
+      scheduleProjectPersistence,
+      setActiveView,
+    );
     this.starterTabs = new StarterTabManager(this.state, scheduleProjectPersistence);
+
+    // Dashboards
+    this.dashboards = new DashboardManager(
+      this.state,
+      async (query: string) => {
+        return await this.queries.executeRaw(query);
+      },
+      scheduleConnectionDataPersistence,
+    );
 
     // Canvas
     this.canvasState = new CanvasState();
@@ -251,7 +271,7 @@ class UseDatabase {
       // Initialize projects (runs migrations if needed)
       await this.projects.initialize();
 
-      // Initialize connections
+      // Initialize connections (also loads saved queries, history, and dashboards)
       await this.connections.initializePersistedConnections();
 
       // Initialize shared repos
@@ -293,6 +313,7 @@ class UseDatabase {
    */
   destroy(): void {
     this.sharedRepos.stopBackgroundRefresh();
+    this.dashboards.stopAllAutoRefresh();
   }
 }
 

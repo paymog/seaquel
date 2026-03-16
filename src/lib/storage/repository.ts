@@ -5,6 +5,7 @@ import type {
   PersistedSavedQuery,
   PersistedQueryHistoryItem,
   PersistedSharedQueryRepo,
+  PersistedDashboardTab,
 } from "$lib/types";
 import type { ConnectionLabel } from "$lib/types/project";
 import type { PersistedConnection } from "$lib/hooks/database/types";
@@ -306,11 +307,34 @@ export const projectStateRepo = {
       }));
 
     // Load saved canvases
+    const dashboardTabs = tabs
+      .filter((t) => t.tab_type === "dashboard")
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        connectionId: t.connection_id ?? "",
+        dashboardId: t.source_query ?? "",
+      }));
+
     const canvasRows = await db.query<{ id: string; data: string }>(
       "SELECT id, data FROM saved_canvases WHERE project_id = ?",
       [projectId],
     );
     const savedCanvases: SavedCanvas[] = canvasRows.map((r) => JSON.parse(r.data));
+
+    // Read active_dashboard_tab_id if the column exists
+    let activeDashboardTabId: string | null = null;
+    try {
+      const dashRow = await db.query<{ active_dashboard_tab_id: string | null }>(
+        "SELECT active_dashboard_tab_id FROM project_state WHERE project_id = ?",
+        [projectId],
+      );
+      if (dashRow.length > 0) {
+        activeDashboardTabId = dashRow[0].active_dashboard_tab_id;
+      }
+    } catch {
+      // Column doesn't exist yet (pre-migration)
+    }
 
     return {
       projectId,
@@ -332,6 +356,8 @@ export const projectStateRepo = {
       starterTabs,
       activeStarterTabId: state.active_starter_tab_id,
       savedCanvases,
+      dashboardTabs,
+      activeDashboardTabId,
     };
   },
 
@@ -357,6 +383,16 @@ export const projectStateRepo = {
         JSON.stringify(state.tabOrder),
       ],
     );
+
+    // Save active dashboard tab ID (column added in v3 migration)
+    try {
+      await db.execute(
+        `UPDATE project_state SET active_dashboard_tab_id = ? WHERE project_id = ?`,
+        [state.activeDashboardTabId ?? null, state.projectId],
+      );
+    } catch {
+      // Column may not exist yet (pre-v3 migration)
+    }
 
     // Replace all tabs for this project
     await db.execute("DELETE FROM tabs WHERE project_id = ?", [state.projectId]);
@@ -421,6 +457,14 @@ export const projectStateRepo = {
         `INSERT INTO tabs (id, project_id, tab_type, name, starter_type, closable)
          VALUES (?, ?, 'starter', ?, ?, ?)`,
         [tab.id, state.projectId, tab.name, tab.type, tab.closable ? 1 : 0],
+      );
+    }
+
+    for (const tab of state.dashboardTabs ?? []) {
+      await db.execute(
+        `INSERT INTO tabs (id, project_id, tab_type, name, connection_id, source_query)
+         VALUES (?, ?, 'dashboard', ?, ?, ?)`,
+        [tab.id, state.projectId, tab.name, tab.connectionId, tab.dashboardId],
       );
     }
 
@@ -696,6 +740,76 @@ export const tutorialRepo = {
 
   async removeAll(db: SqliteDatabase): Promise<void> {
     await db.execute("DELETE FROM tutorial_progress");
+  },
+};
+
+// === Dashboards ===
+
+export interface PersistedDashboard {
+  id: string;
+  connectionId: string;
+  name: string;
+  viewport: string; // JSON: { x, y, zoom }
+  widgets: string; // JSON blob
+  dateFilter?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const dashboardsRepo = {
+  async loadByConnection(db: SqliteDatabase, connectionId: string): Promise<PersistedDashboard[]> {
+    const rows = await db.query<{
+      id: string;
+      connection_id: string;
+      name: string;
+      viewport: string;
+      widgets: string;
+      date_filter: string | null;
+      created_at: string;
+      updated_at: string;
+    }>("SELECT * FROM dashboards WHERE connection_id = ?", [connectionId]);
+
+    return rows.map((r) => ({
+      id: r.id,
+      connectionId: r.connection_id,
+      name: r.name,
+      viewport: r.viewport,
+      widgets: r.widgets,
+      dateFilter: r.date_filter,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  },
+
+  async save(db: SqliteDatabase, dashboard: PersistedDashboard): Promise<void> {
+    await db.execute(
+      `INSERT INTO dashboards (id, connection_id, name, viewport, widgets, date_filter, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         viewport = excluded.viewport,
+         widgets = excluded.widgets,
+         date_filter = excluded.date_filter,
+         updated_at = excluded.updated_at`,
+      [
+        dashboard.id,
+        dashboard.connectionId,
+        dashboard.name,
+        dashboard.viewport,
+        dashboard.widgets,
+        dashboard.dateFilter ?? null,
+        dashboard.createdAt,
+        dashboard.updatedAt,
+      ],
+    );
+  },
+
+  async remove(db: SqliteDatabase, id: string): Promise<void> {
+    await db.execute("DELETE FROM dashboards WHERE id = ?", [id]);
+  },
+
+  async removeByConnection(db: SqliteDatabase, connectionId: string): Promise<void> {
+    await db.execute("DELETE FROM dashboards WHERE connection_id = ?", [connectionId]);
   },
 };
 

@@ -17,6 +17,8 @@ import type {
   SharedQueryRepo,
   SharedQuery,
   SyncState,
+  DashboardTab,
+  Dashboard,
 } from "$lib/types";
 import type { SavedCanvas } from "$lib/types/canvas";
 
@@ -77,6 +79,13 @@ export class DatabaseState {
   // Saved canvases per project
   savedCanvasesByProject = $state<Record<string, SavedCanvas[]>>({});
 
+  // === DASHBOARD TABS STATE (per-project) ===
+  dashboardTabsByProject = $state<Record<string, DashboardTab[]>>({});
+  activeDashboardTabIdByProject = $state<Record<string, string | null>>({});
+
+  // === DASHBOARD DATA STATE (per-connection) ===
+  dashboardsByConnection = $state<Record<string, Dashboard[]>>({});
+
   // === STARTER TABS STATE (per-project) ===
   // Shown when no connection is active
   starterTabsByProject = $state<Record<string, StarterTab[]>>({});
@@ -98,10 +107,19 @@ export class DatabaseState {
   // === AI STATE ===
   aiMessages = $state<AIMessage[]>([]);
   isAIOpen = $state(false);
+  isDashboardFullscreen = $state(false);
 
   // === VIEW STATE ===
   activeView = $state<
-    "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize" | "connection"
+    | "query"
+    | "schema"
+    | "explain"
+    | "erd"
+    | "statistics"
+    | "canvas"
+    | "visualize"
+    | "connection"
+    | "dashboard"
   >("query");
 
   // === PROJECT DERIVED VALUES ===
@@ -275,6 +293,30 @@ export class DatabaseState {
   // Derived: active connection tab object
   activeConnectionTab = $derived(
     this.connectionTabs.find((t) => t.id === this.activeConnectionTabId) || null,
+  );
+
+  // === DASHBOARD TAB DERIVED VALUES ===
+
+  // Derived: dashboard tabs for active project
+  dashboardTabs = $derived(
+    this.activeProjectId ? (this.dashboardTabsByProject[this.activeProjectId] ?? []) : [],
+  );
+
+  // Derived: active dashboard tab ID for active project
+  activeDashboardTabId = $derived(
+    this.activeProjectId
+      ? (this.activeDashboardTabIdByProject[this.activeProjectId] ?? null)
+      : null,
+  );
+
+  // Derived: active dashboard tab object
+  activeDashboardTab = $derived(
+    this.dashboardTabs.find((t) => t.id === this.activeDashboardTabId) || null,
+  );
+
+  // Derived: dashboards for active connection
+  activeConnectionDashboards = $derived(
+    this.activeConnectionId ? (this.dashboardsByConnection[this.activeConnectionId] ?? []) : [],
   );
 
   // === STARTER TAB DERIVED VALUES ===

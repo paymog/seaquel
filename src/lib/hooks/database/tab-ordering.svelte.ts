@@ -7,6 +7,7 @@ import type {
   CanvasTab,
   VisualizeTab,
   ConnectionTab,
+  DashboardTab,
 } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 
@@ -117,7 +118,8 @@ export class TabOrderingManager {
       | "statistics"
       | "canvas"
       | "visualize"
-      | "connection";
+      | "connection"
+      | "dashboard";
     tab:
       | QueryTab
       | SchemaTab
@@ -126,7 +128,8 @@ export class TabOrderingManager {
       | StatisticsTab
       | CanvasTab
       | VisualizeTab
-      | ConnectionTab;
+      | ConnectionTab
+      | DashboardTab;
   }> {
     if (!this.state.activeProjectId) return [];
 
@@ -141,6 +144,8 @@ export class TabOrderingManager {
 
     const connectionTabs = this.state.connectionTabs || [];
 
+    const dashboardTabs = this.state.dashboardTabs || [];
+
     const allTabsUnordered: Array<{
       id: string;
       type:
@@ -151,7 +156,8 @@ export class TabOrderingManager {
         | "statistics"
         | "canvas"
         | "visualize"
-        | "connection";
+        | "connection"
+        | "dashboard";
       tab:
         | QueryTab
         | SchemaTab
@@ -160,7 +166,8 @@ export class TabOrderingManager {
         | StatisticsTab
         | CanvasTab
         | VisualizeTab
-        | ConnectionTab;
+        | ConnectionTab
+        | DashboardTab;
     }> = [];
 
     for (const t of queryTabs) {
@@ -186,6 +193,9 @@ export class TabOrderingManager {
     }
     for (const t of connectionTabs) {
       allTabsUnordered.push({ id: t.id, type: "connection", tab: t });
+    }
+    for (const t of dashboardTabs) {
+      allTabsUnordered.push({ id: t.id, type: "dashboard", tab: t });
     }
 
     const order = this.state.tabOrderByProject[this.state.activeProjectId] ?? [];

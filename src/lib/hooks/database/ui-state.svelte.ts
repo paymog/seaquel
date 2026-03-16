@@ -48,7 +48,8 @@ export class UIStateManager {
       | "statistics"
       | "canvas"
       | "visualize"
-      | "connection",
+      | "connection"
+      | "dashboard",
   ) {
     this.state.activeView = view;
     this.schedulePersistence(this.state.activeProjectId);

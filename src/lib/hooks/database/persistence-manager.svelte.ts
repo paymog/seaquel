@@ -7,6 +7,7 @@ import type {
   PersistedStatisticsTab,
   PersistedCanvasTab,
   PersistedStarterTab,
+  PersistedDashboardTab,
   PersistedSavedQuery,
   PersistedQueryHistoryItem,
   DatabaseConnection,
@@ -27,6 +28,7 @@ import {
   savedQueriesRepo,
   queryHistoryRepo,
   sharedReposRepo,
+  dashboardsRepo,
 } from "$lib/storage";
 import { getKeyringService } from "$lib/services/keyring";
 
@@ -192,6 +194,16 @@ export class PersistenceManager {
     return [];
   }
 
+  serializeDashboardTabs(projectId: string): PersistedDashboardTab[] {
+    const tabs = this.state.dashboardTabsByProject[projectId] ?? [];
+    return tabs.map((tab) => ({
+      id: tab.id,
+      name: tab.name,
+      connectionId: tab.connectionId,
+      dashboardId: tab.dashboardId,
+    }));
+  }
+
   serializeSavedCanvases(projectId: string): SavedCanvas[] {
     return this.state.savedCanvasesByProject[projectId] ?? [];
   }
@@ -304,6 +316,8 @@ export class PersistenceManager {
         savedCanvases: this.serializeSavedCanvases(projectId),
         connectionTabs: [],
         activeConnectionTabId: null,
+        dashboardTabs: this.serializeDashboardTabs(projectId),
+        activeDashboardTabId: this.state.activeDashboardTabIdByProject[projectId] ?? null,
       };
 
       await projectStateRepo.save(db, state);
@@ -355,16 +369,24 @@ export class PersistenceManager {
   async loadConnectionData(connectionId: string): Promise<{
     savedQueries: PersistedSavedQuery[];
     queryHistory: PersistedQueryHistoryItem[];
+    dashboards: import("$lib/storage/repository").PersistedDashboard[];
   }> {
     try {
       const db = await getDatabase();
+      let dashboards: import("$lib/storage/repository").PersistedDashboard[] = [];
+      try {
+        dashboards = await dashboardsRepo.loadByConnection(db, connectionId);
+      } catch {
+        // dashboards table may not exist yet (pre-v3 migration)
+      }
       return {
         savedQueries: await savedQueriesRepo.loadByConnection(db, connectionId),
         queryHistory: await queryHistoryRepo.loadByConnection(db, connectionId),
+        dashboards,
       };
     } catch (error) {
       console.error(`Failed to load data for connection ${connectionId}:`, error);
-      return { savedQueries: [], queryHistory: [] };
+      return { savedQueries: [], queryHistory: [], dashboards: [] };
     }
   }
 
@@ -373,6 +395,11 @@ export class PersistenceManager {
       const db = await getDatabase();
       await savedQueriesRepo.removeByConnection(db, connectionId);
       await queryHistoryRepo.removeByConnection(db, connectionId);
+      try {
+        await dashboardsRepo.removeByConnection(db, connectionId);
+      } catch {
+        // dashboards table may not exist yet
+      }
     } catch (error) {
       console.error(`Failed to remove data for connection ${connectionId}:`, error);
     }

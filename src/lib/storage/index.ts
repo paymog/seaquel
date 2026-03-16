@@ -13,4 +13,5 @@ export {
   onboardingRepo,
   tutorialRepo,
   importStateRepo,
+  dashboardsRepo,
 } from "./repository";

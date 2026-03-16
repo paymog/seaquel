@@ -23,7 +23,7 @@ import {
  * Current storage version.
  * Increment when making breaking changes to storage format.
  */
-export const CURRENT_STORAGE_VERSION = 2;
+export const CURRENT_STORAGE_VERSION = 3;
 
 /**
  * Handles data migration between storage versions.
@@ -45,6 +45,10 @@ export class MigrationManager {
 
       if (version < 2) {
         await this.migrateToV2();
+      }
+
+      if (version < 3) {
+        await this.migrateToV3();
       }
 
       await this.persistence.setStorageVersion(CURRENT_STORAGE_VERSION);
@@ -197,6 +201,39 @@ export class MigrationManager {
       activeView,
       activeConnectionId,
     };
+  }
+
+  /**
+   * Migrate to v3: Add dashboards table and active_dashboard_tab_id column.
+   */
+  private async migrateToV3(): Promise<void> {
+    console.log("Running migration to v3 (dashboards)...");
+
+    const db = await getDatabase();
+
+    // Create dashboards table
+    await db.execute(`CREATE TABLE IF NOT EXISTS dashboards (
+      id TEXT PRIMARY KEY,
+      connection_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      viewport TEXT NOT NULL DEFAULT '{"x":0,"y":0,"zoom":1}',
+      widgets TEXT NOT NULL DEFAULT '[]',
+      date_filter TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+    await db.execute(
+      `CREATE INDEX IF NOT EXISTS idx_dashboards_connection ON dashboards(connection_id)`,
+    );
+
+    // Add active_dashboard_tab_id column to project_state
+    try {
+      await db.execute(`ALTER TABLE project_state ADD COLUMN active_dashboard_tab_id TEXT`);
+    } catch {
+      // Column may already exist
+    }
+
+    console.log("Migration to v3 completed");
   }
 
   /**

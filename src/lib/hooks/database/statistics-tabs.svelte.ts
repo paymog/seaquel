@@ -9,14 +9,36 @@ import { getAdapter } from "$lib/db/index.js";
  * Tabs are organized per-project.
  */
 export class StatisticsTabManager extends BaseTabManager<StatisticsTab> {
-  private setActiveView: (view: "query" | "schema" | "explain" | "erd" | "statistics") => void;
+  private setActiveView: (
+    view:
+      | "query"
+      | "schema"
+      | "explain"
+      | "erd"
+      | "statistics"
+      | "canvas"
+      | "visualize"
+      | "connection"
+      | "dashboard",
+  ) => void;
   private executeQuery: (query: string) => Promise<Record<string, unknown>[]>;
 
   constructor(
     state: DatabaseState,
     tabOrdering: TabOrderingManager,
     schedulePersistence: (projectId: string | null) => void,
-    setActiveView: (view: "query" | "schema" | "explain" | "erd" | "statistics") => void,
+    setActiveView: (
+      view:
+        | "query"
+        | "schema"
+        | "explain"
+        | "erd"
+        | "statistics"
+        | "canvas"
+        | "visualize"
+        | "connection"
+        | "dashboard",
+    ) => void,
     executeQuery: (query: string) => Promise<Record<string, unknown>[]>,
   ) {
     super(state, tabOrdering, schedulePersistence);

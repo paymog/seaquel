@@ -7,7 +7,7 @@
     import { isTauri } from "$lib/utils/environment";
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
-    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, LayoutGridIcon, GitBranchIcon, CableIcon } from "@lucide/svelte";
+    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, LayoutGridIcon, GitBranchIcon, CableIcon, LayoutDashboardIcon } from "@lucide/svelte";
     import { RocketIcon } from "@lucide/svelte";
     import { useDatabase } from "$lib/hooks/database.svelte.js";
     import { useShortcuts, findShortcut } from "$lib/shortcuts/index.js";
@@ -17,7 +17,7 @@
     import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
     import BatchUnsavedDialog from "$lib/components/batch-unsaved-dialog.svelte";
     import SaveQueryDialog from "$lib/components/save-query-dialog.svelte";
-    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, CanvasTab, VisualizeTab, ConnectionTab } from "$lib/types";
+    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, CanvasTab, VisualizeTab, ConnectionTab, DashboardTab } from "$lib/types";
 
     const db = useDatabase();
     const shortcuts = useShortcuts();
@@ -128,6 +128,15 @@
         db.ui.setActiveView("connection");
     };
 
+    const handleDashboardTabClick = (tabId: string) => {
+        const dashTab = db.state.dashboardTabs.find(t => t.id === tabId);
+        if (dashTab?.connectionId) {
+            db.connections.setActive(dashTab.connectionId);
+        }
+        db.dashboardTabs.setActive(tabId);
+        db.ui.setActiveView("dashboard");
+    };
+
     // Get ordered tabs from db (uses custom order with timestamp fallback)
     const allTabs = $derived.by(() => {
         const ordered = db.tabs.ordered;
@@ -136,8 +145,8 @@
 
     // Drag and drop configuration
     const flipDurationMs = 150;
-    type TabType = 'query' | 'schema' | 'explain' | 'erd' | 'statistics' | 'canvas' | 'visualize' | 'connection';
-    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | CanvasTab | VisualizeTab | import('$lib/types').ConnectionTab };
+    type TabType = 'query' | 'schema' | 'explain' | 'erd' | 'statistics' | 'canvas' | 'visualize' | 'connection' | 'dashboard';
+    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | CanvasTab | VisualizeTab | import('$lib/types').ConnectionTab | DashboardTab };
 
     // State for dragging
     let draggedItems = $state<DndItem[]>([]);
@@ -182,6 +191,9 @@
         if (db.state.activeView === 'connection' && db.state.activeConnectionTabId) {
             return allTabs.findIndex(t => t.type === 'connection' && t.id === db.state.activeConnectionTabId);
         }
+        if (db.state.activeView === 'dashboard' && db.state.activeDashboardTabId) {
+            return allTabs.findIndex(t => t.type === 'dashboard' && t.id === db.state.activeDashboardTabId);
+        }
         return -1;
     });
 
@@ -205,6 +217,8 @@
         } else if (tab.type === 'connection') {
             db.connectionTabs.setActive(tab.id);
             db.ui.setActiveView('connection');
+        } else if (tab.type === 'dashboard') {
+            handleDashboardTabClick(tab.id);
         }
     };
 
@@ -227,6 +241,7 @@
         else if (type === 'canvas') db.canvasTabs.remove(id);
         else if (type === 'visualize') db.visualizeTabs.remove(id);
         else if (type === 'connection') db.connectionTabs.remove(id);
+        else if (type === 'dashboard') db.dashboardTabs.remove(id);
     };
 
     const tryCloseQueryTab = (tabId: string) => {
@@ -303,6 +318,8 @@
             db.visualizeTabs.remove(db.state.activeVisualizeTabId);
         } else if (db.state.activeView === 'connection' && db.state.activeConnectionTabId) {
             db.connectionTabs.remove(db.state.activeConnectionTabId);
+        } else if (db.state.activeView === 'dashboard' && db.state.activeDashboardTabId) {
+            db.dashboardTabs.remove(db.state.activeDashboardTabId);
         }
     };
 
@@ -315,6 +332,7 @@
         else if (type === 'canvas') db.canvasTabs.remove(id);
         else if (type === 'visualize') db.visualizeTabs.remove(id);
         else if (type === 'connection') db.connectionTabs.remove(id);
+        else if (type === 'dashboard') db.dashboardTabs.remove(id);
     };
 
     const closeOtherTabs = (id: string) => {
@@ -724,6 +742,45 @@
                                             onclick={(e) => {
                                                 e.stopPropagation();
                                                 db.connectionTabs.remove(id);
+                                            }}
+                                        >
+                                            <XIcon />
+                                        </Button>
+                                    </div>
+                                </ContextMenu.Trigger>
+                                <ContextMenu.Portal>
+                                    <ContextMenu.Content class="w-40">
+                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
+                                        <ContextMenu.Separator />
+                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                    </ContextMenu.Content>
+                                </ContextMenu.Portal>
+                            </ContextMenu.Root>
+                        {:else if type === 'dashboard'}
+                            {@const dashboardTab = tab as DashboardTab}
+                            <ContextMenu.Root>
+                                <ContextMenu.Trigger>
+                                    <div
+                                        class={[
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
+                                            activeTabType === "dashboard" && db.state.activeDashboardTabId === id
+                                                ? "bg-muted shadow-sm"
+                                                : "hover:bg-muted/50",
+                                        ]}
+                                        onclick={() => handleDashboardTabClick(id)}
+                                    >
+                                        <LayoutDashboardIcon class="size-3 text-muted-foreground" />
+                                        <span class="pr-4">{dashboardTab.name}</span>
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
+                                            onclick={(e) => {
+                                                e.stopPropagation();
+                                                db.dashboardTabs.remove(id);
                                             }}
                                         >
                                             <XIcon />

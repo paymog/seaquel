@@ -6,7 +6,7 @@
 /**
  * Supported chart types for data visualization.
  */
-export type ChartType = "bar" | "line" | "pie" | "scatter";
+export type ChartType = "bar" | "line" | "pie" | "scatter" | "area";
 
 /**
  * Configuration for rendering a chart from query results.
@@ -20,6 +20,8 @@ export interface ChartConfig {
   yAxis: string[];
   /** Whether to chart all data or just the current page */
   dataScope: "page" | "all";
+  /** Custom colors per Y-axis column (column name → hex color). Falls back to theme defaults when not set. */
+  colors?: Record<string, string>;
 }
 
 /**

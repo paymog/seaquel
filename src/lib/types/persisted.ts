@@ -184,6 +184,20 @@ export interface PersistedConnectionTab {
   name: string;
 }
 
+/**
+ * Persisted dashboard tab state.
+ */
+export interface PersistedDashboardTab {
+  /** Tab identifier */
+  id: string;
+  /** Tab display name */
+  name: string;
+  /** Connection ID this dashboard tab belongs to */
+  connectionId: string;
+  /** Dashboard ID this tab references */
+  dashboardId: string;
+}
+
 export type ActiveViewType =
   | "query"
   | "schema"
@@ -192,7 +206,8 @@ export type ActiveViewType =
   | "statistics"
   | "canvas"
   | "visualize"
-  | "connection";
+  | "connection"
+  | "dashboard";
 
 /**
  * Complete persisted state for a single connection.

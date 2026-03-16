@@ -21,6 +21,7 @@
 		Code,
 		BarChart3,
 		LayoutGrid,
+		LayoutDashboard,
 		BookOpen,
 		GraduationCap,
 	} from "@lucide/svelte";
@@ -84,7 +85,7 @@
 		runAndClose(() => db.ui.toggleAI());
 	}
 
-	function goToTab(tabId: string, type: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize" | "connection") {
+	function goToTab(tabId: string, type: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize" | "connection" | "dashboard") {
 		runAndClose(() => {
 			switch (type) {
 				case "query":
@@ -118,6 +119,10 @@
 				case "connection":
 					db.connectionTabs.setActive(tabId);
 					db.ui.setActiveView("connection");
+					break;
+				case "dashboard":
+					db.dashboardTabs.setActive(tabId);
+					db.ui.setActiveView("dashboard");
 					break;
 			}
 		});
@@ -280,6 +285,8 @@
 				return tab.tab.name || "ERD";
 			case "statistics":
 				return tab.tab.name || "Statistics";
+			case "dashboard":
+				return tab.tab.name || "Dashboard";
 			default:
 				return "Tab";
 		}
@@ -301,6 +308,8 @@
 				return LayoutGrid;
 			case "visualize":
 				return GitBranch;
+			case "dashboard":
+				return LayoutDashboard;
 			default:
 				return FileText;
 		}

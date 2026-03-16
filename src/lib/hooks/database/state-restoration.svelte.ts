@@ -1,11 +1,13 @@
 import type {
   SavedQuery,
   QueryHistoryItem,
+  Dashboard,
   PersistedSavedQuery,
   PersistedQueryHistoryItem,
 } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
+import type { PersistedDashboard } from "$lib/storage/repository";
 
 /**
  * Manages restoration of persisted connection data when loading the app.
@@ -38,6 +40,11 @@ export class StateRestorationManager {
       ...this.state.schemas,
       [connectionId]: [],
     };
+    // Dashboards are per-connection
+    this.state.dashboardsByConnection = {
+      ...this.state.dashboardsByConnection,
+      [connectionId]: [],
+    };
   }
 
   /**
@@ -52,6 +59,9 @@ export class StateRestorationManager {
 
     const { [connectionId]: _3, ...restSchemas } = this.state.schemas;
     this.state.schemas = restSchemas;
+
+    const { [connectionId]: _4, ...restDashboards } = this.state.dashboardsByConnection;
+    this.state.dashboardsByConnection = restDashboards;
   }
 
   /**
@@ -113,7 +123,27 @@ export class StateRestorationManager {
   }
 
   /**
-   * Load connection data (saved queries and history) from persistence.
+   * Restore dashboards from persisted data.
+   */
+  restoreDashboards(connectionId: string, data: PersistedDashboard[]): void {
+    const dashboards: Dashboard[] = data.map((r) => ({
+      id: r.id,
+      name: r.name,
+      connectionId: r.connectionId,
+      widgets: JSON.parse(r.widgets),
+      viewport: JSON.parse(r.viewport),
+      dateFilter: r.dateFilter ? JSON.parse(r.dateFilter) : null,
+      createdAt: new Date(r.createdAt),
+      updatedAt: new Date(r.updatedAt),
+    }));
+    this.state.dashboardsByConnection = {
+      ...this.state.dashboardsByConnection,
+      [connectionId]: dashboards,
+    };
+  }
+
+  /**
+   * Load connection data (saved queries, history, and dashboards) from persistence.
    */
   async loadConnectionData(connectionId: string): Promise<void> {
     const data = await this.persistence.loadConnectionData(connectionId);
@@ -124,6 +154,10 @@ export class StateRestorationManager {
 
     if (data.queryHistory.length > 0) {
       this.restoreQueryHistory(connectionId, data.queryHistory);
+    }
+
+    if (data.dashboards.length > 0) {
+      this.restoreDashboards(connectionId, data.dashboards);
     }
   }
 }

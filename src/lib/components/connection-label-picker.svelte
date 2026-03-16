@@ -44,11 +44,11 @@
 		}
 	};
 
-	const addCustomLabel = () => {
+	const addCustomLabel = async () => {
 		if (!customLabelName.trim() || !db.state.activeProjectId) return;
 
 		// Create custom label and add to connection
-		const newLabel = db.projects.addCustomLabel(db.state.activeProjectId, {
+		const newLabel = await db.projects.addCustomLabel(db.state.activeProjectId, {
 			name: customLabelName.trim(),
 			color: selectedColor
 		});

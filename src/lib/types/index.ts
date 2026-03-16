@@ -63,6 +63,9 @@ export type {
   QueryOrderBy,
 } from "./visualize";
 
+// Dashboard types
+export type { Dashboard, DashboardWidget, DashboardTab, KpiConfig } from "./dashboard";
+
 // Statistics types
 export type {
   TableSizeInfo,
@@ -90,6 +93,7 @@ export type {
   PersistedQueryHistoryItem,
   PersistedConnectionTab,
   PersistedConnectionState,
+  PersistedDashboardTab,
   ActiveViewType,
 } from "./persisted";
 

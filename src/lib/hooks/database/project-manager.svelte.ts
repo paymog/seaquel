@@ -274,6 +274,7 @@ export class ProjectManager {
       this.state.statisticsTabsByProject[projectId] = [];
       this.state.canvasTabsByProject[projectId] = [];
       this.state.savedCanvasesByProject[projectId] = [];
+      this.state.dashboardTabsByProject[projectId] = [];
       this.state.tabOrderByProject[projectId] = [];
       this.state.activeQueryTabIdByProject[projectId] = null;
       this.state.activeSchemaTabIdByProject[projectId] = null;
@@ -281,6 +282,7 @@ export class ProjectManager {
       this.state.activeErdTabIdByProject[projectId] = null;
       this.state.activeStatisticsTabIdByProject[projectId] = null;
       this.state.activeCanvasTabIdByProject[projectId] = null;
+      this.state.activeDashboardTabIdByProject[projectId] = null;
       this.state.activeConnectionIdByProject[projectId] = null;
       this.state.connectionTabsByProject[projectId] = [];
       this.state.activeConnectionTabIdByProject[projectId] = null;
@@ -375,6 +377,18 @@ export class ProjectManager {
       // Initialize default starter tabs if none persisted
       this.initializeStarterTabs?.(projectId);
     }
+
+    // Restore dashboard tabs
+    this.state.dashboardTabsByProject[projectId] = (persistedState.dashboardTabs ?? [])
+      .filter((t) => t.connectionId && t.dashboardId)
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        connectionId: t.connectionId,
+        dashboardId: t.dashboardId,
+      }));
+    this.state.activeDashboardTabIdByProject[projectId] =
+      persistedState.activeDashboardTabId ?? null;
 
     // Connection tabs are transient - always initialize empty
     this.state.connectionTabsByProject[projectId] = [];
