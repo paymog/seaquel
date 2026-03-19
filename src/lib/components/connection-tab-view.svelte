@@ -12,6 +12,8 @@
 		hasAllCredentials,
 	} from "$lib/utils/connection-string.js";
 	import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
+	import { Trash2Icon } from "@lucide/svelte";
+	import * as Dialog from "$lib/components/ui/dialog/index.js";
 
 	import WizardStepMethod from "./connection-wizard/wizard-step-method.svelte";
 	import WizardStepDetails from "./connection-wizard/wizard-step-details.svelte";
@@ -214,7 +216,7 @@
 	};
 
 	const handleParse = (connStr: string): boolean => {
-		const result = parseConnectionString(connStr, formData as ConnectionFormData);
+		const result = parseConnectionString(connStr);
 		if (result.success) {
 			Object.assign(formData, result.formData);
 			connectionError = null;
@@ -237,6 +239,15 @@
 	const goBack = () => {
 		formData.connectionString = "";
 		currentStep = "method";
+	};
+
+	let showDeleteConfirm = $state(false);
+
+	const handleDeleteConnection = async () => {
+		if (!tab.connectionId) return;
+		await db.connections.remove(tab.connectionId);
+		showDeleteConfirm = false;
+		db.connectionTabs.remove(tab.id);
 	};
 </script>
 
@@ -292,6 +303,16 @@
 								<ArrowLeftIcon class="size-4 me-2" />
 								{m.wizard_back()}
 							</Button>
+						{:else if isEditing && tab.connectionId}
+							<Button
+								variant="ghost"
+								class="text-destructive hover:text-destructive"
+								onclick={() => { showDeleteConfirm = true; }}
+								disabled={isConnecting}
+							>
+								<Trash2Icon class="size-4 me-1" />
+								{m.header_delete_connection()}
+							</Button>
 						{/if}
 					</div>
 
@@ -316,3 +337,23 @@
 		</div>
 	</div>
 </div>
+
+<!-- Delete Connection Confirmation -->
+<Dialog.Root bind:open={showDeleteConfirm}>
+	<Dialog.Content class="max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>{m.header_delete_dialog_title()}</Dialog.Title>
+			<Dialog.Description>
+				{m.header_delete_dialog_description({ name: formData.name })}
+			</Dialog.Description>
+		</Dialog.Header>
+		<Dialog.Footer class="gap-2">
+			<Button variant="outline" onclick={() => showDeleteConfirm = false}>
+				{m.header_button_cancel()}
+			</Button>
+			<Button variant="destructive" onclick={handleDeleteConnection}>
+				{m.header_delete_connection()}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
