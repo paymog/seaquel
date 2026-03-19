@@ -74,7 +74,7 @@
 	{/if}
 
 	<!-- Content Sidebar (second sidebar) - show for Manage and Learn -->
-	<Sidebar.Root collapsible="none" class="hidden flex-1 md:flex">
+	<Sidebar.Root collapsible="none" class="hidden flex-1 min-w-0 md:flex">
 		{#if activeNavItem === "manage"}
 			<SidebarManage {version} />
 		{:else if activeNavItem === "learn"}
