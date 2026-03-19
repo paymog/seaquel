@@ -45,6 +45,7 @@
 	const isConnected = $derived(!!db.state.activeConnectionId && !!(db.state.activeConnection?.database || db.state.activeConnection?.mssqlConnectionId || db.state.activeConnection?.providerConnectionId));
 	const hasActiveQueryTab = $derived(isConnected && !!db.state.activeQueryTab);
 	const hasQueryContent = $derived(hasActiveQueryTab && !!db.state.activeQueryTab?.query?.trim());
+	const dashboards = $derived(db.state.activeConnectionDashboards);
 	const hasConnections = $derived(connections.length > 0);
 
 	// Register shortcut handler
@@ -162,6 +163,19 @@
 
 	function viewCanvas() {
 		runAndClose(() => db.canvasTabs.add());
+	}
+
+	async function newDashboard() {
+		runAndClose(async () => {
+			const dashboard = await db.dashboards.createDashboard("New Dashboard");
+			if (dashboard) {
+				db.dashboardTabs.add(dashboard.id, dashboard.name);
+			}
+		});
+	}
+
+	function openDashboard(dashboardId: string, name: string) {
+		runAndClose(() => db.dashboardTabs.add(dashboardId, name));
 	}
 
 	function goToLearn(path: string) {
@@ -335,6 +349,10 @@
 						<span>{m.command_new_query_tab()}</span>
 						<Command.Shortcut>⌘T</Command.Shortcut>
 					</Command.Item>
+					<Command.Item value="new-dashboard" onSelect={newDashboard}>
+						<LayoutDashboard class="size-4" />
+						<span>{m.command_new_dashboard()}</span>
+					</Command.Item>
 				{/if}
 				{#if hasQueryContent}
 					<Command.Item value="execute-query" onSelect={executeQuery}>
@@ -428,6 +446,18 @@
 					<Command.Item value="query-table-{table.schema}-{table.name}" onSelect={() => queryTable(table)}>
 						<Play class="size-4" />
 						<span>{m.command_query_table({ schema: table.schema, table: table.name })}</span>
+					</Command.Item>
+				{/each}
+			</Command.Group>
+		{/if}
+
+		<!-- Dashboards -->
+		{#if isConnected && dashboards.length > 0}
+			<Command.Group heading={m.command_group_dashboards()}>
+				{#each dashboards as dashboard}
+					<Command.Item value="open-dashboard-{dashboard.id}" onSelect={() => openDashboard(dashboard.id, dashboard.name)}>
+						<LayoutDashboard class="size-4" />
+						<span>{m.command_open_dashboard({ name: dashboard.name })}</span>
 					</Command.Item>
 				{/each}
 			</Command.Group>
