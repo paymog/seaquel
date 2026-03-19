@@ -14,6 +14,7 @@ import type {
 function decodeValue(value: unknown): string {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return String.fromCharCode(...value);
+  // oxlint-disable-next-line typescript-eslint(no-base-to-string)
   return String(value ?? "");
 }
 
@@ -155,6 +156,7 @@ export class MysqlAdapter implements DatabaseAdapter {
     if (table) {
       return {
         type: (table["access_type"] as string) || "ALL",
+        // oxlint-disable-next-line
         label: `${table["table_name"] || "unknown"} (${table["access_type"] || "ALL"})`,
         rows: table["rows_examined_per_scan"] as number | undefined,
         cost: table["read_cost"]

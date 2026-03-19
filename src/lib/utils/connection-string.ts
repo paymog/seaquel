@@ -103,7 +103,6 @@ export function getConnectionData(formData: ConnectionFormData) {
  */
 export function parseConnectionString(
   connStr: string,
-  formData: ConnectionFormData,
 ): { success: true; formData: Partial<ConnectionFormData> } | { success: false; error: string } {
   try {
     // Handle SQLite

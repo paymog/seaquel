@@ -828,7 +828,8 @@ export class QueryExecutionManager {
             ? `'${newValue.replace(/'/g, "''")}'`
             : newValue === null
               ? "NULL"
-              : String(newValue);
+              : // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+                String(newValue);
         const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = ${escapedNewValue} WHERE ${whereConditions.join(" AND ")}`;
         await mssqlExecute(connection.mssqlConnectionId!, query);
       } else if (connection?.providerConnectionId) {

@@ -163,7 +163,7 @@ export function transformDataForChart(
     // Get label from X axis column or use row index
     // oxlint-disable-next-line typescript-eslint(no-base-to-string)
     const label = config.xAxis
-      ? String(row[config.xAxis] ?? `Row ${index + 1}`)
+      ? String((row[config.xAxis] as string) ?? `Row ${index + 1}`)
       : `Row ${index + 1}`;
     labels.push(label);
 

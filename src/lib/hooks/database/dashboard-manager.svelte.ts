@@ -332,7 +332,7 @@ export class DashboardManager {
       const db = await getDatabase();
       // Strip runtime state from widgets before persisting
       const widgetsForStorage = dashboard.widgets.map(
-        ({ result, isLoading, error, lastRefreshed, ...rest }) => rest,
+        ({ result: _, isLoading: __, error: ___, lastRefreshed: ____, ...rest }) => rest,
       );
 
       const persisted: PersistedDashboard = {

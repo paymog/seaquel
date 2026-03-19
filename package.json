@@ -9,7 +9,7 @@
     "build": "vite build",
     "build:demo": "BUILD_TARGET=demo vite build --mode demo",
     "format": "oxfmt",
-    "lint": "oxlint --fix",
+    "lint": "oxlint --type-aware --type-check --deny-warnings --fix",
     "preview": "vite preview",
     "preview:demo": "vite preview --outDir build-demo",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",

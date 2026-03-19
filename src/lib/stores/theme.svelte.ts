@@ -5,8 +5,6 @@ import { BUILT_IN_THEMES, DEFAULT_PREFERENCES } from "$lib/themes/presets";
 import { applyTheme, cacheThemeColors } from "$lib/themes/apply";
 import { validateThemeColors } from "$lib/themes/color-utils";
 
-const STORE_FILE = "themes.json";
-
 /**
  * Theme store - manages theme preferences, user themes, and theme application
  */
