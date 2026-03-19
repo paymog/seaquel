@@ -36,6 +36,12 @@ export const shortcuts: ShortcutDefinition[] = [
     description: "Open settings",
     category: "general",
   },
+  {
+    id: "openProjectSettings",
+    keys: { mod: true, key: ";" },
+    description: "Open project settings",
+    category: "general",
+  },
 
   // Tabs
   {

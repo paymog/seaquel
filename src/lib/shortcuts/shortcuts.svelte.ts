@@ -84,6 +84,7 @@ class ShortcutManager {
       "saveQuery",
       "formatSql",
       "openSettings",
+      "openProjectSettings",
     ];
     return globalIds.includes(shortcut.id);
   }
