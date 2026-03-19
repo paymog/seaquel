@@ -26,6 +26,9 @@
 		GraduationCap,
 	} from "@lucide/svelte";
 	import { m } from "$lib/paraglide/messages.js";
+	import { Link } from "@lucide/svelte";
+	import { handleDeepLink } from "$lib/services/deep-link";
+	import { toast } from "svelte-sonner";
 
 	const db = useDatabase();
 	const shortcuts = useShortcuts();
@@ -329,6 +332,20 @@
 		}
 	}
 
+	async function openDeepLink() {
+		open = false;
+		try {
+			const text = await navigator.clipboard.readText();
+			if (text.startsWith("seaquel://")) {
+				handleDeepLink(text, db);
+			} else {
+				toast.error("Clipboard does not contain a seaquel:// link");
+			}
+		} catch {
+			toast.error("Failed to read clipboard");
+		}
+	}
+
 	function truncateQuery(query: string, maxLength: number = 50): string {
 		const cleaned = query.replace(/\s+/g, " ").trim();
 		return cleaned.length > maxLength ? cleaned.substring(0, maxLength) + "..." : cleaned;
@@ -533,6 +550,16 @@
 				<Command.Item value="copy-results" onSelect={copyResults}>
 					<Copy class="size-4" />
 					<span>{m.command_copy_results_json()}</span>
+				</Command.Item>
+			</Command.Group>
+		{/if}
+
+		<!-- Dev Tools (only visible during development) -->
+		{#if import.meta.env.DEV}
+			<Command.Group heading="Dev Tools">
+				<Command.Item value="open-deep-link" onSelect={openDeepLink}>
+					<Link class="size-4" />
+					<span>Open Deep Link (from clipboard)</span>
 				</Command.Item>
 			</Command.Group>
 		{/if}

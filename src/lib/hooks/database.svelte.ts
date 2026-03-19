@@ -69,8 +69,13 @@ class UseDatabase {
   readonly sharedQueries: SharedQueryManager;
 
   private _stateRestoration: StateRestorationManager;
+  private _readyResolve!: () => void;
+  private _readyPromise: Promise<void>;
 
   constructor() {
+    this._readyPromise = new Promise<void>((resolve) => {
+      this._readyResolve = resolve;
+    });
     this.state = new DatabaseState();
 
     const scheduleProjectPersistence = (projectId: string | null) => {
@@ -267,6 +272,13 @@ class UseDatabase {
   }
 
   /**
+   * Returns a promise that resolves when app initialization is complete.
+   */
+  whenReady(): Promise<void> {
+    return this._readyPromise;
+  }
+
+  /**
    * Initialize the application state.
    * Projects are loaded first, then connections, then shared repos.
    */
@@ -282,6 +294,8 @@ class UseDatabase {
       await this.initializeSharedRepos();
     } catch (error) {
       console.error("Failed to initialize app:", error);
+    } finally {
+      this._readyResolve();
     }
   }
 

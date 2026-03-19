@@ -46,6 +46,11 @@
     "fs": {
       "requireLiteralLeadingDot": false
     },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["seaquel"]
+      }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIyOTVBN0ZENzA5RjJGMjQKUldRa0w1OXcvYWVWc2tWMGhxSG9jMVdIcTFmSm9sVHN0dFRSWXAxdXhWMTZhaFhKbHlMbnRrMzEK",
       "endpoints": [

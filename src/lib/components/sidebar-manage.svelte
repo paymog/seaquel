@@ -17,6 +17,9 @@
 	import { m } from "$lib/paraglide/messages.js";
 	import { isDemo, getFeatures } from "$lib/features";
 	import ConnectionLabelPicker from "$lib/components/connection-label-picker.svelte";
+	import { buildDeepLinkUrl } from "$lib/services/deep-link";
+	import { LinkIcon } from "@lucide/svelte";
+	import { toast } from "svelte-sonner";
 
 	interface Props {
 		version?: string;
@@ -207,6 +210,17 @@
 		connectionToEditLabels = connectionId;
 		connectionToEditLabelsName = name;
 		showLabelsDialog = true;
+	};
+
+	const copyShareLink = async (query: SharedQuery) => {
+		const repo = db.state.sharedRepos.find((r) => r.id === query.repoId);
+		if (!repo || !repo.remoteUrl) {
+			toast.error("This repository has no remote URL configured");
+			return;
+		}
+		const url = buildDeepLinkUrl(repo.remoteUrl, query.filePath, repo.branch);
+		await navigator.clipboard.writeText(url);
+		toast.success("Link copied to clipboard");
 	};
 </script>
 
@@ -574,31 +588,46 @@
 										<!-- Shared queries from git repo -->
 										{#each filteredSharedQueries as item (`shared:${item.id}`)}
 											<Sidebar.MenuItem>
-												<Sidebar.MenuButton
-													class="h-auto py-2 flex-col items-start gap-1 group overflow-hidden"
-													onclick={() => handleSharedQueryClick(item)}
-												>
-													<div class="flex items-center w-full gap-2">
-														<div class="flex items-center gap-2 flex-1 min-w-0">
-															<FileTextIcon class="size-3 text-primary shrink-0" />
-															<span class="text-sm font-medium truncate">{item.name}</span>
-														</div>
-														<Tooltip.Root>
-															<Tooltip.Trigger>
-																{#snippet child({ props })}
-																	<button
-																		{...props}
-																		class="shrink-0 cursor-pointer text-green-500 hover:text-muted-foreground transition-colors"
-																		onclick={(e) => { e.stopPropagation(); handleUnshareQuery(item.id); }}
-																	>
-																		<GitBranchIcon class="size-3!" />
-																	</button>
-																{/snippet}
-															</Tooltip.Trigger>
-															<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
-														</Tooltip.Root>
-													</div>
-												</Sidebar.MenuButton>
+												<ContextMenu.Root>
+													<ContextMenu.Trigger>
+														<Sidebar.MenuButton
+															class="h-auto py-2 flex-col items-start gap-1 group overflow-hidden"
+															onclick={() => handleSharedQueryClick(item)}
+														>
+															<div class="flex items-center w-full gap-2">
+																<div class="flex items-center gap-2 flex-1 min-w-0">
+																	<FileTextIcon class="size-3 text-primary shrink-0" />
+																	<span class="text-sm font-medium truncate">{item.name}</span>
+																</div>
+																<Tooltip.Root>
+																	<Tooltip.Trigger>
+																		{#snippet child({ props })}
+																			<button
+																				{...props}
+																				class="shrink-0 cursor-pointer text-green-500 hover:text-muted-foreground transition-colors"
+																				onclick={(e) => { e.stopPropagation(); handleUnshareQuery(item.id); }}
+																			>
+																				<GitBranchIcon class="size-3!" />
+																			</button>
+																		{/snippet}
+																	</Tooltip.Trigger>
+																	<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
+																</Tooltip.Root>
+															</div>
+														</Sidebar.MenuButton>
+													</ContextMenu.Trigger>
+													<ContextMenu.Content class="w-44">
+														<ContextMenu.Item onclick={() => copyShareLink(item)}>
+															<LinkIcon class="size-4 me-2" />
+															Copy Link
+														</ContextMenu.Item>
+														<ContextMenu.Separator />
+														<ContextMenu.Item onclick={() => handleUnshareQuery(item.id)}>
+															<GitBranchIcon class="size-4 me-2" />
+															{m.connection_mark_local_only()}
+														</ContextMenu.Item>
+													</ContextMenu.Content>
+												</ContextMenu.Root>
 											</Sidebar.MenuItem>
 										{/each}
 										<!-- Local saved queries -->

@@ -32,6 +32,8 @@
     import { createDemoDashboard } from "$lib/demo/sample-dashboard";
     import { updateStore } from "$lib/stores/update.svelte.js";
     import type { UpdateInfo } from "$lib/api/tauri";
+    import DeepLinkCloneDialog from "$lib/components/deep-link-clone-dialog.svelte";
+    import { handleDeepLink } from "$lib/services/deep-link";
 
     setDatabase();
 
@@ -145,6 +147,21 @@
                 },
             );
             cleanupFns.push(unlistenThemeCancel);
+
+            // Deep link handling
+            const { onOpenUrl, getCurrent } = await import("@tauri-apps/plugin-deep-link");
+
+            // Handle deep links while running
+            const unlistenDeepLink = await onOpenUrl((urls) => {
+                for (const url of urls) handleDeepLink(url, db);
+            });
+            cleanupFns.push(unlistenDeepLink);
+
+            // Handle deep link that launched the app (after db is ready)
+            const launchUrls = await getCurrent();
+            if (launchUrls?.length) {
+                for (const url of launchUrls) handleDeepLink(url, db);
+            }
         })();
 
         return () => {
@@ -183,6 +200,7 @@
     <SettingsDialog />
     <DbeaverImportDialog />
     <TablePlusImportDialog />
+    <DeepLinkCloneDialog />
 
     <Sidebar.Provider
         class="[--header-height:calc(--spacing(8))] flex-col h-svh overflow-hidden"
