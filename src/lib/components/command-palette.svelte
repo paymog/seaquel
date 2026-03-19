@@ -40,7 +40,7 @@
 		db.state.activeConnectionId ? db.state.schemas[db.state.activeConnectionId] ?? [] : []
 	);
 	const connections = $derived(db.state.connections);
-	const savedQueries = $derived(db.state.activeConnectionSavedQueries);
+	const savedQueries = $derived(db.state.projectSavedQueries);
 	const recentHistory = $derived(db.state.activeConnectionQueryHistory?.slice(0, 10) || []);
 	const openTabs = $derived(db.tabs.ordered);
 	const activeResult = $derived(db.state.activeQueryResult);
@@ -48,7 +48,7 @@
 	const isConnected = $derived(!!db.state.activeConnectionId && !!(db.state.activeConnection?.database || db.state.activeConnection?.mssqlConnectionId || db.state.activeConnection?.providerConnectionId));
 	const hasActiveQueryTab = $derived(isConnected && !!db.state.activeQueryTab);
 	const hasQueryContent = $derived(hasActiveQueryTab && !!db.state.activeQueryTab?.query?.trim());
-	const dashboards = $derived(db.state.activeConnectionDashboards);
+	const dashboards = $derived(db.state.projectDashboards);
 	const hasConnections = $derived(connections.length > 0);
 
 	// Register shortcut handler

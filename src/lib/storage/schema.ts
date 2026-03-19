@@ -100,14 +100,14 @@ const DDL_STATEMENTS = [
   // Saved queries
   `CREATE TABLE IF NOT EXISTS saved_queries (
     id TEXT PRIMARY KEY,
-    connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     query TEXT NOT NULL,
     parameters TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_saved_queries_connection ON saved_queries(connection_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_saved_queries_project ON saved_queries(project_id)`,
 
   // Query history
   `CREATE TABLE IF NOT EXISTS query_history (
@@ -190,7 +190,7 @@ const DDL_STATEMENTS = [
   // Dashboards
   `CREATE TABLE IF NOT EXISTS dashboards (
     id TEXT PRIMARY KEY,
-    connection_id TEXT NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     viewport TEXT NOT NULL DEFAULT '{"x":0,"y":0,"zoom":1}',
     widgets TEXT NOT NULL DEFAULT '[]',
@@ -198,7 +198,7 @@ const DDL_STATEMENTS = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_dashboards_connection ON dashboards(connection_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_dashboards_project ON dashboards(project_id)`,
 ];
 
 /**
@@ -232,9 +232,7 @@ export async function initializeSchema(db: SqliteDatabase): Promise<boolean> {
  * on existing databases without requiring a data migration.
  */
 async function upgradeSchema(db: SqliteDatabase): Promise<void> {
-  for (const sql of DDL_STATEMENTS) {
-    await db.execute(sql);
-  }
+  // === Column migrations (must run BEFORE DDL so new indexes can reference new columns) ===
 
   // Column additions (ALTER TABLE doesn't support IF NOT EXISTS)
   const columnUpgrades = [
@@ -265,6 +263,43 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
     if (!cols.some((c) => c.name === upgrade.column)) {
       await db.execute(upgrade.sql);
     }
+  }
+
+  // Migrate saved_queries from connection_id to project_id
+  const sqCols = await db.query<{ name: string }>("PRAGMA table_info(saved_queries)");
+  if (
+    sqCols.some((c) => c.name === "connection_id") &&
+    !sqCols.some((c) => c.name === "project_id")
+  ) {
+    await db.execute("ALTER TABLE saved_queries ADD COLUMN project_id TEXT");
+    await db.execute(
+      `UPDATE saved_queries SET project_id = (
+        SELECT project_id FROM connections WHERE connections.id = saved_queries.connection_id
+      ) WHERE project_id IS NULL`,
+    );
+    // Delete orphans where connection no longer exists
+    await db.execute("DELETE FROM saved_queries WHERE project_id IS NULL");
+  }
+
+  // Migrate dashboards from connection_id to project_id
+  const dbCols = await db.query<{ name: string }>("PRAGMA table_info(dashboards)");
+  if (
+    dbCols.some((c) => c.name === "connection_id") &&
+    !dbCols.some((c) => c.name === "project_id")
+  ) {
+    await db.execute("ALTER TABLE dashboards ADD COLUMN project_id TEXT");
+    await db.execute(
+      `UPDATE dashboards SET project_id = (
+        SELECT project_id FROM connections WHERE connections.id = dashboards.connection_id
+      ) WHERE project_id IS NULL`,
+    );
+    // Delete orphans where connection no longer exists
+    await db.execute("DELETE FROM dashboards WHERE project_id IS NULL");
+  }
+
+  // === DDL statements (creates new tables/indexes, safe to run repeatedly) ===
+  for (const sql of DDL_STATEMENTS) {
+    await db.execute(sql);
   }
 }
 

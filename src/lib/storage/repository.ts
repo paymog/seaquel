@@ -328,7 +328,6 @@ export const projectStateRepo = {
       .map((t) => ({
         id: t.id,
         name: t.name,
-        connectionId: t.connection_id ?? "",
         dashboardId: t.source_query ?? "",
       }));
 
@@ -478,9 +477,9 @@ export const projectStateRepo = {
 
     for (const tab of state.dashboardTabs ?? []) {
       await db.execute(
-        `INSERT INTO tabs (id, project_id, tab_type, name, connection_id, source_query)
-         VALUES (?, ?, 'dashboard', ?, ?, ?)`,
-        [tab.id, state.projectId, tab.name, tab.connectionId, tab.dashboardId],
+        `INSERT INTO tabs (id, project_id, tab_type, name, source_query)
+         VALUES (?, ?, 'dashboard', ?, ?)`,
+        [tab.id, state.projectId, tab.name, tab.dashboardId],
       );
     }
 
@@ -505,20 +504,20 @@ export const projectStateRepo = {
 // === Saved Queries ===
 
 export const savedQueriesRepo = {
-  async loadByConnection(db: SqliteDatabase, connectionId: string): Promise<PersistedSavedQuery[]> {
+  async loadByProject(db: SqliteDatabase, projectId: string): Promise<PersistedSavedQuery[]> {
     const rows = await db.query<{
       id: string;
-      connection_id: string;
+      project_id: string;
       name: string;
       query: string;
       parameters: string | null;
       created_at: string;
       updated_at: string;
-    }>("SELECT * FROM saved_queries WHERE connection_id = ?", [connectionId]);
+    }>("SELECT * FROM saved_queries WHERE project_id = ?", [projectId]);
 
     return rows.map((r) => ({
       id: r.id,
-      connectionId: r.connection_id,
+      projectId: r.project_id,
       name: r.name,
       query: r.query,
       parameters: r.parameters ? JSON.parse(r.parameters) : undefined,
@@ -529,17 +528,17 @@ export const savedQueriesRepo = {
 
   async saveAll(
     db: SqliteDatabase,
-    connectionId: string,
+    projectId: string,
     queries: PersistedSavedQuery[],
   ): Promise<void> {
-    await db.execute("DELETE FROM saved_queries WHERE connection_id = ?", [connectionId]);
+    await db.execute("DELETE FROM saved_queries WHERE project_id = ?", [projectId]);
     for (const q of queries) {
       await db.execute(
-        `INSERT INTO saved_queries (id, connection_id, name, query, parameters, created_at, updated_at)
+        `INSERT INTO saved_queries (id, project_id, name, query, parameters, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           q.id,
-          connectionId,
+          projectId,
           q.name,
           q.query,
           q.parameters ? JSON.stringify(q.parameters) : null,
@@ -550,8 +549,8 @@ export const savedQueriesRepo = {
     }
   },
 
-  async removeByConnection(db: SqliteDatabase, connectionId: string): Promise<void> {
-    await db.execute("DELETE FROM saved_queries WHERE connection_id = ?", [connectionId]);
+  async removeByProject(db: SqliteDatabase, projectId: string): Promise<void> {
+    await db.execute("DELETE FROM saved_queries WHERE project_id = ?", [projectId]);
   },
 };
 
@@ -763,7 +762,7 @@ export const tutorialRepo = {
 
 export interface PersistedDashboard {
   id: string;
-  connectionId: string;
+  projectId: string;
   name: string;
   viewport: string; // JSON: { x, y, zoom }
   widgets: string; // JSON blob
@@ -773,21 +772,21 @@ export interface PersistedDashboard {
 }
 
 export const dashboardsRepo = {
-  async loadByConnection(db: SqliteDatabase, connectionId: string): Promise<PersistedDashboard[]> {
+  async loadByProject(db: SqliteDatabase, projectId: string): Promise<PersistedDashboard[]> {
     const rows = await db.query<{
       id: string;
-      connection_id: string;
+      project_id: string;
       name: string;
       viewport: string;
       widgets: string;
       date_filter: string | null;
       created_at: string;
       updated_at: string;
-    }>("SELECT * FROM dashboards WHERE connection_id = ?", [connectionId]);
+    }>("SELECT * FROM dashboards WHERE project_id = ?", [projectId]);
 
     return rows.map((r) => ({
       id: r.id,
-      connectionId: r.connection_id,
+      projectId: r.project_id,
       name: r.name,
       viewport: r.viewport,
       widgets: r.widgets,
@@ -799,7 +798,7 @@ export const dashboardsRepo = {
 
   async save(db: SqliteDatabase, dashboard: PersistedDashboard): Promise<void> {
     await db.execute(
-      `INSERT INTO dashboards (id, connection_id, name, viewport, widgets, date_filter, created_at, updated_at)
+      `INSERT INTO dashboards (id, project_id, name, viewport, widgets, date_filter, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
@@ -809,7 +808,7 @@ export const dashboardsRepo = {
          updated_at = excluded.updated_at`,
       [
         dashboard.id,
-        dashboard.connectionId,
+        dashboard.projectId,
         dashboard.name,
         dashboard.viewport,
         dashboard.widgets,
@@ -824,8 +823,8 @@ export const dashboardsRepo = {
     await db.execute("DELETE FROM dashboards WHERE id = ?", [id]);
   },
 
-  async removeByConnection(db: SqliteDatabase, connectionId: string): Promise<void> {
-    await db.execute("DELETE FROM dashboards WHERE connection_id = ?", [connectionId]);
+  async removeByProject(db: SqliteDatabase, projectId: string): Promise<void> {
+    await db.execute("DELETE FROM dashboards WHERE project_id = ?", [projectId]);
   },
 };
 

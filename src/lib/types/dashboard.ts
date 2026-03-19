@@ -59,7 +59,7 @@ export interface DashboardWidget {
 export interface Dashboard {
   id: string;
   name: string;
-  connectionId: string;
+  projectId: string;
   widgets: DashboardWidget[];
   viewport: { x: number; y: number; zoom: number };
   dateFilter?: { start: string; end: string } | null;
@@ -73,6 +73,5 @@ export interface Dashboard {
 export interface DashboardTab {
   id: string;
   name: string;
-  connectionId: string;
   dashboardId: string;
 }

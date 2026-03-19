@@ -49,7 +49,7 @@ import { errorToast } from "$lib/utils/toast";
 			// Get existing saved query if linked
 			const tab = tabId ? db.state.queryTabs.find((t) => t.id === tabId) : null;
 			const savedQuery = tab?.savedQueryId
-				? db.state.activeConnectionSavedQueries.find((q) => q.id === tab.savedQueryId)
+				? db.state.projectSavedQueries.find((q) => q.id === tab.savedQueryId)
 				: null;
 
 			// Pre-populate query name

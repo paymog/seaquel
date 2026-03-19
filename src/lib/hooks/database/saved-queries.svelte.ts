@@ -3,13 +3,12 @@ import type { DatabaseState } from "./state.svelte.js";
 
 /**
  * Manages saved queries: save, delete.
- * Note: Saved queries are per-connection, tabs are per-project.
+ * Note: Saved queries are per-project.
  * Note: loadSavedQuery is in UseDatabase as it orchestrates with tabs and views.
  */
 export class SavedQueryManager {
   constructor(
     private state: DatabaseState,
-    private schedulePersistence: (connectionId: string | null) => void,
     private scheduleProjectPersistence: (projectId: string | null) => void,
   ) {}
 
@@ -19,9 +18,8 @@ export class SavedQueryManager {
     tabId?: string,
     parameters?: QueryParameter[],
   ): string | null {
-    if (!this.state.activeConnectionId || !this.state.activeProjectId) return null;
+    if (!this.state.activeProjectId) return null;
 
-    const connectionId = this.state.activeConnectionId;
     const projectId = this.state.activeProjectId;
 
     // Check if this tab is already linked to a saved query
@@ -34,15 +32,15 @@ export class SavedQueryManager {
 
     if (savedQueryId) {
       // Update existing saved query with new object for proper reactivity
-      const savedQueries = this.state.savedQueriesByConnection[connectionId] ?? [];
+      const savedQueries = this.state.savedQueriesByProject[projectId] ?? [];
       const savedQuery = savedQueries.find((q) => q.id === savedQueryId);
       if (savedQuery) {
         const updatedSavedQueries = savedQueries.map((q) =>
           q.id === savedQueryId ? { ...q, name, query, parameters, updatedAt: new Date() } : q,
         );
-        this.state.savedQueriesByConnection = {
-          ...this.state.savedQueriesByConnection,
-          [connectionId]: updatedSavedQueries,
+        this.state.savedQueriesByProject = {
+          ...this.state.savedQueriesByProject,
+          [projectId]: updatedSavedQueries,
         };
 
         // Also update tab name if it differs
@@ -55,11 +53,10 @@ export class SavedQueryManager {
               ...this.state.queryTabsByProject,
               [projectId]: updatedTabs,
             };
-            this.scheduleProjectPersistence(projectId);
           }
         }
 
-        this.schedulePersistence(connectionId);
+        this.scheduleProjectPersistence(projectId);
         return savedQueryId;
       }
     }
@@ -69,16 +66,16 @@ export class SavedQueryManager {
       id: `saved-${Date.now()}`,
       name,
       query,
-      connectionId,
+      projectId,
       createdAt: new Date(),
       updatedAt: new Date(),
       parameters,
     };
 
-    const savedQueries = this.state.savedQueriesByConnection[connectionId] ?? [];
-    this.state.savedQueriesByConnection = {
-      ...this.state.savedQueriesByConnection,
-      [connectionId]: [...savedQueries, newSavedQuery],
+    const savedQueries = this.state.savedQueriesByProject[projectId] ?? [];
+    this.state.savedQueriesByProject = {
+      ...this.state.savedQueriesByProject,
+      [projectId]: [...savedQueries, newSavedQuery],
     };
 
     // Link tab to saved query if tabId provided
@@ -91,24 +88,22 @@ export class SavedQueryManager {
         ...this.state.queryTabsByProject,
         [projectId]: updatedTabs,
       };
-      this.scheduleProjectPersistence(projectId);
     }
 
-    this.schedulePersistence(connectionId);
+    this.scheduleProjectPersistence(projectId);
     return newSavedQuery.id;
   }
 
   deleteSavedQuery(id: string) {
-    if (!this.state.activeConnectionId || !this.state.activeProjectId) return;
+    if (!this.state.activeProjectId) return;
 
-    const connectionId = this.state.activeConnectionId;
     const projectId = this.state.activeProjectId;
-    const savedQueries = this.state.savedQueriesByConnection[connectionId] ?? [];
+    const savedQueries = this.state.savedQueriesByProject[projectId] ?? [];
     const filtered = savedQueries.filter((q) => q.id !== id);
 
-    this.state.savedQueriesByConnection = {
-      ...this.state.savedQueriesByConnection,
-      [connectionId]: filtered,
+    this.state.savedQueriesByProject = {
+      ...this.state.savedQueriesByProject,
+      [projectId]: filtered,
     };
 
     // Remove savedQueryId from any tabs using this query
@@ -121,7 +116,6 @@ export class SavedQueryManager {
       ...this.state.queryTabsByProject,
       [projectId]: updatedTabs,
     };
-    this.schedulePersistence(connectionId);
     this.scheduleProjectPersistence(projectId);
   }
 }

@@ -255,7 +255,18 @@ export class MigrationManager {
         connectionNameSnapshot: (h as any).connectionNameSnapshot || "",
       }));
 
-      await savedQueriesRepo.saveAll(db, connectionId, savedQueries);
+      // Resolve projectId from connection for migration
+      const connRows = await db.query<{ project_id: string }>(
+        "SELECT project_id FROM connections WHERE id = ?",
+        [connectionId],
+      );
+      const projectId = connRows.length > 0 ? connRows[0].project_id : DEFAULT_PROJECT_ID;
+      // Remap connectionId → projectId on migrated saved queries
+      const migratedQueries = savedQueries.map((q) => ({
+        ...q,
+        projectId,
+      }));
+      await savedQueriesRepo.saveAll(db, projectId, migratedQueries);
       await queryHistoryRepo.replaceAll(db, connectionId, migratedHistory);
     }
 

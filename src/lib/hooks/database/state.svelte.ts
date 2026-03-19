@@ -87,8 +87,8 @@ export class DatabaseState {
   dashboardTabsByProject = $state<Record<string, DashboardTab[]>>({});
   activeDashboardTabIdByProject = $state<Record<string, string | null>>({});
 
-  // === DASHBOARD DATA STATE (per-connection) ===
-  dashboardsByConnection = $state<Record<string, Dashboard[]>>({});
+  // === DASHBOARD DATA STATE (per-project) ===
+  dashboardsByProject = $state<Record<string, Dashboard[]>>({});
 
   // === STARTER TABS STATE (per-project) ===
   // Shown when no connection is active
@@ -98,9 +98,9 @@ export class DatabaseState {
   // Tab ordering state (stores ordered array of all tab IDs per project)
   tabOrderByProject = $state<Record<string, string[]>>({});
 
-  // === QUERY DATA STATE (per-connection) ===
+  // === QUERY DATA STATE ===
   queryHistoryByConnection = $state<Record<string, QueryHistoryItem[]>>({});
-  savedQueriesByConnection = $state<Record<string, SavedQuery[]>>({});
+  savedQueriesByProject = $state<Record<string, SavedQuery[]>>({});
 
   // === SHARED QUERY LIBRARY STATE ===
   sharedRepos = $state<SharedQueryRepo[]>([]);
@@ -332,9 +332,9 @@ export class DatabaseState {
     this.dashboardTabs.find((t) => t.id === this.activeDashboardTabId) || null,
   );
 
-  // Derived: dashboards for active connection
-  activeConnectionDashboards = $derived(
-    this.activeConnectionId ? (this.dashboardsByConnection[this.activeConnectionId] ?? []) : [],
+  // Derived: dashboards for active project
+  projectDashboards = $derived(
+    this.activeProjectId ? (this.dashboardsByProject[this.activeProjectId] ?? []) : [],
   );
 
   // === STARTER TAB DERIVED VALUES ===
@@ -361,9 +361,9 @@ export class DatabaseState {
     this.activeConnectionId ? (this.queryHistoryByConnection[this.activeConnectionId] ?? []) : [],
   );
 
-  // Derived: saved queries for active connection
-  activeConnectionSavedQueries = $derived(
-    this.activeConnectionId ? (this.savedQueriesByConnection[this.activeConnectionId] ?? []) : [],
+  // Derived: saved queries for active project
+  projectSavedQueries = $derived(
+    this.activeProjectId ? (this.savedQueriesByProject[this.activeProjectId] ?? []) : [],
   );
 
   // === PROJECT GIT DERIVED VALUES ===

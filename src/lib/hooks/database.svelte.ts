@@ -107,7 +107,7 @@ class UseDatabase {
     this._stateRestoration = new StateRestorationManager(this.state, this.persistence);
 
     // Project and label management
-    this.projects = new ProjectManager(this.state, this.persistence);
+    this.projects = new ProjectManager(this.state, this.persistence, this._stateRestoration);
     this.labels = new LabelManager(this.state, this.persistence);
 
     // UI
@@ -180,7 +180,7 @@ class UseDatabase {
       async (query: string) => {
         return await this.queries.executeRaw(query);
       },
-      scheduleConnectionDataPersistence,
+      scheduleProjectPersistence,
     );
 
     // Canvas
@@ -201,11 +201,7 @@ class UseDatabase {
       (connectionId) => this.labels.getConnectionLabelsById(connectionId),
       (connectionId) => this.state.connections.find((c) => c.id === connectionId)?.name || "",
     );
-    this.savedQueries = new SavedQueryManager(
-      this.state,
-      scheduleConnectionDataPersistence,
-      scheduleProjectPersistence,
-    );
+    this.savedQueries = new SavedQueryManager(this.state, scheduleProjectPersistence);
     this.queries = new QueryExecutionManager(this.state, this.history, providers);
 
     // Shared query library

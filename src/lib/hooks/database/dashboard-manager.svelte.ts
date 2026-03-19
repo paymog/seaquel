@@ -5,6 +5,7 @@ import type { PersistedDashboard } from "$lib/storage/repository";
 
 /**
  * Manages dashboard CRUD operations, widget execution, and auto-refresh.
+ * Dashboards are per-project.
  */
 export class DashboardManager {
   private autoRefreshTimers = new Map<string, ReturnType<typeof setInterval>>();
@@ -12,20 +13,20 @@ export class DashboardManager {
   constructor(
     private state: DatabaseState,
     private executeQuery: (query: string) => Promise<Record<string, unknown>[]>,
-    private scheduleConnectionDataPersistence: (connectionId: string | null) => void,
+    private scheduleProjectPersistence: (projectId: string | null) => void,
   ) {}
 
   // === CRUD ===
 
   async createDashboard(name: string): Promise<Dashboard | null> {
-    const connectionId = this.state.activeConnectionId;
-    if (!connectionId) return null;
+    const projectId = this.state.activeProjectId;
+    if (!projectId) return null;
 
     const now = new Date();
     const dashboard: Dashboard = {
       id: `dashboard-${Date.now()}`,
       name,
-      connectionId,
+      projectId,
       widgets: [],
       viewport: { x: 0, y: 0, zoom: 1 },
       dateFilter: null,
@@ -33,10 +34,10 @@ export class DashboardManager {
       updatedAt: now,
     };
 
-    const dashboards = this.state.dashboardsByConnection[connectionId] ?? [];
-    this.state.dashboardsByConnection = {
-      ...this.state.dashboardsByConnection,
-      [connectionId]: [...dashboards, dashboard],
+    const dashboards = this.state.dashboardsByProject[projectId] ?? [];
+    this.state.dashboardsByProject = {
+      ...this.state.dashboardsByProject,
+      [projectId]: [...dashboards, dashboard],
     };
 
     await this.persistDashboard(dashboard);
@@ -44,8 +45,8 @@ export class DashboardManager {
   }
 
   async deleteDashboard(id: string): Promise<void> {
-    const connectionId = this.state.activeConnectionId;
-    if (!connectionId) return;
+    const projectId = this.state.activeProjectId;
+    if (!projectId) return;
 
     // Stop any auto-refresh timers
     const dashboard = this.getDashboard(id);
@@ -55,10 +56,10 @@ export class DashboardManager {
       }
     }
 
-    const dashboards = this.state.dashboardsByConnection[connectionId] ?? [];
-    this.state.dashboardsByConnection = {
-      ...this.state.dashboardsByConnection,
-      [connectionId]: dashboards.filter((d) => d.id !== id),
+    const dashboards = this.state.dashboardsByProject[projectId] ?? [];
+    this.state.dashboardsByProject = {
+      ...this.state.dashboardsByProject,
+      [projectId]: dashboards.filter((d) => d.id !== id),
     };
 
     try {
@@ -167,8 +168,8 @@ export class DashboardManager {
     // Resolve query
     let query = widget.query;
     if (widget.querySource === "saved" && widget.savedQueryId) {
-      const connectionId = dashboard.connectionId;
-      const savedQueries = this.state.savedQueriesByConnection[connectionId] ?? [];
+      const projectId = dashboard.projectId;
+      const savedQueries = this.state.savedQueriesByProject[projectId] ?? [];
       const savedQuery = savedQueries.find((sq) => sq.id === widget.savedQueryId);
       if (savedQuery) {
         query = savedQuery.query;
@@ -266,15 +267,15 @@ export class DashboardManager {
 
   // === DATA LOADING ===
 
-  async loadDashboards(connectionId: string): Promise<void> {
+  async loadDashboards(projectId: string): Promise<void> {
     try {
       const db = await getDatabase();
-      const rows = await dashboardsRepo.loadByConnection(db, connectionId);
+      const rows = await dashboardsRepo.loadByProject(db, projectId);
 
       const dashboards: Dashboard[] = rows.map((r) => ({
         id: r.id,
         name: r.name,
-        connectionId: r.connectionId,
+        projectId: r.projectId,
         widgets: JSON.parse(r.widgets),
         viewport: JSON.parse(r.viewport),
         dateFilter: r.dateFilter ? JSON.parse(r.dateFilter) : null,
@@ -282,9 +283,9 @@ export class DashboardManager {
         updatedAt: new Date(r.updatedAt),
       }));
 
-      this.state.dashboardsByConnection = {
-        ...this.state.dashboardsByConnection,
-        [connectionId]: dashboards,
+      this.state.dashboardsByProject = {
+        ...this.state.dashboardsByProject,
+        [projectId]: dashboards,
       };
     } catch (error) {
       console.error("Failed to load dashboards:", error);
@@ -294,7 +295,7 @@ export class DashboardManager {
   // === HELPERS ===
 
   getDashboard(id: string): Dashboard | undefined {
-    for (const dashboards of Object.values(this.state.dashboardsByConnection)) {
+    for (const dashboards of Object.values(this.state.dashboardsByProject)) {
       const found = dashboards.find((d) => d.id === id);
       if (found) return found;
     }
@@ -302,14 +303,14 @@ export class DashboardManager {
   }
 
   private updateDashboard(id: string, updater: (d: Dashboard) => Dashboard): void {
-    for (const [connectionId, dashboards] of Object.entries(this.state.dashboardsByConnection)) {
+    for (const [projectId, dashboards] of Object.entries(this.state.dashboardsByProject)) {
       const index = dashboards.findIndex((d) => d.id === id);
       if (index !== -1) {
         const updated = [...dashboards];
         updated[index] = updater(updated[index]);
-        this.state.dashboardsByConnection = {
-          ...this.state.dashboardsByConnection,
-          [connectionId]: updated,
+        this.state.dashboardsByProject = {
+          ...this.state.dashboardsByProject,
+          [projectId]: updated,
         };
         return;
       }
@@ -337,7 +338,7 @@ export class DashboardManager {
 
       const persisted: PersistedDashboard = {
         id: dashboard.id,
-        connectionId: dashboard.connectionId,
+        projectId: dashboard.projectId,
         name: dashboard.name,
         viewport: JSON.stringify(dashboard.viewport),
         widgets: JSON.stringify(widgetsForStorage),

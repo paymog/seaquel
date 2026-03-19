@@ -280,6 +280,8 @@
   "history_add_favorite": "Add to favorites",
   "history_remove_favorite": "Remove from favorites",
   "history_delete_saved": "Delete saved query",
+  "query_delete_title": "Delete Query",
+  "query_delete_description": "Are you sure you want to delete \"{name}\"? This action cannot be undone.",
   "row_actions_delete": "Delete Row",
   "save_query_title": "Save Query",
   "save_query_description": "Give your query a name to save it for later use",

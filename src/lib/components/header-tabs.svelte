@@ -129,10 +129,6 @@
     };
 
     const handleDashboardTabClick = (tabId: string) => {
-        const dashTab = db.state.dashboardTabs.find(t => t.id === tabId);
-        if (dashTab?.connectionId) {
-            db.connections.setActive(dashTab.connectionId);
-        }
         db.dashboardTabs.setActive(tabId);
         db.ui.setActiveView("dashboard");
     };

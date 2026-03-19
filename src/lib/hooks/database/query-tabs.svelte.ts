@@ -61,16 +61,16 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     if (tab) {
       this.updateTab(id, (t) => ({ ...t, name: newName }));
 
-      // Also update linked saved query name if exists (saved queries are per-connection)
-      if (tab.savedQueryId && this.state.activeConnectionId) {
-        const connectionId = this.state.activeConnectionId;
-        const savedQueries = this.state.savedQueriesByConnection[connectionId] ?? [];
+      // Also update linked saved query name if exists (saved queries are per-project)
+      if (tab.savedQueryId && this.state.activeProjectId) {
+        const projectId = this.state.activeProjectId;
+        const savedQueries = this.state.savedQueriesByProject[projectId] ?? [];
         const updatedSavedQueries = savedQueries.map((q) =>
           q.id === tab.savedQueryId ? { ...q, name: newName, updatedAt: new Date() } : q,
         );
-        this.state.savedQueriesByConnection = {
-          ...this.state.savedQueriesByConnection,
-          [connectionId]: updatedSavedQueries,
+        this.state.savedQueriesByProject = {
+          ...this.state.savedQueriesByProject,
+          [projectId]: updatedSavedQueries,
         };
       }
 
@@ -102,9 +102,7 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
 
     // Tab linked to saved query - compare content
     if (tab.savedQueryId) {
-      const savedQuery = this.state.activeConnectionSavedQueries.find(
-        (q) => q.id === tab.savedQueryId,
-      );
+      const savedQuery = this.state.projectSavedQueries.find((q) => q.id === tab.savedQueryId);
       if (!savedQuery) return true;
       return tab.query !== savedQuery.query;
     }
@@ -161,9 +159,9 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
    * Note: Saved queries are per-connection, so we need an active connection.
    */
   loadSaved(savedQueryId: string, setActiveView?: () => void): void {
-    if (!this.state.activeProjectId || !this.state.activeConnectionId) return;
+    if (!this.state.activeProjectId) return;
 
-    const savedQueries = this.state.savedQueriesByConnection[this.state.activeConnectionId] ?? [];
+    const savedQueries = this.state.savedQueriesByProject[this.state.activeProjectId] ?? [];
     const savedQuery = savedQueries.find((q) => q.id === savedQueryId);
     if (!savedQuery) return;
 

@@ -56,12 +56,7 @@ export class DashboardTabManager extends BaseTabManager<DashboardTab> {
    * If no dashboardId is provided, creates a new dashboard first.
    */
   add(dashboardId?: string, dashboardName?: string): string | null {
-    if (
-      !this.state.activeProjectId ||
-      !this.state.activeConnectionId ||
-      !this.state.activeConnection
-    )
-      return null;
+    if (!this.state.activeProjectId) return null;
 
     // Check if a tab already exists for this dashboard
     if (dashboardId) {
@@ -77,7 +72,6 @@ export class DashboardTabManager extends BaseTabManager<DashboardTab> {
     const newTab: DashboardTab = {
       id: `dash-${Date.now()}`,
       name: dashboardName ?? "New Dashboard",
-      connectionId: this.state.activeConnectionId,
       dashboardId: dashboardId ?? "",
     };
 

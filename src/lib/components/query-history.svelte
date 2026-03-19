@@ -15,7 +15,7 @@
 
 	const filteredHistory = $derived(db.state.activeConnectionQueryHistory.filter((item) => item.query.toLowerCase().includes(searchQuery.toLowerCase())));
 
-	const filteredSavedQueries = $derived(db.state.activeConnectionSavedQueries.filter((item) => item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.query.toLowerCase().includes(searchQuery.toLowerCase())));
+	const filteredSavedQueries = $derived(db.state.projectSavedQueries.filter((item) => item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.query.toLowerCase().includes(searchQuery.toLowerCase())));
 
 </script>
 
@@ -27,7 +27,7 @@
 					<HistoryIcon class="size-4" />
 					{m.history_title()}
 				</CardTitle>
-				<CardDescription class="text-xs">{m.history_stats({ executed: db.state.activeConnectionQueryHistory.length, saved: db.state.activeConnectionSavedQueries.length })}</CardDescription>
+				<CardDescription class="text-xs">{m.history_stats({ executed: db.state.activeConnectionQueryHistory.length, saved: db.state.projectSavedQueries.length })}</CardDescription>
 			</div>
 		</div>
 		<div class="relative mt-2">

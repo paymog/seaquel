@@ -2,6 +2,7 @@ import type { Project, ConnectionLabel, PersistedProject, DatabaseConnection } f
 import { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
+import type { StateRestorationManager } from "./state-restoration.svelte.js";
 import { SEAQUEL_DIR, type SharedRepoManager } from "./shared-repo-manager.svelte.js";
 import { MigrationManager } from "./migration.svelte.js";
 import { isTauri } from "$lib/utils/environment";
@@ -28,6 +29,7 @@ export class ProjectManager {
   constructor(
     private state: DatabaseState,
     private persistence: PersistenceManager,
+    private stateRestoration: StateRestorationManager,
   ) {
     this.migration = new MigrationManager(persistence);
   }
@@ -552,6 +554,8 @@ export class ProjectManager {
       this.state.activeConnectionTabIdByProject[projectId] = null;
       // Initialize starter tabs for new projects
       this.initializeStarterTabs?.(projectId);
+      // Load saved queries and dashboards for the project
+      await this.stateRestoration.loadProjectData(projectId);
       return;
     }
 
@@ -644,11 +648,10 @@ export class ProjectManager {
 
     // Restore dashboard tabs
     this.state.dashboardTabsByProject[projectId] = (persistedState.dashboardTabs ?? [])
-      .filter((t) => t.connectionId && t.dashboardId)
+      .filter((t) => t.dashboardId)
       .map((t) => ({
         id: t.id,
         name: t.name,
-        connectionId: t.connectionId,
         dashboardId: t.dashboardId,
       }));
     this.state.activeDashboardTabIdByProject[projectId] =
@@ -657,5 +660,8 @@ export class ProjectManager {
     // Connection tabs are transient - always initialize empty
     this.state.connectionTabsByProject[projectId] = [];
     this.state.activeConnectionTabIdByProject[projectId] = null;
+
+    // Load saved queries and dashboards for the project
+    await this.stateRestoration.loadProjectData(projectId);
   }
 }

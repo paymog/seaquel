@@ -51,7 +51,7 @@
 		previewResult && previewResult.length > 0 ? Object.keys(previewResult[0]) : []
 	);
 
-	const savedQueries = $derived(db.state.activeConnectionSavedQueries);
+	const savedQueries = $derived(db.state.projectSavedQueries);
 
 	const autoRefreshOptions = [
 		{ value: 0, label: 'Off' },

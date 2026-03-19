@@ -211,7 +211,6 @@ export class PersistenceManager {
     return tabs.map((tab) => ({
       id: tab.id,
       name: tab.name,
-      connectionId: tab.connectionId,
       dashboardId: tab.dashboardId,
     }));
   }
@@ -220,13 +219,13 @@ export class PersistenceManager {
     return this.state.savedCanvasesByProject[projectId] ?? [];
   }
 
-  serializeSavedQueries(connectionId: string): PersistedSavedQuery[] {
-    const queries = this.state.savedQueriesByConnection[connectionId] ?? [];
+  serializeSavedQueries(projectId: string): PersistedSavedQuery[] {
+    const queries = this.state.savedQueriesByProject[projectId] ?? [];
     return queries.map((q) => ({
       id: q.id,
       name: q.name,
       query: q.query,
-      connectionId: q.connectionId,
+      projectId: q.projectId,
       createdAt: q.createdAt.toISOString(),
       updatedAt: q.updatedAt.toISOString(),
       parameters: q.parameters,
@@ -334,6 +333,9 @@ export class PersistenceManager {
       };
 
       await projectStateRepo.save(db, state);
+
+      // Also persist saved queries (per-project)
+      await savedQueriesRepo.saveAll(db, projectId, this.serializeSavedQueries(projectId));
     } catch (error) {
       console.error(`Failed to persist state for project ${projectId}:`, error);
     }
@@ -372,7 +374,6 @@ export class PersistenceManager {
   async persistConnectionData(connectionId: string): Promise<void> {
     try {
       const db = await getDatabase();
-      await savedQueriesRepo.saveAll(db, connectionId, this.serializeSavedQueries(connectionId));
       await queryHistoryRepo.replaceAll(db, connectionId, this.serializeQueryHistory(connectionId));
     } catch (error) {
       console.error(`Failed to persist data for connection ${connectionId}:`, error);
@@ -380,39 +381,45 @@ export class PersistenceManager {
   }
 
   async loadConnectionData(connectionId: string): Promise<{
-    savedQueries: PersistedSavedQuery[];
     queryHistory: PersistedQueryHistoryItem[];
-    dashboards: import("$lib/storage/repository").PersistedDashboard[];
   }> {
     try {
       const db = await getDatabase();
-      let dashboards: import("$lib/storage/repository").PersistedDashboard[] = [];
-      try {
-        dashboards = await dashboardsRepo.loadByConnection(db, connectionId);
-      } catch {
-        // dashboards table may not exist yet (pre-v3 migration)
-      }
       return {
-        savedQueries: await savedQueriesRepo.loadByConnection(db, connectionId),
         queryHistory: await queryHistoryRepo.loadByConnection(db, connectionId),
-        dashboards,
       };
     } catch (error) {
       console.error(`Failed to load data for connection ${connectionId}:`, error);
-      return { savedQueries: [], queryHistory: [], dashboards: [] };
+      return { queryHistory: [] };
+    }
+  }
+
+  async loadProjectSavedQueries(projectId: string): Promise<PersistedSavedQuery[]> {
+    try {
+      const db = await getDatabase();
+      return await savedQueriesRepo.loadByProject(db, projectId);
+    } catch (error) {
+      console.error(`Failed to load saved queries for project ${projectId}:`, error);
+      return [];
+    }
+  }
+
+  async loadProjectDashboards(
+    projectId: string,
+  ): Promise<import("$lib/storage/repository").PersistedDashboard[]> {
+    try {
+      const db = await getDatabase();
+      return await dashboardsRepo.loadByProject(db, projectId);
+    } catch (error) {
+      console.error(`Failed to load dashboards for project ${projectId}:`, error);
+      return [];
     }
   }
 
   async removeConnectionData(connectionId: string): Promise<void> {
     try {
       const db = await getDatabase();
-      await savedQueriesRepo.removeByConnection(db, connectionId);
       await queryHistoryRepo.removeByConnection(db, connectionId);
-      try {
-        await dashboardsRepo.removeByConnection(db, connectionId);
-      } catch {
-        // dashboards table may not exist yet
-      }
     } catch (error) {
       console.error(`Failed to remove data for connection ${connectionId}:`, error);
     }

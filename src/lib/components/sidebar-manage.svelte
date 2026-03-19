@@ -10,6 +10,7 @@
 	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon } from "@lucide/svelte";
 	import type { SharedQuery } from "$lib/types";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
+	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
 	import * as Dialog from "$lib/components/ui/dialog/index.js";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -30,7 +31,7 @@
 	const db = useDatabase();
 	const features = getFeatures();
 
-	let sidebarTab = $state<"schema" | "queries" | "dashboards">("schema");
+	let sidebarTab = $state<"schema" | "queries" | "dashboards">(db.state.activeConnectionId ? "schema" : "queries");
 	let connectionsExpanded = $state(true);
 	let expandedSchemas = new SvelteSet<string>();
 	let historyExpanded = $state(true);
@@ -43,6 +44,21 @@
 	let showRemoveDialog = $state(false);
 	let connectionToRemove = $state<string | null>(null);
 	let connectionToRemoveName = $state("");
+
+	// Delete query confirmation dialog state
+	let showDeleteQueryDialog = $state(false);
+	let queryToDelete = $state<{ id: string; name: string; type: "saved" | "shared" } | null>(null);
+
+	const confirmDeleteQuery = () => {
+		if (!queryToDelete) return;
+		if (queryToDelete.type === "shared") {
+			db.sharedQueries.deleteQuery(queryToDelete.id);
+		} else {
+			db.savedQueries.deleteSavedQuery(queryToDelete.id);
+		}
+		showDeleteQueryDialog = false;
+		queryToDelete = null;
+	};
 
 	// Labels dialog state
 	let showLabelsDialog = $state(false);
@@ -115,7 +131,7 @@
 	);
 
 	const filteredSavedQueries = $derived(
-		db.state.activeConnectionSavedQueries.filter(
+		db.state.projectSavedQueries.filter(
 			(item) =>
 				!sharedQueryNames.has(item.name.toLowerCase()) &&
 				(item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -129,7 +145,7 @@
 		db.queryTabs.loadSharedQuery(query.id, query.name, query.query, () => db.ui.setActiveView("query"));
 	};
 
-	const handleShareQuery = async (item: typeof db.state.activeConnectionSavedQueries[0]) => {
+	const handleShareQuery = async (item: typeof db.state.projectSavedQueries[0]) => {
 		try {
 			await db.sharedQueries.shareQuery(item);
 		} catch (error) {
@@ -141,8 +157,8 @@
 		try {
 			// Save the query locally before removing from git (if not already saved)
 			const sharedQuery = db.sharedQueries.getQuery(queryId);
-			if (sharedQuery && db.state.activeConnectionId) {
-				const savedQueries = db.state.savedQueriesByConnection[db.state.activeConnectionId] ?? [];
+			if (sharedQuery && db.state.activeProjectId) {
+				const savedQueries = db.state.savedQueriesByProject[db.state.activeProjectId] ?? [];
 				const alreadySaved = savedQueries.some(
 					(q) => q.name.toLowerCase() === sharedQuery.name.toLowerCase(),
 				);
@@ -396,10 +412,11 @@
 		</Collapsible>
 	</Sidebar.Group>
 
-	<!-- Schema/Queries tabs - only show when connected -->
-	{#if db.state.activeConnectionId}
+	<!-- Schema/Queries tabs - show when a project is active -->
+	{#if db.state.activeProjectId}
 		<Tabs bind:value={sidebarTab} class="w-full px-2">
 			<TabsList class="w-full justify-start rounded-none h-10 bg-transparent px-2">
+				{#if db.state.activeConnectionId}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
@@ -415,6 +432,7 @@
 						<Tooltip.Content>{m.sidebar_tab_schema()}</Tooltip.Content>
 					{/if}
 				</Tooltip.Root>
+				{/if}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
@@ -453,7 +471,7 @@
 <!-- Content -->
 <Sidebar.Content>
 	{#if db.state.activeConnectionId && db.state.activeConnection && (db.state.activeConnection.database || db.state.activeConnection.mssqlConnectionId || db.state.activeConnection.providerConnectionId)}
-		<!-- Schema Tab Panel -->
+		<!-- Schema Tab Panel (requires active connection) -->
 		<div
 			class={["flex flex-col", sidebarTab !== "schema" && "hidden"]}
 			aria-hidden={sidebarTab !== "schema"}
@@ -549,7 +567,9 @@
 				</Sidebar.GroupContent>
 			</Sidebar.Group>
 		</div>
+	{/if}
 
+	{#if db.state.activeProjectId}
 		<!-- Queries Tab Panel -->
 		<div
 			class={["flex flex-col", sidebarTab !== "queries" && "hidden"]}
@@ -591,7 +611,7 @@
 												<ContextMenu.Root>
 													<ContextMenu.Trigger>
 														<Sidebar.MenuButton
-															class="h-auto py-2 flex-col items-start gap-1 group overflow-hidden"
+															class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
 															onclick={() => handleSharedQueryClick(item)}
 														>
 															<div class="flex items-center w-full gap-2">
@@ -599,6 +619,19 @@
 																	<FileTextIcon class="size-3 text-primary shrink-0" />
 																	<span class="text-sm font-medium truncate">{item.name}</span>
 																</div>
+																<Button
+																	size="icon"
+																	variant="ghost"
+																	class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity hover:text-destructive"
+																	aria-label={m.history_delete_saved()}
+																	onclick={(e) => {
+																		e.stopPropagation();
+																		queryToDelete = { id: item.id, name: item.name, type: "shared" };
+																		showDeleteQueryDialog = true;
+																	}}
+																>
+																	<Trash2Icon />
+																</Button>
 																<Tooltip.Root>
 																	<Tooltip.Trigger>
 																		{#snippet child({ props })}
@@ -626,6 +659,10 @@
 															<GitBranchIcon class="size-4 me-2" />
 															{m.connection_mark_local_only()}
 														</ContextMenu.Item>
+														<ContextMenu.Item class="text-destructive" onclick={() => { queryToDelete = { id: item.id, name: item.name, type: "shared" }; showDeleteQueryDialog = true; }}>
+															<Trash2Icon class="size-4 me-2" />
+															{m.history_delete_saved()}
+														</ContextMenu.Item>
 													</ContextMenu.Content>
 												</ContextMenu.Root>
 											</Sidebar.MenuItem>
@@ -634,7 +671,7 @@
 										{#each filteredSavedQueries as item (`saved:${item.id}`)}
 											<Sidebar.MenuItem>
 												<Sidebar.MenuButton
-													class="h-auto py-2 flex-col items-start gap-1 group overflow-hidden"
+													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
 													onclick={() => db.queryTabs.loadSaved(item.id)}
 												>
 													<div class="flex items-center w-full gap-2">
@@ -645,11 +682,12 @@
 														<Button
 															size="icon"
 															variant="ghost"
-															class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
+															class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity hover:text-destructive"
 															aria-label={m.history_delete_saved()}
 															onclick={(e) => {
 																e.stopPropagation();
-																db.savedQueries.deleteSavedQuery(item.id);
+																queryToDelete = { id: item.id, name: item.name, type: "saved" };
+																showDeleteQueryDialog = true;
 															}}
 														>
 															<Trash2Icon />
@@ -687,7 +725,8 @@
 							</Sidebar.MenuItem>
 						</Collapsible>
 
-						<!-- History folder -->
+						<!-- History folder (per-connection) -->
+						{#if db.state.activeConnectionId}
 						<Collapsible bind:open={historyExpanded}>
 							<Sidebar.MenuItem>
 								<CollapsibleTrigger>
@@ -745,6 +784,7 @@
 								</CollapsibleContent>
 							</Sidebar.MenuItem>
 						</Collapsible>
+						{/if}
 
 					</Sidebar.Menu>
 				</Sidebar.GroupContent>
@@ -776,7 +816,7 @@
 						</Button>
 					</div>
 					<Sidebar.Menu>
-						{#each db.state.activeConnectionDashboards as dashboard (dashboard.id)}
+						{#each db.state.projectDashboards as dashboard (dashboard.id)}
 							<Sidebar.MenuItem>
 								<ContextMenu.Root>
 									<ContextMenu.Trigger>
@@ -841,14 +881,12 @@
 <Sidebar.Footer class="p-4">
 	<div class="text-xs text-muted-foreground flex justify-between">
 		<span>
-			{#if db.state.activeConnection}
-				{#if sidebarTab === "schema"}
-					{m.sidebar_tables_count({ count: db.state.activeSchema.length })}
-				{:else if sidebarTab === "dashboards"}
-					{db.state.activeConnectionDashboards.length} dashboard{db.state.activeConnectionDashboards.length !== 1 ? 's' : ''}
-				{:else}
-					{m.sidebar_queries_stats({ executed: db.state.activeConnectionQueryHistory.length, saved: db.state.activeConnectionSavedQueries.length })}
-				{/if}
+			{#if sidebarTab === "schema" && db.state.activeConnection}
+				{m.sidebar_tables_count({ count: db.state.activeSchema.length })}
+			{:else if sidebarTab === "dashboards"}
+				{db.state.projectDashboards.length} dashboard{db.state.projectDashboards.length !== 1 ? 's' : ''}
+			{:else if sidebarTab === "queries"}
+				{m.sidebar_queries_stats({ executed: db.state.activeConnectionQueryHistory.length, saved: db.state.projectSavedQueries.length })}
 			{:else}
 				{m.sidebar_no_connection_footer()}
 			{/if}
@@ -899,3 +937,21 @@
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
+
+<!-- Delete Query Confirmation Dialog -->
+<AlertDialog.Root bind:open={showDeleteQueryDialog}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>{m.query_delete_title()}</AlertDialog.Title>
+			<AlertDialog.Description>
+				{m.query_delete_description({ name: queryToDelete?.name ?? "" })}
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel>{m.theme_delete_cancel()}</AlertDialog.Cancel>
+			<AlertDialog.Action onclick={confirmDeleteQuery} class="bg-destructive text-white hover:bg-destructive/90">
+				{m.theme_delete_confirm()}
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>

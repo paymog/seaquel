@@ -135,8 +135,8 @@ export interface PersistedSavedQuery {
   name: string;
   /** SQL query text */
   query: string;
-  /** Connection this query belongs to */
-  connectionId: string;
+  /** Project this query belongs to */
+  projectId: string;
   /** When first saved (ISO 8601 string) */
   createdAt: string;
   /** When last modified (ISO 8601 string) */
@@ -192,8 +192,6 @@ export interface PersistedDashboardTab {
   id: string;
   /** Tab display name */
   name: string;
-  /** Connection ID this dashboard tab belongs to */
-  connectionId: string;
   /** Dashboard ID this tab references */
   dashboardId: string;
 }

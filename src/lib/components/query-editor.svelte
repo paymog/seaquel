@@ -232,7 +232,7 @@ import { errorToast } from "$lib/utils/toast";
 	const getParameterDefinitions = (query: string): QueryParameter[] => {
 		const savedQueryId = db.state.activeQueryTab?.savedQueryId;
 		const savedQuery = savedQueryId
-			? db.state.activeConnectionSavedQueries.find((q) => q.id === savedQueryId)
+			? db.state.projectSavedQueries.find((q) => q.id === savedQueryId)
 			: null;
 
 		if (savedQuery?.parameters && savedQuery.parameters.length > 0) {

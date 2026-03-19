@@ -271,6 +271,8 @@
   "history_add_favorite": "Zu Favoriten hinzufügen",
   "history_remove_favorite": "Aus Favoriten entfernen",
   "history_delete_saved": "Gespeicherte Abfrage löschen",
+  "query_delete_title": "Abfrage löschen",
+  "query_delete_description": "Möchten Sie \"{name}\" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
   "row_actions_delete": "Zeile löschen",
   "save_query_title": "Abfrage speichern",
   "save_query_description": "Geben Sie Ihrer Abfrage einen Namen, um sie für später zu speichern",

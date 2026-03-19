@@ -185,8 +185,8 @@ export interface SavedQuery {
   name: string;
   /** The SQL query text */
   query: string;
-  /** ID of the connection this query belongs to */
-  connectionId: string;
+  /** ID of the project this query belongs to */
+  projectId: string;
   /** When the query was first saved */
   createdAt: Date;
   /** When the query was last modified */

@@ -271,6 +271,8 @@
   "history_add_favorite": "Ajouter aux favoris",
   "history_remove_favorite": "Retirer des favoris",
   "history_delete_saved": "Supprimer la requête enregistrée",
+  "query_delete_title": "Supprimer la requête",
+  "query_delete_description": "Êtes-vous sûr de vouloir supprimer « {name} » ? Cette action est irréversible.",
   "row_actions_delete": "Supprimer la ligne",
   "save_query_title": "Enregistrer la requête",
   "save_query_description": "Donnez un nom à votre requête pour l'enregistrer pour une utilisation ultérieure",

@@ -78,12 +78,20 @@
                 <ConnectionTabView tab={db.state.activeConnectionTab} />
             {/key}
         </div>
-    {:else if db.state.activeConnection}
-        <!-- Content Area -->
+    {:else if activeTabType === "query"}
         <div class="flex-1 min-h-0 flex flex-col">
-            {#if activeTabType === "query"}
-                <QueryEditor />
-            {:else if activeTabType === "schema"}
+            <QueryEditor />
+        </div>
+    {:else if activeTabType === "dashboard"}
+        <div class="flex-1 min-h-0 flex flex-col">
+            {#if db.state.activeDashboardTab}
+                <DashboardView />
+            {/if}
+        </div>
+    {:else if db.state.activeConnection}
+        <!-- Views that require an active connection -->
+        <div class="flex-1 min-h-0 flex flex-col">
+            {#if activeTabType === "schema"}
                 <ScrollArea orientation="both" class="h-full">
                     <TableViewer />
                 </ScrollArea>
@@ -101,10 +109,6 @@
                 {/if}
             {:else if activeTabType === "visualize"}
                 <QueryVisualViewer />
-            {:else if activeTabType === "dashboard"}
-                {#if db.state.activeDashboardTab}
-                    <DashboardView />
-                {/if}
             {/if}
         </div>
     {:else}
