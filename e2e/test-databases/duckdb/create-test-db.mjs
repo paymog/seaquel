@@ -31,6 +31,7 @@ const reader = await conn.runAndReadAll(`
   `);
 
 for (const row of reader.getRows()) {
+  // oxlint-disable-next-line typescript-eslint(restrict-template-expressions)
   console.log(`${row[0]}: ${row[1]} rows`);
 }
 
