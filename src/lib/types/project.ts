@@ -64,6 +64,8 @@ export interface Project {
   updatedAt: Date;
   /** Custom labels defined for this project (in addition to predefined labels) */
   customLabels: ConnectionLabel[];
+  /** Optional path to a Git directory for team sharing */
+  gitRepoPath?: string;
 }
 
 /**
@@ -83,6 +85,8 @@ export interface PersistedProject {
   updatedAt: string;
   /** Custom labels defined for this project */
   customLabels: ConnectionLabel[];
+  /** Optional path to a Git directory for team sharing */
+  gitRepoPath?: string;
 }
 
 /**

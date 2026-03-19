@@ -5,9 +5,7 @@ import type {
   PersistedSavedQuery,
   PersistedQueryHistoryItem,
   PersistedSharedQueryRepo,
-  PersistedDashboardTab,
 } from "$lib/types";
-import type { ConnectionLabel } from "$lib/types/project";
 import type { PersistedConnection } from "$lib/hooks/database/types";
 import type { SavedCanvas } from "$lib/types/canvas";
 
@@ -21,7 +19,8 @@ export const projectsRepo = {
       description: string | null;
       created_at: string;
       updated_at: string;
-    }>("SELECT id, name, description, created_at, updated_at FROM projects");
+      git_repo_path: string | null;
+    }>("SELECT id, name, description, created_at, updated_at, git_repo_path FROM projects");
 
     const projects: PersistedProject[] = [];
     for (const row of rows) {
@@ -40,6 +39,7 @@ export const projectsRepo = {
         description: row.description ?? undefined,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        gitRepoPath: row.git_repo_path ?? undefined,
         customLabels: labels.map((l) => ({
           id: l.id,
           name: l.name,
@@ -53,13 +53,21 @@ export const projectsRepo = {
 
   async save(db: SqliteDatabase, project: PersistedProject): Promise<void> {
     await db.execute(
-      `INSERT INTO projects (id, name, description, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO projects (id, name, description, created_at, updated_at, git_repo_path)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          description = excluded.description,
-         updated_at = excluded.updated_at`,
-      [project.id, project.name, project.description ?? null, project.createdAt, project.updatedAt],
+         updated_at = excluded.updated_at,
+         git_repo_path = excluded.git_repo_path`,
+      [
+        project.id,
+        project.name,
+        project.description ?? null,
+        project.createdAt,
+        project.updatedAt,
+        project.gitRepoPath ?? null,
+      ],
     );
 
     // Replace labels
@@ -121,6 +129,8 @@ export const connectionsRepo = {
       save_password: number;
       save_ssh_password: number;
       save_ssh_key_passphrase: number;
+      is_local_only: number;
+      shared_connection_id: string | null;
     }>("SELECT * FROM connections");
 
     const connections: PersistedConnection[] = [];
@@ -147,6 +157,8 @@ export const connectionsRepo = {
         saveSshPassword: row.save_ssh_password === 1,
         saveSshKeyPassphrase: row.save_ssh_key_passphrase === 1,
         labelIds: labelRows.map((l) => l.label_id),
+        isLocalOnly: row.is_local_only === 1 ? true : undefined,
+        sharedConnectionId: row.shared_connection_id ?? undefined,
       });
     }
     return connections;
@@ -157,8 +169,8 @@ export const connectionsRepo = {
       `INSERT INTO connections
        (id, project_id, name, type, host, port, database_name, username, ssl_mode,
         connection_string, last_connected, ssh_tunnel, save_password, save_ssh_password,
-        save_ssh_key_passphrase)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        save_ssh_key_passphrase, is_local_only, shared_connection_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          project_id = excluded.project_id,
          name = excluded.name,
@@ -173,7 +185,9 @@ export const connectionsRepo = {
          ssh_tunnel = excluded.ssh_tunnel,
          save_password = excluded.save_password,
          save_ssh_password = excluded.save_ssh_password,
-         save_ssh_key_passphrase = excluded.save_ssh_key_passphrase`,
+         save_ssh_key_passphrase = excluded.save_ssh_key_passphrase,
+         is_local_only = excluded.is_local_only,
+         shared_connection_id = excluded.shared_connection_id`,
       [
         conn.id,
         conn.projectId,
@@ -192,6 +206,8 @@ export const connectionsRepo = {
         conn.savePassword ? 1 : 0,
         conn.saveSshPassword ? 1 : 0,
         conn.saveSshKeyPassphrase ? 1 : 0,
+        conn.isLocalOnly ? 1 : 0,
+        conn.sharedConnectionId ?? null,
       ],
     );
 
@@ -681,7 +697,7 @@ export const themeRepo = {
 // === License ===
 
 export const licenseRepo = {
-  async load(db: SqliteDatabase): Promise<unknown | null> {
+  async load(db: SqliteDatabase): Promise<unknown> {
     const rows = await db.query<{ data: string }>("SELECT data FROM license_state WHERE id = 1");
     if (rows.length === 0) return null;
     return JSON.parse(rows[0].data);
@@ -697,7 +713,7 @@ export const licenseRepo = {
 // === Onboarding ===
 
 export const onboardingRepo = {
-  async load(db: SqliteDatabase): Promise<unknown | null> {
+  async load(db: SqliteDatabase): Promise<unknown> {
     const rows = await db.query<{ data: string }>("SELECT data FROM onboarding_state WHERE id = 1");
     if (rows.length === 0) return null;
     return JSON.parse(rows[0].data);
@@ -810,6 +826,100 @@ export const dashboardsRepo = {
 
   async removeByConnection(db: SqliteDatabase, connectionId: string): Promise<void> {
     await db.execute("DELETE FROM dashboards WHERE connection_id = ?", [connectionId]);
+  },
+};
+
+// === Connection Overrides ===
+
+export interface PersistedConnectionOverride {
+  sharedConnectionId: string;
+  username?: string;
+  hostOverride?: string;
+  portOverride?: number;
+  savePassword: boolean;
+  saveSshPassword: boolean;
+  saveSshKeyPassphrase: boolean;
+}
+
+export const connectionOverridesRepo = {
+  async load(
+    db: SqliteDatabase,
+    sharedConnectionId: string,
+  ): Promise<PersistedConnectionOverride | null> {
+    const rows = await db.query<{
+      shared_connection_id: string;
+      username: string | null;
+      host_override: string | null;
+      port_override: number | null;
+      save_password: number;
+      save_ssh_password: number;
+      save_ssh_key_passphrase: number;
+    }>("SELECT * FROM connection_overrides WHERE shared_connection_id = ?", [sharedConnectionId]);
+
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      sharedConnectionId: r.shared_connection_id,
+      username: r.username ?? undefined,
+      hostOverride: r.host_override ?? undefined,
+      portOverride: r.port_override ?? undefined,
+      savePassword: r.save_password === 1,
+      saveSshPassword: r.save_ssh_password === 1,
+      saveSshKeyPassphrase: r.save_ssh_key_passphrase === 1,
+    };
+  },
+
+  async loadAll(db: SqliteDatabase): Promise<PersistedConnectionOverride[]> {
+    const rows = await db.query<{
+      shared_connection_id: string;
+      username: string | null;
+      host_override: string | null;
+      port_override: number | null;
+      save_password: number;
+      save_ssh_password: number;
+      save_ssh_key_passphrase: number;
+    }>("SELECT * FROM connection_overrides");
+
+    return rows.map((r) => ({
+      sharedConnectionId: r.shared_connection_id,
+      username: r.username ?? undefined,
+      hostOverride: r.host_override ?? undefined,
+      portOverride: r.port_override ?? undefined,
+      savePassword: r.save_password === 1,
+      saveSshPassword: r.save_ssh_password === 1,
+      saveSshKeyPassphrase: r.save_ssh_key_passphrase === 1,
+    }));
+  },
+
+  async save(db: SqliteDatabase, override: PersistedConnectionOverride): Promise<void> {
+    await db.execute(
+      `INSERT INTO connection_overrides
+       (shared_connection_id, username, host_override, port_override,
+        save_password, save_ssh_password, save_ssh_key_passphrase)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(shared_connection_id) DO UPDATE SET
+         username = excluded.username,
+         host_override = excluded.host_override,
+         port_override = excluded.port_override,
+         save_password = excluded.save_password,
+         save_ssh_password = excluded.save_ssh_password,
+         save_ssh_key_passphrase = excluded.save_ssh_key_passphrase`,
+      [
+        override.sharedConnectionId,
+        override.username ?? null,
+        override.hostOverride ?? null,
+        override.portOverride ?? null,
+        override.savePassword ? 1 : 0,
+        override.saveSshPassword ? 1 : 0,
+        override.saveSshKeyPassphrase ? 1 : 0,
+      ],
+    );
+  },
+
+  async remove(db: SqliteDatabase, sharedConnectionId: string): Promise<void> {
+    await db.execute("DELETE FROM connection_overrides WHERE shared_connection_id = ?", [
+      sharedConnectionId,
+    ]);
   },
 };
 

@@ -13,6 +13,7 @@ import type { ProviderRegistry } from "$lib/providers";
 import { isTauri, isDemo } from "$lib/utils/environment";
 import { getKeyringService } from "$lib/services/keyring";
 import { SvelteSet } from "svelte/reactivity";
+import type { SharedRepoManager } from "./shared-repo-manager.svelte.js";
 
 type ConnectionInput = Omit<DatabaseConnection, "id" | "projectId" | "labelIds"> & {
   projectId?: string;
@@ -35,6 +36,12 @@ export class ConnectionManager {
 
   // Track which connections are currently being connected (for UI loading indicators)
   readonly connectingIds = new SvelteSet<string>();
+
+  private sharedRepos: SharedRepoManager | null = null;
+
+  setSharedRepoManager(manager: SharedRepoManager): void {
+    this.sharedRepos = manager;
+  }
 
   constructor(
     private state: DatabaseState,
@@ -108,6 +115,8 @@ export class ConnectionManager {
           saveSshKeyPassphrase: persisted.saveSshKeyPassphrase,
           projectId: persisted.projectId || DEFAULT_PROJECT_ID,
           labelIds: persisted.labelIds || [],
+          isLocalOnly: persisted.isLocalOnly,
+          sharedConnectionId: persisted.sharedConnectionId,
           // database is undefined - user needs to provide password to connect
         };
         this.state.connections.push(connection);
@@ -239,6 +248,7 @@ export class ConnectionManager {
       ...connection,
       id: connectionId,
       projectId,
+      isLocalOnly: connection.isLocalOnly ?? true,
       labelIds: connection.labelIds || [],
       lastConnected: new Date(),
       tunnelLocalPort,
@@ -512,6 +522,8 @@ export class ConnectionManager {
       throw new Error(`Connection with id ${connectionId} not found`);
     }
 
+    const oldName = existingConnection.name;
+
     // Update connection properties (but preserve connection state like providerConnectionId)
     const updatedConnection: DatabaseConnection = {
       ...existingConnection,
@@ -543,6 +555,11 @@ export class ConnectionManager {
       sshPassword: connection.sshPassword,
       sshKeyPassphrase: connection.sshKeyPassphrase,
     });
+
+    // Update the shared YAML file if the connection is shared
+    if (!updatedConnection.isLocalOnly && this.sharedRepos) {
+      await this.sharedRepos.updateSharedConnection(oldName, updatedConnection);
+    }
   }
 
   /**
@@ -664,6 +681,11 @@ export class ConnectionManager {
     if (tunnelId) {
       closeSshTunnel(tunnelId).catch(console.error);
       this.tunnelIds.delete(id);
+    }
+
+    // Remove the YAML file from the git directory if the connection is shared
+    if (connection && !connection.isLocalOnly && this.sharedRepos) {
+      await this.sharedRepos.unshareConnection(connection);
     }
 
     // Remove from persistence (both connection and its data)
@@ -929,6 +951,40 @@ export class ConnectionManager {
       providerConnectionId,
       mssqlConnectionId,
     );
+  }
+
+  /**
+   * Toggle a connection's local-only flag.
+   * When switching to shared: exports connection to git.
+   * When switching to local-only: removes connection from git.
+   */
+  async toggleLocalOnly(connectionId: string): Promise<void> {
+    const connection = this.state.connections.find((c) => c.id === connectionId);
+    if (!connection) return;
+
+    const newIsLocalOnly = !connection.isLocalOnly;
+
+    // Update in-memory state
+    this.state.connections = this.state.connections.map((c) =>
+      c.id === connectionId ? { ...c, isLocalOnly: newIsLocalOnly } : c,
+    );
+
+    // Persist the change
+    const updated = this.state.connections.find((c) => c.id === connectionId)!;
+    await this.persistence.persistConnection(updated, {
+      savePassword: updated.savePassword,
+      saveSshPassword: updated.saveSshPassword,
+      saveSshKeyPassphrase: updated.saveSshKeyPassphrase,
+    });
+
+    // Write or remove the connection YAML in the shared repo
+    if (this.sharedRepos) {
+      if (newIsLocalOnly) {
+        await this.sharedRepos.unshareConnection(updated);
+      } else {
+        await this.sharedRepos.shareConnection(updated);
+      }
+    }
   }
 
   /**

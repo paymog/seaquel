@@ -13,6 +13,7 @@
     import BotIcon from "@lucide/svelte/icons/bot";
     import NetworkIcon from "@lucide/svelte/icons/network";
     import SettingsIcon from "@lucide/svelte/icons/settings";
+    import ProjectSettingsDialog from "./project-settings-dialog.svelte";
     import { toast } from "svelte-sonner";
     import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
     import CircleDollarSignIcon from "@lucide/svelte/icons/circle-dollar-sign";
@@ -79,11 +80,10 @@
 
     // Project management state
     let showNewProjectDialog = $state(false);
-    let showEditProjectDialog = $state(false);
     let showRemoveProjectDialog = $state(false);
+    let showProjectSettingsDialog = $state(false);
     let newProjectName = $state("");
-    let editProjectName = $state("");
-    let projectToEdit = $state<string | null>(null);
+    let projectToSettings = $state<string | null>(null);
     let projectToRemove = $state<string | null>(null);
     let projectToRemoveName = $state("");
 
@@ -94,18 +94,9 @@
         showNewProjectDialog = false;
     };
 
-    const handleEditProject = async () => {
-        if (!projectToEdit || !editProjectName.trim()) return;
-        db.projects.update(projectToEdit, { name: editProjectName.trim() });
-        projectToEdit = null;
-        editProjectName = "";
-        showEditProjectDialog = false;
-    };
-
-    const openEditDialog = (projectId: string, name: string) => {
-        projectToEdit = projectId;
-        editProjectName = name;
-        showEditProjectDialog = true;
+    const openProjectSettings = (projectId: string) => {
+        projectToSettings = projectId;
+        showProjectSettingsDialog = true;
     };
 
     const confirmRemoveProject = (projectId: string, name: string) => {
@@ -150,35 +141,44 @@
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Content class="w-56" align="start">
                     {#each db.state.projects as project (project.id)}
-                        <ContextMenu.Root>
-                            <ContextMenu.Trigger class="w-full">
-                                <DropdownMenu.Item
-                                    class="flex items-center gap-2 cursor-pointer"
-                                    onclick={() => db.projects.setActive(project.id)}
-                                >
-                                    <span class="w-4">
-                                        {#if db.state.activeProjectId === project.id}
-                                            <CheckIcon class="size-4" />
-                                        {/if}
-                                    </span>
-                                    <span class="flex-1 truncate">{project.name}</span>
-                                </DropdownMenu.Item>
-                            </ContextMenu.Trigger>
-                            <ContextMenu.Content class="w-40">
-                                <ContextMenu.Item onclick={() => openEditDialog(project.id, project.name)}>
-                                    {m.project_edit()}
-                                </ContextMenu.Item>
-                                {#if project.id !== DEFAULT_PROJECT_ID && db.state.projects.length > 1}
-                                    <ContextMenu.Separator />
-                                    <ContextMenu.Item
-                                        class="text-destructive focus:text-destructive"
-                                        onclick={() => confirmRemoveProject(project.id, project.name)}
+                        <div class="flex items-center group">
+                            <ContextMenu.Root>
+                                <ContextMenu.Trigger class="flex-1 min-w-0">
+                                    <DropdownMenu.Item
+                                        class="flex items-center gap-2 cursor-pointer"
+                                        onclick={() => db.projects.setActive(project.id)}
                                     >
-                                        {m.project_delete()}
+                                        <span class="w-4 shrink-0">
+                                            {#if db.state.activeProjectId === project.id}
+                                                <CheckIcon class="size-4" />
+                                            {/if}
+                                        </span>
+                                        <span class="flex-1 truncate">{project.name}</span>
+                                    </DropdownMenu.Item>
+                                </ContextMenu.Trigger>
+                                <ContextMenu.Content class="w-40">
+                                    <ContextMenu.Item onclick={() => openProjectSettings(project.id)}>
+                                        {m.project_settings()}
                                     </ContextMenu.Item>
-                                {/if}
-                            </ContextMenu.Content>
-                        </ContextMenu.Root>
+                                    {#if project.id !== DEFAULT_PROJECT_ID && db.state.projects.length > 1}
+                                        <ContextMenu.Separator />
+                                        <ContextMenu.Item
+                                            class="text-destructive focus:text-destructive"
+                                            onclick={() => confirmRemoveProject(project.id, project.name)}
+                                        >
+                                            {m.project_delete()}
+                                        </ContextMenu.Item>
+                                    {/if}
+                                </ContextMenu.Content>
+                            </ContextMenu.Root>
+                            <button
+                                class="size-6 flex items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent shrink-0 opacity-0 group-hover:opacity-100 transition-opacity me-1"
+                                onclick={() => openProjectSettings(project.id)}
+                                title={m.project_settings()}
+                            >
+                                <SettingsIcon class="size-3" />
+                            </button>
+                        </div>
                     {/each}
                     <DropdownMenu.Separator />
                     <DropdownMenu.Item
@@ -318,31 +318,10 @@
     </Dialog.Content>
 </Dialog.Root>
 
-<!-- Edit Project Dialog -->
-<Dialog.Root bind:open={showEditProjectDialog}>
-    <Dialog.Content class="max-w-md">
-        <Dialog.Header>
-            <Dialog.Title>{m.project_edit_dialog_title()}</Dialog.Title>
-        </Dialog.Header>
-        <div class="py-4">
-            <input
-                type="text"
-                class="w-full px-3 py-2 border rounded-md bg-background"
-                placeholder={m.project_name_placeholder()}
-                bind:value={editProjectName}
-                onkeydown={(e) => e.key === "Enter" && handleEditProject()}
-            />
-        </div>
-        <Dialog.Footer class="gap-2">
-            <Button variant="outline" onclick={() => { showEditProjectDialog = false; editProjectName = ""; projectToEdit = null; }}>
-                {m.header_button_cancel()}
-            </Button>
-            <Button onclick={handleEditProject} disabled={!editProjectName.trim()}>
-                {m.project_save()}
-            </Button>
-        </Dialog.Footer>
-    </Dialog.Content>
-</Dialog.Root>
+<!-- Project Settings Dialog -->
+{#if projectToSettings}
+    <ProjectSettingsDialog projectId={projectToSettings} bind:open={showProjectSettingsDialog} />
+{/if}
 
 <!-- Remove Project Dialog -->
 <Dialog.Root bind:open={showRemoveProjectDialog}>

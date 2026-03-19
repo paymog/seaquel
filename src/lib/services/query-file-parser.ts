@@ -18,16 +18,20 @@
  */
 
 import type { QueryFrontmatter, SharedQuery, QueryParameter } from "$lib/types";
+import { parseYamlValue, parseYamlArray, escapeYamlString } from "./yaml-utils";
 
 const FRONTMATTER_REGEX = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
 
 /**
  * Parses a .sql file with YAML frontmatter into a SharedQuery object.
+ * @param folderPrefix - Optional prefix to strip from folder derivation
+ *   (e.g., ".seaquel/projects/my-project/queries" so folder shows "analytics" instead of full path)
  */
 export function parseQueryFile(
   content: string,
   repoId: string,
   filePath: string,
+  folderPrefix?: string,
 ): SharedQuery | null {
   const match = content.match(FRONTMATTER_REGEX);
 
@@ -46,10 +50,14 @@ export function parseQueryFile(
     frontmatter = { name };
   }
 
-  // Derive folder from file path
+  // Derive folder from file path, stripping the queries base prefix
   const pathParts = filePath.split("/");
   pathParts.pop(); // Remove filename
-  const folder = pathParts.join("/");
+  let folder = pathParts.join("/");
+  if (folderPrefix && folder.startsWith(folderPrefix)) {
+    folder = folder.slice(folderPrefix.length);
+    if (folder.startsWith("/")) folder = folder.slice(1);
+  }
 
   return {
     id: `${repoId}:${filePath}`,
@@ -102,7 +110,6 @@ function parseYamlFrontmatter(yaml: string): QueryFrontmatter {
   const lines = yaml.split("\n");
 
   let inParameters = false;
-  let currentKey = "";
   let currentParam: Partial<QueryParameter> | null = null;
   const parameters: QueryParameter[] = [];
 
@@ -119,8 +126,6 @@ function parseYamlFrontmatter(yaml: string): QueryFrontmatter {
     if (keyMatch) {
       const key = keyMatch[1];
       const value = keyMatch[2].trim();
-
-      currentKey = key;
 
       if (key === "parameters") {
         inParameters = true;
@@ -203,46 +208,6 @@ function setParamField(param: Partial<QueryParameter>, key: string, value: strin
 }
 
 /**
- * Parse a YAML value (handles quoted strings and bare values).
- */
-function parseYamlValue(value: string): string {
-  if (!value) return "";
-
-  // Remove quotes if present
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-
-  return value;
-}
-
-/**
- * Parse a YAML inline array [tag1, tag2] or flow array format.
- */
-function parseYamlArray(value: string): string[] {
-  if (!value) return [];
-
-  // Inline array format [tag1, tag2]
-  if (value.startsWith("[") && value.endsWith("]")) {
-    const inner = value.slice(1, -1);
-    return inner
-      .split(",")
-      .map((s) => parseYamlValue(s.trim()))
-      .filter((s) => s.length > 0);
-  }
-
-  // Single value
-  if (value) {
-    return [parseYamlValue(value)];
-  }
-
-  return [];
-}
-
-/**
  * Serialize frontmatter to YAML format.
  */
 function serializeYamlFrontmatter(frontmatter: QueryFrontmatter): string {
@@ -281,37 +246,16 @@ function serializeYamlFrontmatter(frontmatter: QueryFrontmatter): string {
 }
 
 /**
- * Escape a string for YAML if needed.
- */
-function escapeYamlString(value: string): string {
-  // Check if escaping is needed
-  if (
-    value.includes(":") ||
-    value.includes("#") ||
-    value.includes("\n") ||
-    value.includes('"') ||
-    value.startsWith(" ") ||
-    value.endsWith(" ") ||
-    value.includes("[") ||
-    value.includes("]")
-  ) {
-    // Use double quotes and escape internal quotes
-    return `"${value.replace(/"/g, '\\"')}"`;
-  }
-  return value;
-}
-
-/**
  * Generates a valid filename from a query name.
  */
 export function queryNameToFilename(name: string): string {
-  return name
+  const base = name
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .concat(".sql");
+    .replace(/^-|-$/g, "");
+  return `${base || "untitled"}.sql`;
 }
 
 /**

@@ -1,28 +1,50 @@
-import type { SharedQuery, QueryParameter } from "$lib/types";
+import type { SharedQuery, QueryParameter, SavedQuery } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
-import type { SharedRepoManager } from "./shared-repo-manager.svelte.js";
+import { SEAQUEL_DIR, type SharedRepoManager } from "./shared-repo-manager.svelte.js";
 import {
   parseQueryFile,
   serializeQueryFile,
   queryNameToFilename,
   isValidQueryPath,
 } from "$lib/services/query-file-parser";
+import { nameToFilename } from "$lib/services/config-file-parser";
 import { readTextFile, writeTextFile, remove, mkdir, exists, rename } from "@tauri-apps/plugin-fs";
 import { join, dirname } from "@tauri-apps/api/path";
-import * as gitService from "$lib/services/git";
 
 /**
  * Manages individual shared queries: create, update, delete.
  */
-export class SharedQueryManager {
-  private _autoCommit: boolean;
+/**
+ * Parse a composite query ID ("repoId:filePath") into its parts.
+ */
+function parseQueryId(queryId: string): { repoId: string; filePath: string } {
+  const [repoId, ...pathParts] = queryId.split(":");
+  return { repoId, filePath: pathParts.join(":") };
+}
 
+export class SharedQueryManager {
   constructor(
     private state: DatabaseState,
     private repoManager: SharedRepoManager,
-    autoCommit: boolean = true,
-  ) {
-    this._autoCommit = autoCommit;
+  ) {}
+
+  /**
+   * Get the queries base path for the active project (e.g., ".seaquel/projects/my-project/queries").
+   */
+  private getQueriesBasePath(): string | null {
+    const project = this.state.projects.find((p) => p.id === this.state.activeProjectId);
+    if (!project) return null;
+    const dirName = nameToFilename(project.name);
+    return `${SEAQUEL_DIR}/projects/${dirName}/queries`;
+  }
+
+  /**
+   * Extract the queries base path from an existing filePath
+   * (e.g., ".seaquel/projects/my-project/queries" from ".seaquel/projects/my-project/queries/analytics/file.sql").
+   */
+  private extractQueriesBase(filePath: string): string {
+    const match = filePath.match(/^(\.seaquel\/projects\/[^/]+\/queries)\//);
+    return match ? match[1] : "";
   }
 
   /**
@@ -45,9 +67,13 @@ export class SharedQueryManager {
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
     if (!repo) return null;
 
-    // Generate file path
+    const queriesBase = this.getQueriesBasePath();
+    if (!queriesBase) return null;
+
+    // Generate file path under .seaquel/projects/<name>/queries/
     const filename = queryNameToFilename(name);
-    const filePath = folder ? `${folder}/${filename}` : filename;
+    const relPath = folder ? `${folder}/${filename}` : filename;
+    const filePath = `${queriesBase}/${relPath}`;
 
     if (!isValidQueryPath(filePath)) {
       throw new Error("Invalid query file path");
@@ -88,16 +114,6 @@ export class SharedQueryManager {
       [repoId]: [...queries, sharedQuery],
     };
 
-    // Auto-commit if enabled (don't fail the create if git operations fail)
-    if (this._autoCommit) {
-      try {
-        await gitService.stageFile(repo.path, filePath);
-        await gitService.commitChanges(repo.path, `Add query: ${name}`);
-      } catch (error) {
-        console.warn("Auto-commit after create failed:", error);
-      }
-    }
-
     await this.repoManager.refreshRepoStatus(repoId);
     return sharedQuery.id;
   }
@@ -115,17 +131,16 @@ export class SharedQueryManager {
       tags?: string[];
       parameters?: QueryParameter[];
     },
-  ): Promise<boolean> {
+  ): Promise<string | null> {
     // Find the query
-    const [repoId, ...pathParts] = queryId.split(":");
-    const filePath = pathParts.join(":");
+    const { repoId, filePath } = parseQueryId(queryId);
 
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
-    if (!repo) return false;
+    if (!repo) return null;
 
     const queries = this.state.sharedQueriesByRepo[repoId] ?? [];
     const queryIndex = queries.findIndex((q) => q.id === queryId);
-    if (queryIndex === -1) return false;
+    if (queryIndex === -1) return null;
 
     const existingQuery = queries[queryIndex];
 
@@ -144,8 +159,10 @@ export class SharedQueryManager {
     let newFilePath = filePath;
     if (updates.name && updates.name !== existingQuery.name) {
       const folder = existingQuery.folder;
+      const queriesBase = this.extractQueriesBase(filePath);
       const newFilename = queryNameToFilename(updates.name);
-      newFilePath = folder ? `${folder}/${newFilename}` : newFilename;
+      const relPath = folder ? `${folder}/${newFilename}` : newFilename;
+      newFilePath = queriesBase ? `${queriesBase}/${relPath}` : relPath;
 
       if (newFilePath !== filePath) {
         // Rename file
@@ -157,12 +174,6 @@ export class SharedQueryManager {
         // Update query object
         updatedQuery.id = `${repoId}:${newFilePath}`;
         updatedQuery.filePath = newFilePath;
-
-        // Stage the rename
-        if (this._autoCommit) {
-          await gitService.stageFile(repo.path, filePath);
-          await gitService.stageFile(repo.path, newFilePath);
-        }
       }
     }
 
@@ -179,26 +190,15 @@ export class SharedQueryManager {
       [repoId]: updatedQueries,
     };
 
-    // Auto-commit if enabled (don't fail the update if git operations fail)
-    if (this._autoCommit) {
-      try {
-        await gitService.stageFile(repo.path, updatedQuery.filePath);
-        await gitService.commitChanges(repo.path, `Update query: ${updatedQuery.name}`);
-      } catch (error) {
-        console.warn("Auto-commit after update failed:", error);
-      }
-    }
-
     await this.repoManager.refreshRepoStatus(repoId);
-    return true;
+    return updatedQuery.id;
   }
 
   /**
    * Delete a shared query.
    */
   async deleteQuery(queryId: string): Promise<boolean> {
-    const [repoId, ...pathParts] = queryId.split(":");
-    const filePath = pathParts.join(":");
+    const { repoId, filePath } = parseQueryId(queryId);
 
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
     if (!repo) return false;
@@ -217,16 +217,6 @@ export class SharedQueryManager {
       [repoId]: queries.filter((q) => q.id !== queryId),
     };
 
-    // Auto-commit if enabled (don't fail the delete if git operations fail)
-    if (this._autoCommit) {
-      try {
-        await gitService.stageFile(repo.path, filePath);
-        await gitService.commitChanges(repo.path, `Delete query: ${query.name}`);
-      } catch (error) {
-        console.warn("Auto-commit after delete failed:", error);
-      }
-    }
-
     await this.repoManager.refreshRepoStatus(repoId);
     return true;
   }
@@ -235,8 +225,7 @@ export class SharedQueryManager {
    * Move a query to a different folder.
    */
   async moveQuery(queryId: string, newFolder: string): Promise<boolean> {
-    const [repoId, ...pathParts] = queryId.split(":");
-    const filePath = pathParts.join(":");
+    const { repoId, filePath } = parseQueryId(queryId);
 
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
     if (!repo) return false;
@@ -247,16 +236,25 @@ export class SharedQueryManager {
 
     const query = queries[queryIndex];
     const filename = filePath.split("/").pop() || "";
-    const newFilePath = newFolder ? `${newFolder}/${filename}` : filename;
+    const queriesBase = this.extractQueriesBase(filePath);
+    const relPath = newFolder ? `${newFolder}/${filename}` : filename;
+    const newFilePath = queriesBase ? `${queriesBase}/${relPath}` : relPath;
 
     if (!isValidQueryPath(newFilePath)) {
       throw new Error("Invalid target folder");
     }
 
     // Ensure target folder exists
-    const targetFolderPath = await join(repo.path, newFolder);
-    if (newFolder && !(await exists(targetFolderPath))) {
-      await mkdir(targetFolderPath, { recursive: true });
+    const targetDir = queriesBase
+      ? newFolder
+        ? `${queriesBase}/${newFolder}`
+        : queriesBase
+      : newFolder;
+    if (targetDir) {
+      const targetFolderPath = await join(repo.path, targetDir);
+      if (!(await exists(targetFolderPath))) {
+        await mkdir(targetFolderPath, { recursive: true });
+      }
     }
 
     // Move file
@@ -280,23 +278,12 @@ export class SharedQueryManager {
       [repoId]: updatedQueries,
     };
 
-    // Auto-commit if enabled (don't fail the move if git operations fail)
-    if (this._autoCommit) {
-      try {
-        await gitService.stageFile(repo.path, filePath);
-        await gitService.stageFile(repo.path, newFilePath);
-        await gitService.commitChanges(repo.path, `Move query: ${query.name}`);
-      } catch (error) {
-        console.warn("Auto-commit after move failed:", error);
-      }
-    }
-
     await this.repoManager.refreshRepoStatus(repoId);
     return true;
   }
 
   /**
-   * Create a new folder in the repository.
+   * Create a new folder in the repository's queries directory.
    */
   async createFolder(folderPath: string): Promise<boolean> {
     const repoId = this.state.activeRepoId;
@@ -305,7 +292,11 @@ export class SharedQueryManager {
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
     if (!repo) return false;
 
-    const fullPath = await join(repo.path, folderPath);
+    const queriesBase = this.getQueriesBasePath();
+    if (!queriesBase) return false;
+
+    const repoRelPath = `${queriesBase}/${folderPath}`;
+    const fullPath = await join(repo.path, repoRelPath);
 
     if (await exists(fullPath)) {
       return false; // Already exists
@@ -317,11 +308,6 @@ export class SharedQueryManager {
     const gitkeepPath = await join(fullPath, ".gitkeep");
     await writeTextFile(gitkeepPath, "");
 
-    if (this._autoCommit) {
-      await gitService.stageFile(repo.path, `${folderPath}/.gitkeep`);
-      await gitService.commitChanges(repo.path, `Create folder: ${folderPath}`);
-    }
-
     return true;
   }
 
@@ -329,7 +315,7 @@ export class SharedQueryManager {
    * Get a shared query by ID.
    */
   getQuery(queryId: string): SharedQuery | null {
-    const [repoId] = queryId.split(":");
+    const { repoId } = parseQueryId(queryId);
     const queries = this.state.sharedQueriesByRepo[repoId] ?? [];
     return queries.find((q) => q.id === queryId) ?? null;
   }
@@ -389,8 +375,7 @@ export class SharedQueryManager {
    * Reload a single query from disk.
    */
   async reloadQuery(queryId: string): Promise<void> {
-    const [repoId, ...pathParts] = queryId.split(":");
-    const filePath = pathParts.join(":");
+    const { repoId, filePath } = parseQueryId(queryId);
 
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
     if (!repo) return;
@@ -420,9 +405,20 @@ export class SharedQueryManager {
   }
 
   /**
-   * Set auto-commit behavior.
+   * Share a saved query by writing it as a .sql file to the active repo.
+   * Does not stage or commit — the user handles that manually.
    */
-  setAutoCommit(enabled: boolean): void {
-    this._autoCommit = enabled;
+  async shareQuery(savedQuery: SavedQuery): Promise<string | null> {
+    return this.createQuery(savedQuery.name, savedQuery.query, "", {
+      parameters: savedQuery.parameters,
+    });
+  }
+
+  /**
+   * Unshare a shared query by deleting its .sql file from the repo.
+   * Does not stage or commit — the user handles that manually.
+   */
+  async unshareQuery(queryId: string): Promise<boolean> {
+    return this.deleteQuery(queryId);
   }
 }

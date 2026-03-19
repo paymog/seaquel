@@ -21,6 +21,7 @@
     import ConnectionTabView from "$lib/components/connection-tab-view.svelte";
     import { DashboardView } from "$lib/components/dashboard";
     import HeaderTabs from "$lib/components/header-tabs.svelte";
+    import ProjectSettingsDialog from "$lib/components/project-settings-dialog.svelte";
 
     const db = useDatabase();
     const shortcuts = useShortcuts();
@@ -29,10 +30,21 @@
     // Track which type of tab is active
     let activeTabType = $derived(db.state.activeView);
 
+    // Project settings dialog state (opened via Cmd+;)
+    let showProjectSettings = $state(false);
+    let projectSettingsId = $state<string | null>(null);
+
     // Register keyboard shortcuts (settings + sidebar only; tab shortcuts are in header-tabs)
     onMount(() => {
         shortcuts.registerHandler('openSettings', () => {
             settingsDialogStore.open();
+        });
+
+        shortcuts.registerHandler('openProjectSettings', () => {
+            if (db.state.activeProjectId) {
+                projectSettingsId = db.state.activeProjectId;
+                showProjectSettings = true;
+            }
         });
 
         shortcuts.registerHandler('toggleSidebar', () => {
@@ -42,6 +54,7 @@
 
     onDestroy(() => {
         shortcuts.unregisterHandler('openSettings');
+        shortcuts.unregisterHandler('openProjectSettings');
         shortcuts.unregisterHandler('toggleSidebar');
     });
 </script>
@@ -110,4 +123,8 @@
 
 {#if !db.state.isDashboardFullscreen}
     <AIAssistant />
+{/if}
+
+{#if projectSettingsId}
+    <ProjectSettingsDialog projectId={projectSettingsId} bind:open={showProjectSettings} />
 {/if}

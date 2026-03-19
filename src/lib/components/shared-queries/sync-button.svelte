@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { Button } from "$lib/components/ui/button";
+	import { Input } from "$lib/components/ui/input";
+	import * as Dialog from "$lib/components/ui/dialog/index.js";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
 	import { toast } from "svelte-sonner";
-import { errorToast } from "$lib/utils/toast";
+	import { errorToast } from "$lib/utils/toast";
 	import {
 		RefreshCwIcon,
 		ArrowDownIcon,
@@ -30,6 +32,9 @@ import { errorToast } from "$lib/utils/toast";
 	const hasUncommitted = $derived((syncState?.pendingChanges ?? 0) > 0);
 	const needsPull = $derived((syncState?.behindBy ?? 0) > 0);
 	const needsPush = $derived((syncState?.aheadBy ?? 0) > 0);
+
+	let showCommitDialog = $state(false);
+	let commitMessage = $state("");
 
 	async function handlePull() {
 		if (!repo) return;
@@ -68,14 +73,21 @@ import { errorToast } from "$lib/utils/toast";
 		}
 	}
 
+	function openCommitDialog() {
+		commitMessage = "";
+		showCommitDialog = true;
+	}
+
 	async function handleCommit() {
-		if (!repo) return;
+		if (!repo || !commitMessage.trim()) return;
+		const message = commitMessage.trim();
+		showCommitDialog = false;
 		try {
-			await db.sharedRepos.commitChanges(repoId, "Update shared queries");
+			await db.sharedRepos.commitChanges(repoId, message);
 			toast.success(m.shared_changes_committed());
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			errorToast(m.shared_commit_failed({ message }));
+			const msg = error instanceof Error ? error.message : String(error);
+			errorToast(m.shared_commit_failed({ message: msg }));
 		}
 	}
 
@@ -130,7 +142,7 @@ import { errorToast } from "$lib/utils/toast";
 			</DropdownMenu.Item>
 			{#if hasUncommitted}
 				<DropdownMenu.Separator />
-				<DropdownMenu.Item onclick={handleCommit} disabled={isSyncing}>
+				<DropdownMenu.Item onclick={openCommitDialog} disabled={isSyncing}>
 					<GitCommitIcon class="size-4 me-2" />
 					{m.shared_commit_changes()}
 					<span class="ms-auto text-xs text-muted-foreground">{syncState?.pendingChanges}</span>
@@ -144,3 +156,28 @@ import { errorToast } from "$lib/utils/toast";
 		</DropdownMenu.Content>
 	</DropdownMenu.Root>
 {/if}
+
+<!-- Commit Message Dialog -->
+<Dialog.Root bind:open={showCommitDialog}>
+	<Dialog.Content class="max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>{m.shared_commit_changes()}</Dialog.Title>
+		</Dialog.Header>
+		<div class="py-4">
+			<Input
+				bind:value={commitMessage}
+				placeholder={m.shared_commit_message_placeholder()}
+				onkeydown={(e) => e.key === "Enter" && handleCommit()}
+				autofocus
+			/>
+		</div>
+		<Dialog.Footer class="gap-2">
+			<Button variant="outline" onclick={() => { showCommitDialog = false; }}>
+				{m.header_button_cancel()}
+			</Button>
+			<Button onclick={handleCommit} disabled={!commitMessage.trim()}>
+				{m.shared_commit_changes()}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>

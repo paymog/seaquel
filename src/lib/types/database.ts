@@ -92,4 +92,8 @@ export interface DatabaseConnection {
   projectId: string;
   /** Array of label IDs assigned to this connection */
   labelIds: string[];
+  /** If created from a shared connection template, its ID */
+  sharedConnectionId?: string;
+  /** Whether this connection is excluded from Git sharing (local-only) */
+  isLocalOnly?: boolean;
 }

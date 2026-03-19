@@ -110,8 +110,13 @@ export type {
   QueryFrontmatter,
   SharedQueryFolder,
   PersistedSharedQueryRepo,
+  SharedLabels,
+  SharedProject,
+  SharedConnection,
+  SharedSSHTunnelConfig,
+  ConnectionOverride,
 } from "./shared-queries";
-export { serializeRepo, deserializeRepo } from "./shared-queries";
+export { serializeRepo, deserializeRepo, CREDENTIAL_FIELDS } from "./shared-queries";
 
 // Query builder types (interactive SELECT tutorial)
 export type {

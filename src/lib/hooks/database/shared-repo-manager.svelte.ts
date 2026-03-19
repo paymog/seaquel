@@ -4,12 +4,35 @@ import type {
   SyncState,
   GitCredentials,
   RepoSyncStatus,
+  SharedProject,
+  SharedConnection,
+  DatabaseConnection,
 } from "$lib/types";
+import type { ConnectionLabel } from "$lib/types/project";
 import type { DatabaseState } from "./state.svelte.js";
 import * as gitService from "$lib/services/git";
 import { parseQueryFile } from "$lib/services/query-file-parser";
-import { readDir, readTextFile, exists } from "@tauri-apps/plugin-fs";
+import {
+  parseLabelsFile,
+  parseProjectFile,
+  parseConnectionFile,
+  serializeLabelsFile,
+  serializeProjectFile,
+  serializeConnectionFile,
+  nameToFilename,
+} from "$lib/services/config-file-parser";
+import {
+  readDir,
+  readTextFile,
+  exists,
+  writeTextFile,
+  mkdir,
+  remove,
+  rename,
+} from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
+
+export const SEAQUEL_DIR = ".seaquel";
 
 /**
  * Manages shared query repositories: clone, sync, status updates.
@@ -18,6 +41,9 @@ export class SharedRepoManager {
   /** Interval ID for background refresh */
   private refreshIntervalId: ReturnType<typeof setInterval> | null = null;
 
+  /** Per-repo lock to serialize concurrent operations */
+  private repoLocks = new Map<string, Promise<void>>();
+
   /** Default refresh interval in milliseconds (5 minutes) */
   private static readonly DEFAULT_REFRESH_INTERVAL = 5 * 60 * 1000;
 
@@ -25,6 +51,68 @@ export class SharedRepoManager {
     private state: DatabaseState,
     private schedulePersistence: () => void,
   ) {}
+
+  /**
+   * Serialize async operations per-repo to prevent concurrent mutations.
+   */
+  private async withRepoLock<T>(repoId: string, fn: () => Promise<T>): Promise<T> {
+    const existing = this.repoLocks.get(repoId) ?? Promise.resolve();
+    let resolve: () => void;
+    const next = new Promise<void>((r) => {
+      resolve = r;
+    });
+    this.repoLocks.set(repoId, next);
+
+    await existing;
+    try {
+      return await fn();
+    } finally {
+      resolve!();
+      if (this.repoLocks.get(repoId) === next) {
+        this.repoLocks.delete(repoId);
+      }
+    }
+  }
+
+  /**
+   * Find a repo by ID or throw a descriptive error.
+   */
+  private getRepoOrThrow(repoId: string): SharedQueryRepo {
+    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
+    if (!repo) throw new Error(`Repository not found: ${repoId}`);
+    return repo;
+  }
+
+  /**
+   * Build a SharedConnection from a local DatabaseConnection (credentials stripped).
+   */
+  private buildSharedConnectionFromLocal(
+    repoId: string,
+    projectId: string,
+    filePath: string,
+    conn: DatabaseConnection,
+  ): SharedConnection {
+    return {
+      id: `${repoId}:${filePath}`,
+      repoId,
+      projectId,
+      filePath,
+      name: conn.name,
+      type: conn.type,
+      host: conn.host,
+      port: conn.port,
+      databaseName: conn.databaseName,
+      sslMode: conn.sslMode,
+      sshTunnel: conn.sshTunnel?.enabled
+        ? {
+            enabled: true,
+            host: conn.sshTunnel.host,
+            port: conn.sshTunnel.port,
+          }
+        : undefined,
+      labels: [],
+    };
+  }
 
   /**
    * Add a new repository by cloning from a remote URL.
@@ -40,7 +128,7 @@ export class SharedRepoManager {
 
     // Create repo entry
     const repo: SharedQueryRepo = {
-      id: `repo-${Date.now()}`,
+      id: `repo-${crypto.randomUUID()}`,
       name,
       path: localPath,
       remoteUrl,
@@ -85,7 +173,7 @@ export class SharedRepoManager {
 
     // Create repo entry
     const repo: SharedQueryRepo = {
-      id: `repo-${Date.now()}`,
+      id: `repo-${crypto.randomUUID()}`,
       name,
       path: localPath,
       remoteUrl: "",
@@ -137,6 +225,21 @@ export class SharedRepoManager {
     const { [repoId]: _syncState, ...remainingSyncState } = this.state.syncStateByRepo;
     this.state.syncStateByRepo = remainingSyncState;
 
+    // Clean up shared config state
+    const { [repoId]: _labels, ...remainingLabels } = this.state.sharedLabelsByRepo;
+    this.state.sharedLabelsByRepo = remainingLabels;
+
+    // Remove shared projects and their connections
+    const projects = this.state.sharedProjectsByRepo[repoId] ?? [];
+    const { [repoId]: _projects, ...remainingProjects } = this.state.sharedProjectsByRepo;
+    this.state.sharedProjectsByRepo = remainingProjects;
+
+    const remainingConnections = { ...this.state.sharedConnectionsByProject };
+    for (const project of projects) {
+      delete remainingConnections[project.id];
+    }
+    this.state.sharedConnectionsByProject = remainingConnections;
+
     // Update active repo if needed
     if (this.state.activeRepoId === repoId) {
       this.state.activeRepoId = this.state.sharedRepos[0]?.id ?? null;
@@ -156,90 +259,87 @@ export class SharedRepoManager {
    * Pull changes from remote.
    */
   async pullRepo(repoId: string, credentials?: GitCredentials): Promise<void> {
-    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
-    if (!repo) return;
+    const repo = this.getRepoOrThrow(repoId);
 
-    // Update sync state
-    this.updateSyncState(repoId, { isSyncing: true, lastError: undefined });
+    return this.withRepoLock(repoId, async () => {
+      this.updateSyncState(repoId, { isSyncing: true, lastError: undefined });
 
-    try {
-      const result = await gitService.pullRepo(repo.path, credentials);
+      try {
+        const result = await gitService.pullRepo(repo.path, credentials);
 
-      if (result.success) {
-        // Reload queries after pull
-        await this.loadQueriesFromRepo(repoId);
-
-        // Update repo status
-        this.updateRepo(repoId, {
-          lastSyncAt: new Date(),
-          syncStatus: "synced",
-        });
-
-        await this.refreshRepoStatus(repoId);
-      } else if (result.conflicts.length > 0) {
-        this.updateSyncState(repoId, { conflictFiles: result.conflicts });
-        this.updateRepo(repoId, { syncStatus: "diverged" });
+        if (result.success) {
+          await this.loadQueriesFromRepo(repoId);
+          this.updateRepo(repoId, {
+            lastSyncAt: new Date(),
+            syncStatus: "synced",
+          });
+          await this.refreshRepoStatus(repoId);
+        } else if (result.conflicts.length > 0) {
+          this.updateSyncState(repoId, { conflictFiles: result.conflicts });
+          this.updateRepo(repoId, { syncStatus: "diverged" });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.updateSyncState(repoId, { lastError: message });
+        this.updateRepo(repoId, { syncStatus: "error" });
+        throw error;
+      } finally {
+        this.updateSyncState(repoId, { isSyncing: false });
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.updateSyncState(repoId, { lastError: message });
-      this.updateRepo(repoId, { syncStatus: "error" });
-      throw error;
-    } finally {
-      this.updateSyncState(repoId, { isSyncing: false });
-    }
+    });
   }
 
   /**
    * Push local changes to remote.
    */
   async pushRepo(repoId: string, credentials?: GitCredentials): Promise<void> {
-    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
-    if (!repo) return;
+    const repo = this.getRepoOrThrow(repoId);
 
-    this.updateSyncState(repoId, { isSyncing: true, lastError: undefined });
+    return this.withRepoLock(repoId, async () => {
+      this.updateSyncState(repoId, { isSyncing: true, lastError: undefined });
 
-    try {
-      const result = await gitService.pushRepo(repo.path, credentials);
+      try {
+        const result = await gitService.pushRepo(repo.path, credentials);
 
-      if (result.success) {
-        this.updateRepo(repoId, {
-          lastSyncAt: new Date(),
-          syncStatus: "synced",
-        });
-        await this.refreshRepoStatus(repoId);
+        if (result.success) {
+          this.updateRepo(repoId, {
+            lastSyncAt: new Date(),
+            syncStatus: "synced",
+          });
+          await this.refreshRepoStatus(repoId);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.updateSyncState(repoId, { lastError: message });
+        if (message.includes("rejected") || message.includes("non-fast-forward")) {
+          this.updateRepo(repoId, { syncStatus: "behind" });
+        } else {
+          this.updateRepo(repoId, { syncStatus: "error" });
+        }
+        throw error;
+      } finally {
+        this.updateSyncState(repoId, { isSyncing: false });
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.updateSyncState(repoId, { lastError: message });
-      // May need to pull first
-      if (message.includes("rejected") || message.includes("non-fast-forward")) {
-        this.updateRepo(repoId, { syncStatus: "behind" });
-      } else {
-        this.updateRepo(repoId, { syncStatus: "error" });
-      }
-      throw error;
-    } finally {
-      this.updateSyncState(repoId, { isSyncing: false });
-    }
+    });
   }
 
   /**
    * Commit all pending changes.
    */
   async commitChanges(repoId: string, message: string): Promise<string | null> {
-    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
-    if (!repo) return null;
+    const repo = this.getRepoOrThrow(repoId);
 
-    try {
-      const commitId = await gitService.commitChanges(repo.path, message);
-      await this.refreshRepoStatus(repoId);
-      return commitId;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      this.updateSyncState(repoId, { lastError: msg });
-      return null;
-    }
+    return this.withRepoLock(repoId, async () => {
+      try {
+        const commitId = await gitService.commitChanges(repo.path, message);
+        await this.refreshRepoStatus(repoId);
+        return commitId;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.updateSyncState(repoId, { lastError: msg });
+        return null;
+      }
+    });
   }
 
   /**
@@ -301,7 +401,7 @@ export class SharedRepoManager {
   }
 
   /**
-   * Load all queries from a repository's files.
+   * Load all queries from a repository's .seaquel/projects/<name>/queries/ directories.
    */
   async loadQueriesFromRepo(repoId: string): Promise<void> {
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
@@ -310,25 +410,214 @@ export class SharedRepoManager {
     const queries: SharedQuery[] = [];
 
     try {
-      await this.scanDirectory(repo.path, "", repoId, queries);
+      const projectsDir = await join(repo.path, SEAQUEL_DIR, "projects");
+      if (await exists(projectsDir)) {
+        const entries = await readDir(projectsDir);
+
+        for (const entry of entries) {
+          if (!entry.isDirectory || entry.name.startsWith(".")) continue;
+
+          const queriesDir = await join(projectsDir, entry.name, "queries");
+          if (!(await exists(queriesDir))) continue;
+
+          const queriesRelBase = `${SEAQUEL_DIR}/projects/${entry.name}/queries`;
+          await this.scanDirectory(repo.path, queriesRelBase, repoId, queries, queriesRelBase);
+        }
+      }
 
       this.state.sharedQueriesByRepo = {
         ...this.state.sharedQueriesByRepo,
         [repoId]: queries,
       };
+
+      // Also load shared configs from .seaquel/ directory
+      await this.loadSharedConfigs(repoId);
     } catch (error) {
       console.error("Failed to load queries from repo:", error);
     }
   }
 
   /**
+   * Load shared configs from .seaquel/ directory in a repository.
+   * Parses labels.yaml, project.yaml files, and connection templates.
+   */
+  async loadSharedConfigs(repoId: string): Promise<void> {
+    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
+    if (!repo) return;
+
+    try {
+      const seaquelDir = await join(repo.path, SEAQUEL_DIR);
+      if (!(await exists(seaquelDir))) return;
+
+      // Parse labels.yaml
+      await this.loadSharedLabels(repoId, seaquelDir);
+
+      // Parse projects
+      await this.loadSharedProjects(repoId, seaquelDir);
+    } catch (error) {
+      console.warn("Failed to load shared configs:", error);
+    }
+  }
+
+  /**
+   * Load shared labels from .seaquel/labels.yaml.
+   */
+  private async loadSharedLabels(repoId: string, seaquelDir: string): Promise<void> {
+    try {
+      const labelsPath = await join(seaquelDir, "labels.yaml");
+      if (!(await exists(labelsPath))) {
+        // Try .yml extension
+        const labelsPathYml = await join(seaquelDir, "labels.yml");
+        if (!(await exists(labelsPathYml))) return;
+        const content = await readTextFile(labelsPathYml);
+        const parsed = parseLabelsFile(content);
+        this.state.sharedLabelsByRepo = {
+          ...this.state.sharedLabelsByRepo,
+          [repoId]: parsed.labels,
+        };
+        return;
+      }
+
+      const content = await readTextFile(labelsPath);
+      const parsed = parseLabelsFile(content);
+      this.state.sharedLabelsByRepo = {
+        ...this.state.sharedLabelsByRepo,
+        [repoId]: parsed.labels,
+      };
+    } catch (error) {
+      console.warn("Failed to load shared labels:", error);
+    }
+  }
+
+  /**
+   * Load shared projects from .seaquel/projects/<name>/project.yaml.
+   */
+  private async loadSharedProjects(repoId: string, seaquelDir: string): Promise<void> {
+    try {
+      const projectsDir = await join(seaquelDir, "projects");
+      if (!(await exists(projectsDir))) return;
+
+      const entries = await readDir(projectsDir);
+      const projects: SharedProject[] = [];
+
+      for (const entry of entries) {
+        if (!entry.isDirectory || entry.name.startsWith(".")) continue;
+
+        const projectDir = await join(projectsDir, entry.name);
+        const project = await this.loadSingleProject(repoId, projectDir, entry.name);
+        if (project) {
+          projects.push(project);
+        }
+      }
+
+      this.state.sharedProjectsByRepo = {
+        ...this.state.sharedProjectsByRepo,
+        [repoId]: projects,
+      };
+    } catch (error) {
+      console.warn("Failed to load shared projects:", error);
+    }
+  }
+
+  /**
+   * Load a single project and its connections.
+   */
+  private async loadSingleProject(
+    repoId: string,
+    projectDir: string,
+    dirName: string,
+  ): Promise<SharedProject | null> {
+    try {
+      // Try project.yaml, then project.yml
+      let content: string | null = null;
+      const yamlPath = await join(projectDir, "project.yaml");
+      const ymlPath = await join(projectDir, "project.yml");
+
+      if (await exists(yamlPath)) {
+        content = await readTextFile(yamlPath);
+      } else if (await exists(ymlPath)) {
+        content = await readTextFile(ymlPath);
+      }
+
+      if (!content) {
+        // No project.yaml — create a project from directory name
+        content = `name: ${dirName}`;
+      }
+
+      const project = parseProjectFile(content, repoId, dirName);
+
+      // Load connections for this project
+      const connections = await this.loadProjectConnections(
+        repoId,
+        project.id,
+        projectDir,
+        dirName,
+      );
+      project.connections = connections;
+
+      // Store connections in state
+      this.state.sharedConnectionsByProject = {
+        ...this.state.sharedConnectionsByProject,
+        [project.id]: connections,
+      };
+
+      return project;
+    } catch (error) {
+      console.warn(`Failed to load project ${dirName}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Load connection templates from a project's connections/ directory.
+   */
+  private async loadProjectConnections(
+    repoId: string,
+    projectId: string,
+    projectDir: string,
+    dirName: string,
+  ): Promise<SharedConnection[]> {
+    const connections: SharedConnection[] = [];
+
+    try {
+      const connectionsDir = await join(projectDir, "connections");
+      if (!(await exists(connectionsDir))) return connections;
+
+      const entries = await readDir(connectionsDir);
+
+      for (const entry of entries) {
+        if (entry.isDirectory) continue;
+        if (!entry.name.endsWith(".yaml") && !entry.name.endsWith(".yml")) continue;
+        if (entry.name.startsWith(".")) continue;
+
+        const filePath = await join(connectionsDir, entry.name);
+        const content = await readTextFile(filePath);
+
+        // Build relative path within repo using dirName directly
+        const relPath = `${SEAQUEL_DIR}/projects/${dirName}/connections/${entry.name}`;
+
+        const connection = parseConnectionFile(content, repoId, projectId, relPath);
+        if (connection) {
+          connections.push(connection);
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to load project connections:", error);
+    }
+
+    return connections;
+  }
+
+  /**
    * Recursively scan a directory for .sql files.
+   * @param folderPrefix - Prefix to strip from folder paths in parsed queries
    */
   private async scanDirectory(
     basePath: string,
     relativePath: string,
     repoId: string,
     queries: SharedQuery[],
+    folderPrefix?: string,
   ): Promise<void> {
     const fullPath = relativePath ? await join(basePath, relativePath) : basePath;
 
@@ -338,17 +627,17 @@ export class SharedRepoManager {
       for (const entry of entries) {
         const entryRelativePath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
 
-        // Skip hidden files and .seaquel config
-        if (entry.name.startsWith(".") && entry.name !== ".seaquel") {
+        // Skip hidden files/directories
+        if (entry.name.startsWith(".")) {
           continue;
         }
 
         if (entry.isDirectory) {
-          await this.scanDirectory(basePath, entryRelativePath, repoId, queries);
+          await this.scanDirectory(basePath, entryRelativePath, repoId, queries, folderPrefix);
         } else if (entry.name.toLowerCase().endsWith(".sql")) {
           const filePath = await join(basePath, entryRelativePath);
           const content = await readTextFile(filePath);
-          const query = parseQueryFile(content, repoId, entryRelativePath);
+          const query = parseQueryFile(content, repoId, entryRelativePath, folderPrefix);
 
           if (query) {
             queries.push(query);
@@ -358,6 +647,237 @@ export class SharedRepoManager {
     } catch (error) {
       // Directory might not exist yet
       console.warn(`Failed to scan directory ${fullPath}:`, error);
+    }
+  }
+
+  /**
+   * Export a local project as a shared project to a Git repo.
+   * Creates .seaquel/projects/<name>/ with project.yaml and connection YAML files.
+   * Credentials are NEVER exported.
+   *
+   * @param repoId - Target repo ID
+   * @param projectName - Name for the shared project
+   * @param connections - Local connections to export (credentials stripped)
+   * @param labels - Optional shared labels to write to labels.yaml
+   * @param description - Optional project description
+   */
+  async exportProject(
+    repoId: string,
+    projectName: string,
+    connections: DatabaseConnection[],
+    options?: {
+      description?: string;
+      labels?: ConnectionLabel[];
+    },
+  ): Promise<SharedProject | null> {
+    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
+    if (!repo) return null;
+
+    const dirName = nameToFilename(projectName);
+    const seaquelDir = await join(repo.path, SEAQUEL_DIR);
+    const projectDir = await join(seaquelDir, "projects", dirName);
+    const connectionsDir = await join(projectDir, "connections");
+    const queriesDir = await join(projectDir, "queries");
+
+    try {
+      // Create directories
+      await mkdir(seaquelDir, { recursive: true });
+      await mkdir(projectDir, { recursive: true });
+      await mkdir(connectionsDir, { recursive: true });
+      await mkdir(queriesDir, { recursive: true });
+
+      // Write project.yaml
+      const sharedProject: SharedProject = {
+        id: `${repoId}:${SEAQUEL_DIR}/projects/${dirName}`,
+        repoId,
+        name: projectName,
+        description: options?.description,
+        dirName,
+        connections: [],
+      };
+
+      const projectYaml = serializeProjectFile(sharedProject);
+      const projectYamlPath = await join(projectDir, "project.yaml");
+      await writeTextFile(projectYamlPath, projectYaml);
+
+      // Write connection YAML files (credentials stripped)
+      const sharedConnections: SharedConnection[] = [];
+      for (const conn of connections) {
+        const connFilename = `${nameToFilename(conn.name)}.yaml`;
+        const connRelPath = `${SEAQUEL_DIR}/projects/${dirName}/connections/${connFilename}`;
+
+        const sharedConn = this.buildSharedConnectionFromLocal(
+          repoId,
+          sharedProject.id,
+          connRelPath,
+          conn,
+        );
+
+        const connYaml = serializeConnectionFile(sharedConn);
+        const connYamlPath = await join(connectionsDir, connFilename);
+        await writeTextFile(connYamlPath, connYaml);
+
+        sharedConnections.push(sharedConn);
+      }
+
+      sharedProject.connections = sharedConnections;
+
+      // Write labels.yaml if provided
+      if (options?.labels && options.labels.length > 0) {
+        const labelsYaml = serializeLabelsFile({ labels: options.labels });
+        const labelsPath = await join(seaquelDir, "labels.yaml");
+        await writeTextFile(labelsPath, labelsYaml);
+      }
+
+      // Reload configs
+      await this.loadSharedConfigs(repoId);
+
+      return sharedProject;
+    } catch (error) {
+      console.error("Failed to export project:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Share a single connection by writing its YAML file to the active repo's .seaquel/ directory.
+   * Credentials are NEVER exported.
+   */
+  async shareConnection(connection: DatabaseConnection): Promise<void> {
+    const repoId = this.state.activeRepoId;
+    if (!repoId) return;
+
+    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
+    if (!repo) return;
+
+    const project = this.state.activeProject;
+    if (!project) return;
+
+    const dirName = nameToFilename(project.name);
+    const seaquelDir = await join(repo.path, SEAQUEL_DIR);
+    const projectDir = await join(seaquelDir, "projects", dirName);
+    const connectionsDir = await join(projectDir, "connections");
+
+    try {
+      // Write project.yaml if it doesn't exist
+      const projectYamlPath = await join(projectDir, "project.yaml");
+      if (!(await exists(projectYamlPath))) {
+        const sharedProject: SharedProject = {
+          id: `${repoId}:${SEAQUEL_DIR}/projects/${dirName}`,
+          repoId,
+          name: project.name,
+          dirName,
+          connections: [],
+        };
+        await writeTextFile(projectYamlPath, serializeProjectFile(sharedProject));
+      }
+
+      const connFilename = `${nameToFilename(connection.name)}.yaml`;
+      const connRelPath = `${SEAQUEL_DIR}/projects/${dirName}/connections/${connFilename}`;
+      const projectId = `${repoId}:${SEAQUEL_DIR}/projects/${dirName}`;
+
+      const sharedConn = this.buildSharedConnectionFromLocal(
+        repoId,
+        projectId,
+        connRelPath,
+        connection,
+      );
+
+      const connYaml = serializeConnectionFile(sharedConn);
+      const connYamlPath = await join(connectionsDir, connFilename);
+      await writeTextFile(connYamlPath, connYaml);
+
+      await this.loadSharedConfigs(repoId);
+      await this.refreshRepoStatus(repoId);
+    } catch (error) {
+      console.error("Failed to share connection:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a shared connection's YAML file in the repo.
+   * If the name changed, renames the file and updates content.
+   */
+  async updateSharedConnection(oldName: string, connection: DatabaseConnection): Promise<void> {
+    const repoId = this.state.activeRepoId;
+    if (!repoId) return;
+
+    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
+    if (!repo) return;
+
+    const project = this.state.activeProject;
+    if (!project) return;
+
+    const dirName = nameToFilename(project.name);
+    const connectionsDir = await join(repo.path, SEAQUEL_DIR, "projects", dirName, "connections");
+
+    try {
+      const oldFilename = `${nameToFilename(oldName)}.yaml`;
+      const newFilename = `${nameToFilename(connection.name)}.yaml`;
+      const oldPath = await join(connectionsDir, oldFilename);
+      const newPath = await join(connectionsDir, newFilename);
+
+      // Rename file if name changed
+      if (oldFilename !== newFilename && (await exists(oldPath))) {
+        await rename(oldPath, newPath);
+      }
+
+      // Update file content with current connection details
+      const connRelPath = `${SEAQUEL_DIR}/projects/${dirName}/connections/${newFilename}`;
+      const projectId = `${repoId}:${SEAQUEL_DIR}/projects/${dirName}`;
+
+      const sharedConn = this.buildSharedConnectionFromLocal(
+        repoId,
+        projectId,
+        connRelPath,
+        connection,
+      );
+
+      await writeTextFile(newPath, serializeConnectionFile(sharedConn));
+
+      await this.loadSharedConfigs(repoId);
+      await this.refreshRepoStatus(repoId);
+    } catch (error) {
+      console.error("Failed to update shared connection:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Unshare a single connection by removing its YAML file from the repo.
+   */
+  async unshareConnection(connection: DatabaseConnection): Promise<void> {
+    const repoId = this.state.activeRepoId;
+    if (!repoId) return;
+
+    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
+    if (!repo) return;
+
+    const project = this.state.activeProject;
+    if (!project) return;
+
+    const dirName = nameToFilename(project.name);
+    const connFilename = `${nameToFilename(connection.name)}.yaml`;
+    const connPath = await join(
+      repo.path,
+      SEAQUEL_DIR,
+      "projects",
+      dirName,
+      "connections",
+      connFilename,
+    );
+
+    try {
+      if (await exists(connPath)) {
+        await remove(connPath);
+      }
+
+      await this.loadSharedConfigs(repoId);
+      await this.refreshRepoStatus(repoId);
+    } catch (error) {
+      console.error("Failed to unshare connection:", error);
+      throw error;
     }
   }
 
@@ -446,8 +966,19 @@ export class SharedRepoManager {
 
         try {
           await this.refreshRepoStatus(repo.id);
+
+          // Only reload queries from disk if the repo has changes
+          const updatedSyncState = this.state.syncStateByRepo[repo.id];
+          const hasChanges =
+            updatedSyncState &&
+            (updatedSyncState.pendingChanges > 0 ||
+              updatedSyncState.behindBy > 0 ||
+              updatedSyncState.aheadBy > 0);
+
+          if (hasChanges) {
+            await this.loadQueriesFromRepo(repo.id);
+          }
         } catch (error) {
-          // Log but don't fail
           console.warn(`Failed to refresh status for ${repo.name}:`, error);
         }
       }),

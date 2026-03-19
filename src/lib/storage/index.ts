@@ -14,4 +14,5 @@ export {
   tutorialRepo,
   importStateRepo,
   dashboardsRepo,
+  connectionOverridesRepo,
 } from "./repository";

@@ -208,6 +208,7 @@ class UseDatabase {
       this.persistence.scheduleSharedRepos(),
     );
     this.sharedQueries = new SharedQueryManager(this.state, this.sharedRepos);
+    this.queryTabs.setSharedQueryManager(this.sharedQueries);
 
     // Connections (depends on other managers)
     this.connections = new ConnectionManager(
@@ -242,6 +243,9 @@ class UseDatabase {
     this.projects.setInitializeStarterTabsCallback((projectId: string) => {
       this.starterTabs.initializeDefaults(projectId);
     });
+
+    this.projects.setSharedRepoManager(this.sharedRepos);
+    this.connections.setSharedRepoManager(this.sharedRepos);
 
     // Set up embedded explain callbacks
     this.explainTabs.setEmbeddedCallbacks(

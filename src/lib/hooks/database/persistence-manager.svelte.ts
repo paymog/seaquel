@@ -19,6 +19,7 @@ import { serializeRepo } from "$lib/types";
 import type { SavedCanvas } from "$lib/types/canvas";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistedConnection } from "./types.js";
+import type { ConnectionOverride } from "$lib/types";
 import {
   getDatabase,
   projectsRepo,
@@ -29,6 +30,7 @@ import {
   queryHistoryRepo,
   sharedReposRepo,
   dashboardsRepo,
+  connectionOverridesRepo,
 } from "$lib/storage";
 import { getKeyringService } from "$lib/services/keyring";
 
@@ -45,6 +47,16 @@ export class PersistenceManager {
   readonly MAX_HISTORY_ITEMS = 500;
 
   constructor(private state: DatabaseState) {}
+
+  /**
+   * Cancel any pending debounced persistence timer.
+   */
+  cancelPendingPersistence(): void {
+    if (this.persistenceTimer) {
+      clearTimeout(this.persistenceTimer);
+      this.persistenceTimer = null;
+    }
+  }
 
   /**
    * Schedule persistence with debouncing to avoid excessive I/O.
@@ -249,6 +261,7 @@ export class PersistenceManager {
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
         customLabels: p.customLabels,
+        gitRepoPath: p.gitRepoPath,
       }));
 
       await projectsRepo.saveAll(db, projects);
@@ -519,6 +532,8 @@ export class PersistenceManager {
           saveSshKeyPassphrase: options?.saveSshKeyPassphrase,
           projectId: connection.projectId,
           labelIds: connection.labelIds,
+          isLocalOnly: connection.isLocalOnly,
+          sharedConnectionId: connection.sharedConnectionId,
         };
 
         await connectionsRepo.save(db, persistedConnection);
@@ -612,6 +627,57 @@ export class PersistenceManager {
     } catch (error) {
       console.error("Failed to load shared repos:", error);
       return { repos: [], activeRepoId: null };
+    }
+  }
+
+  // === CONNECTION OVERRIDES PERSISTENCE ===
+
+  async persistConnectionOverride(override: ConnectionOverride): Promise<void> {
+    try {
+      const db = await getDatabase();
+      await connectionOverridesRepo.save(db, {
+        sharedConnectionId: override.sharedConnectionId,
+        username: override.username,
+        hostOverride: override.hostOverride,
+        portOverride: override.portOverride,
+        savePassword: override.savePassword,
+        saveSshPassword: override.saveSshPassword,
+        saveSshKeyPassphrase: override.saveSshKeyPassphrase,
+      });
+    } catch (error) {
+      console.error("Failed to persist connection override:", error);
+    }
+  }
+
+  async loadConnectionOverrides(): Promise<Record<string, ConnectionOverride>> {
+    try {
+      const db = await getDatabase();
+      const overrides = await connectionOverridesRepo.loadAll(db);
+      const result: Record<string, ConnectionOverride> = {};
+      for (const o of overrides) {
+        result[o.sharedConnectionId] = {
+          sharedConnectionId: o.sharedConnectionId,
+          username: o.username,
+          hostOverride: o.hostOverride,
+          portOverride: o.portOverride,
+          savePassword: o.savePassword,
+          saveSshPassword: o.saveSshPassword,
+          saveSshKeyPassphrase: o.saveSshKeyPassphrase,
+        };
+      }
+      return result;
+    } catch (error) {
+      console.error("Failed to load connection overrides:", error);
+      return {};
+    }
+  }
+
+  async removeConnectionOverride(sharedConnectionId: string): Promise<void> {
+    try {
+      const db = await getDatabase();
+      await connectionOverridesRepo.remove(db, sharedConnectionId);
+    } catch (error) {
+      console.error("Failed to remove connection override:", error);
     }
   }
 

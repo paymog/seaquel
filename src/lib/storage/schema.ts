@@ -14,6 +14,7 @@ const DDL_STATEMENTS = [
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
+    git_repo_path TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
@@ -48,7 +49,9 @@ const DDL_STATEMENTS = [
     ssh_tunnel TEXT,
     save_password INTEGER NOT NULL DEFAULT 0,
     save_ssh_password INTEGER NOT NULL DEFAULT 0,
-    save_ssh_key_passphrase INTEGER NOT NULL DEFAULT 0
+    save_ssh_key_passphrase INTEGER NOT NULL DEFAULT 0,
+    is_local_only INTEGER NOT NULL DEFAULT 0,
+    shared_connection_id TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_connections_project ON connections(project_id)`,
 
@@ -71,6 +74,7 @@ const DDL_STATEMENTS = [
     active_canvas_tab_id TEXT,
     active_visualize_tab_id TEXT,
     active_starter_tab_id TEXT,
+    active_dashboard_tab_id TEXT,
     tab_order TEXT NOT NULL DEFAULT '[]'
   )`,
 
@@ -172,6 +176,17 @@ const DDL_STATEMENTS = [
     last_check_timestamp TEXT
   )`,
 
+  // Connection overrides for shared connection templates
+  `CREATE TABLE IF NOT EXISTS connection_overrides (
+    shared_connection_id TEXT PRIMARY KEY,
+    username TEXT,
+    host_override TEXT,
+    port_override INTEGER,
+    save_password INTEGER NOT NULL DEFAULT 0,
+    save_ssh_password INTEGER NOT NULL DEFAULT 0,
+    save_ssh_key_passphrase INTEGER NOT NULL DEFAULT 0
+  )`,
+
   // Dashboards
   `CREATE TABLE IF NOT EXISTS dashboards (
     id TEXT PRIMARY KEY,
@@ -227,6 +242,21 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
       table: "project_state",
       column: "active_dashboard_tab_id",
       sql: "ALTER TABLE project_state ADD COLUMN active_dashboard_tab_id TEXT",
+    },
+    {
+      table: "projects",
+      column: "git_repo_path",
+      sql: "ALTER TABLE projects ADD COLUMN git_repo_path TEXT",
+    },
+    {
+      table: "connections",
+      column: "is_local_only",
+      sql: "ALTER TABLE connections ADD COLUMN is_local_only INTEGER NOT NULL DEFAULT 0",
+    },
+    {
+      table: "connections",
+      column: "shared_connection_id",
+      sql: "ALTER TABLE connections ADD COLUMN shared_connection_id TEXT",
     },
   ];
 

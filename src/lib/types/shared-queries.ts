@@ -4,6 +4,8 @@
  */
 
 import type { QueryParameter } from "./query";
+import type { ConnectionLabel } from "./project";
+import type { DatabaseType } from "./database";
 
 /**
  * Sync status for a shared query repository.
@@ -167,6 +169,108 @@ export interface SharedQueryFolder {
   /** Queries directly in this folder */
   queries: SharedQuery[];
 }
+
+// === Shared Config Types (for .seaquel/ directory) ===
+
+/**
+ * Shared labels defined in a repo's .seaquel/labels.yaml.
+ */
+export interface SharedLabels {
+  /** Labels available across all projects in this repo */
+  labels: ConnectionLabel[];
+}
+
+/**
+ * A shared project loaded from .seaquel/projects/<name>/project.yaml.
+ */
+export interface SharedProject {
+  /** Unique identifier (repoId + directory path) */
+  id: string;
+  /** ID of the containing repo */
+  repoId: string;
+  /** Display name from project.yaml */
+  name: string;
+  /** Optional description from project.yaml */
+  description?: string;
+  /** Directory name within projects/ */
+  dirName: string;
+  /** Shared connections belonging to this project */
+  connections: SharedConnection[];
+}
+
+/**
+ * A shared connection template loaded from .seaquel/projects/<name>/connections/<name>.yaml.
+ * Never contains credentials — those are stored locally per user.
+ */
+export interface SharedConnection {
+  /** Unique identifier (repoId + file path) */
+  id: string;
+  /** ID of the containing repo */
+  repoId: string;
+  /** ID of the shared project this belongs to */
+  projectId: string;
+  /** Relative file path within the repo */
+  filePath: string;
+  /** Display name */
+  name: string;
+  /** Database engine type */
+  type: DatabaseType;
+  /** Database server hostname */
+  host: string;
+  /** Database server port */
+  port: number;
+  /** Name of the database */
+  databaseName: string;
+  /** SSL/TLS mode */
+  sslMode?: string;
+  /** SSH tunnel configuration (no credentials) */
+  sshTunnel?: SharedSSHTunnelConfig;
+  /** Label names referenced from labels.yaml */
+  labels: string[];
+}
+
+/**
+ * SSH tunnel config for shared connections (no passwords/passphrases).
+ */
+export interface SharedSSHTunnelConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+}
+
+/**
+ * Personal overrides for a shared connection template.
+ * Stored locally in SQLite — never shared via Git.
+ */
+export interface ConnectionOverride {
+  /** ID of the shared connection this overrides */
+  sharedConnectionId: string;
+  /** User's username for this connection */
+  username?: string;
+  /** Host override (e.g., for local tunnel) */
+  hostOverride?: string;
+  /** Port override */
+  portOverride?: number;
+  /** Whether the DB password is saved in keychain */
+  savePassword: boolean;
+  /** Whether the SSH password is saved in keychain */
+  saveSshPassword: boolean;
+  /** Whether the SSH key passphrase is saved in keychain */
+  saveSshKeyPassphrase: boolean;
+}
+
+/**
+ * Fields that must NEVER appear in shared connection YAML files.
+ * The parser must actively strip these.
+ */
+export const CREDENTIAL_FIELDS = [
+  "username",
+  "password",
+  "connectionString",
+  "sshPassword",
+  "sshKeyPassphrase",
+  "sshUsername",
+] as const;
 
 // === Persisted Types (for JSON serialization) ===
 

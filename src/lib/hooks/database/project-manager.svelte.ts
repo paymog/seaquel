@@ -1,8 +1,19 @@
-import type { Project, ConnectionLabel, PersistedProject } from "$lib/types";
+import type { Project, ConnectionLabel, PersistedProject, DatabaseConnection } from "$lib/types";
 import { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
+import { SEAQUEL_DIR, type SharedRepoManager } from "./shared-repo-manager.svelte.js";
 import { MigrationManager } from "./migration.svelte.js";
+import { isTauri } from "$lib/utils/environment";
+import {
+  mkdir,
+  remove as removeDir,
+  rename as renameFs,
+  exists,
+  writeTextFile,
+} from "@tauri-apps/plugin-fs";
+import { join } from "@tauri-apps/api/path";
+import { nameToFilename, serializeProjectFile } from "$lib/services/config-file-parser";
 
 /**
  * Manages projects and their lifecycle.
@@ -10,8 +21,9 @@ import { MigrationManager } from "./migration.svelte.js";
  */
 export class ProjectManager {
   private migration: MigrationManager;
-  private removeConnection: ((connectionId: string) => void) | null = null;
+  private removeConnection: ((connectionId: string) => Promise<void>) | null = null;
   private initializeStarterTabs: ((projectId: string) => void) | null = null;
+  private sharedRepos: SharedRepoManager | null = null;
 
   constructor(
     private state: DatabaseState,
@@ -21,10 +33,18 @@ export class ProjectManager {
   }
 
   /**
+   * Set the shared repo manager reference.
+   * Called by the main database class after SharedRepoManager is created.
+   */
+  setSharedRepoManager(manager: SharedRepoManager): void {
+    this.sharedRepos = manager;
+  }
+
+  /**
    * Set the callback for removing connections.
    * This is called by the main database class after ConnectionManager is created.
    */
-  setRemoveConnectionCallback(callback: (connectionId: string) => void): void {
+  setRemoveConnectionCallback(callback: (connectionId: string) => Promise<void>): void {
     this.removeConnection = callback;
   }
 
@@ -97,7 +117,73 @@ export class ProjectManager {
   /**
    * Update an existing project.
    */
-  async update(id: string, updates: Partial<Pick<Project, "name" | "description">>): Promise<void> {
+  async update(
+    id: string,
+    updates: Partial<Pick<Project, "name" | "description" | "gitRepoPath">>,
+  ): Promise<void> {
+    const project = this.state.projects.find((p) => p.id === id);
+
+    // Rename git repo project directory and update project.yaml if the name changed
+    if (updates.name && project && project.name !== updates.name && project.gitRepoPath) {
+      const repo = this.state.sharedRepos.find((r) => r.path === project.gitRepoPath);
+      if (repo) {
+        try {
+          const oldDirName = nameToFilename(project.name);
+          const newDirName = nameToFilename(updates.name);
+          const projectsDir = await join(repo.path, SEAQUEL_DIR, "projects");
+          const oldDir = await join(projectsDir, oldDirName);
+
+          if (await exists(oldDir)) {
+            // Rename directory if the filename changed
+            const targetDir =
+              oldDirName !== newDirName ? await join(projectsDir, newDirName) : oldDir;
+            if (oldDirName !== newDirName) {
+              await renameFs(oldDir, targetDir);
+            }
+
+            // Update name in project.yaml
+            const projectYamlPath = await join(targetDir, "project.yaml");
+            if (await exists(projectYamlPath)) {
+              const yaml = serializeProjectFile({
+                id: `${repo.id}:${SEAQUEL_DIR}/projects/${newDirName}`,
+                repoId: repo.id,
+                name: updates.name,
+                description: updates.description ?? project.description,
+                dirName: newDirName,
+                connections: [],
+              });
+              await writeTextFile(projectYamlPath, yaml);
+            }
+
+            // Reload shared state so in-memory paths reflect the renamed directory
+            if (this.sharedRepos) {
+              await this.sharedRepos.loadQueriesFromRepo(repo.id);
+            }
+
+            // Update sharedQueryId on open tabs whose paths changed
+            if (oldDirName !== newDirName) {
+              const oldSegment = `projects/${oldDirName}/`;
+              const newSegment = `projects/${newDirName}/`;
+              for (const [_, tabs] of Object.entries(this.state.queryTabsByProject)) {
+                let changed = false;
+                for (const tab of tabs) {
+                  if (tab.sharedQueryId?.includes(oldSegment)) {
+                    tab.sharedQueryId = tab.sharedQueryId.replace(oldSegment, newSegment);
+                    changed = true;
+                  }
+                }
+                if (changed) {
+                  this.state.queryTabsByProject = { ...this.state.queryTabsByProject };
+                }
+              }
+            }
+          }
+        } catch {
+          // Directory may not exist yet
+        }
+      }
+    }
+
     this.state.projects = this.state.projects.map((p) => {
       if (p.id !== id) return p;
       return {
@@ -107,6 +193,93 @@ export class ProjectManager {
       };
     });
     await this.persistence.persistProjects();
+  }
+
+  /**
+   * Set the git repo path for a project and trigger scanning.
+   * When set for the first time, auto-links the project to the repo.
+   */
+  async setGitRepoPath(projectId: string, path: string | undefined): Promise<void> {
+    const project = this.state.projects.find((p) => p.id === projectId);
+    if (!project) return;
+
+    const hadGitPath = !!project.gitRepoPath;
+
+    // Update the project
+    await this.update(projectId, { gitRepoPath: path });
+
+    if (path && this.sharedRepos) {
+      // Create .seaquel directory structure while dialog scope is active
+      try {
+        const dirName = nameToFilename(project.name);
+        const projectDir = await join(path, SEAQUEL_DIR, "projects", dirName);
+        await mkdir(await join(projectDir, "connections"), { recursive: true });
+        await mkdir(await join(projectDir, "queries"), { recursive: true });
+      } catch {
+        // Directory may already exist
+      }
+
+      // Check if a SharedQueryRepo entry already exists for this path
+      const existingRepo = this.state.sharedRepos.find((r) => r.path === path);
+
+      let activeRepoId: string;
+
+      if (existingRepo) {
+        activeRepoId = existingRepo.id;
+        // Reuse existing repo - set as active when this project is active
+        if (this.state.activeProjectId === projectId) {
+          this.state.activeRepoId = existingRepo.id;
+        }
+        // Reload queries/configs
+        await this.sharedRepos.loadQueriesFromRepo(existingRepo.id);
+      } else {
+        // Register the path as a new repo (without cloning)
+        activeRepoId = await this.sharedRepos.initRepo(project.name, path);
+
+        // Set as active when this project is active
+        if (this.state.activeProjectId === projectId) {
+          this.state.activeRepoId = activeRepoId;
+        }
+
+        // Load existing queries and shared configs from the repo
+        await this.sharedRepos.loadQueriesFromRepo(activeRepoId);
+      }
+
+      // Auto-detect remote URL from the git repo
+      const linkedRepo = this.state.sharedRepos.find((r) => r.path === path);
+      if (linkedRepo && !linkedRepo.remoteUrl && isTauri()) {
+        try {
+          const { getRemoteUrl } = await import("$lib/services/git");
+          const remoteUrl = await getRemoteUrl(path);
+          if (remoteUrl) {
+            await this.sharedRepos.setRemoteUrl(linkedRepo.id, remoteUrl);
+          }
+        } catch {
+          // No remote configured — that's fine
+        }
+      }
+
+      // If first-time setup, export existing non-local-only connections to git
+      if (!hadGitPath) {
+        const projectConnections = this.state.connections.filter(
+          (c) => c.projectId === projectId && !c.isLocalOnly,
+        );
+        if (projectConnections.length > 0) {
+          const activeRepo = this.state.sharedRepos.find((r) => r.path === path);
+          if (activeRepo) {
+            await this.sharedRepos.exportProject(
+              activeRepo.id,
+              project.name,
+              projectConnections,
+              {},
+            );
+          }
+        }
+      }
+    } else if (!path) {
+      // Clearing git path - don't remove the repo entry, just unlink
+      // The activeRepoId will be managed on project switch
+    }
   }
 
   /**
@@ -120,11 +293,33 @@ export class ProjectManager {
       return false;
     }
 
-    // Delete all connections in the project
+    const project = this.state.projects.find((p) => p.id === id);
+
+    // Delete all connections in the project (must await to avoid race conditions
+    // where setActiveForProject schedules persistence for the soon-to-be-deleted project)
     const projectConnections = this.state.connections.filter((c) => c.projectId === id);
     if (this.removeConnection) {
       for (const connection of projectConnections) {
-        this.removeConnection(connection.id);
+        await this.removeConnection(connection.id);
+      }
+    }
+
+    // Cancel any debounced persistence that may have been scheduled
+    // by removeConnection (e.g. via setActiveForProject) to prevent
+    // writing to a project that's about to be deleted
+    this.persistence.cancelPendingPersistence();
+
+    // Remove project directory from the git repo if linked
+    if (project?.gitRepoPath && this.sharedRepos) {
+      const repo = this.state.sharedRepos.find((r) => r.path === project.gitRepoPath);
+      if (repo) {
+        try {
+          const dirName = nameToFilename(project.name);
+          const projectDir = await join(repo.path, SEAQUEL_DIR, "projects", dirName);
+          await removeDir(projectDir, { recursive: true });
+        } catch {
+          // Directory may not exist
+        }
       }
     }
 
@@ -137,6 +332,9 @@ export class ProjectManager {
 
     // Switch active project if needed
     if (this.state.activeProjectId === id) {
+      // Clear active project ID first to prevent setActive from trying
+      // to persist state for the just-deleted project (FK constraint)
+      this.state.activeProjectId = null;
       await this.setActive(this.state.projects[0]?.id || null);
     }
 
@@ -160,6 +358,15 @@ export class ProjectManager {
     // Load new project state
     if (id) {
       await this.loadProjectState(id);
+
+      // Auto-link repo when project has gitRepoPath
+      const project = this.state.projects.find((p) => p.id === id);
+      if (project?.gitRepoPath && this.sharedRepos) {
+        const repo = this.state.sharedRepos.find((r) => r.path === project.gitRepoPath);
+        if (repo) {
+          this.state.activeRepoId = repo.id;
+        }
+      }
     }
   }
 
@@ -241,6 +448,62 @@ export class ProjectManager {
 
   // === PRIVATE METHODS ===
 
+  /**
+   * Import shared connections from the linked repo as local DatabaseConnection entries.
+   * Skips connections that are already imported (matched by sharedConnectionId).
+   * Called explicitly (e.g. on project settings save), not automatically on folder selection.
+   */
+  async importSharedConnections(projectId: string): Promise<void> {
+    const project = this.state.projects.find((p) => p.id === projectId);
+    if (!project?.gitRepoPath) return;
+
+    const repo = this.state.sharedRepos.find((r) => r.path === project.gitRepoPath);
+    if (!repo) return;
+
+    const repoId = repo.id;
+    const sharedProjects = this.state.sharedProjectsByRepo[repoId] ?? [];
+
+    for (const sharedProject of sharedProjects) {
+      const sharedConnections = this.state.sharedConnectionsByProject[sharedProject.id] ?? [];
+
+      for (const sharedConn of sharedConnections) {
+        // Check if already imported
+        const alreadyImported = this.state.connections.some(
+          (c) => c.sharedConnectionId === sharedConn.id,
+        );
+        if (alreadyImported) continue;
+
+        // Create a local DatabaseConnection from the shared template
+        const connection: DatabaseConnection = {
+          id: crypto.randomUUID(),
+          name: sharedConn.name,
+          type: sharedConn.type,
+          host: sharedConn.host,
+          port: sharedConn.port,
+          databaseName: sharedConn.databaseName,
+          username: "",
+          password: "",
+          sslMode: sharedConn.sslMode,
+          projectId,
+          labelIds: [],
+          sharedConnectionId: sharedConn.id,
+          sshTunnel: sharedConn.sshTunnel
+            ? {
+                enabled: true,
+                host: sharedConn.sshTunnel.host,
+                port: sharedConn.sshTunnel.port,
+                username: "",
+                authMethod: "key",
+              }
+            : undefined,
+        };
+
+        this.state.connections = [...this.state.connections, connection];
+        await this.persistence.persistConnection(connection);
+      }
+    }
+  }
+
   private createDefaultProject(): Project {
     const now = new Date();
     return {
@@ -260,6 +523,7 @@ export class ProjectManager {
       createdAt: new Date(persisted.createdAt),
       updatedAt: new Date(persisted.updatedAt),
       customLabels: persisted.customLabels,
+      gitRepoPath: persisted.gitRepoPath,
     };
   }
 

@@ -8,7 +8,7 @@
 	import { Input } from "$lib/components/ui/input";
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
 	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon } from "@lucide/svelte";
-	import { SharedQueryLibrary } from "$lib/components/shared-queries";
+	import type { SharedQuery } from "$lib/types";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
 	import * as Dialog from "$lib/components/ui/dialog/index.js";
@@ -32,7 +32,6 @@
 	let expandedSchemas = new SvelteSet<string>();
 	let historyExpanded = $state(true);
 	let savedExpanded = $state(true);
-	let sharedExpanded = $state(true);
 	let searchQuery = $state("");
 	let schemaSearchQuery = $state("");
 	let isRefreshingSchema = $state(false);
@@ -99,13 +98,60 @@
 		),
 	);
 
-	const filteredSavedQueries = $derived(
-		db.state.activeConnectionSavedQueries.filter(
+	const filteredSharedQueries = $derived(
+		db.state.activeRepoQueries.filter(
 			(item) =>
 				item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
 				item.query.toLowerCase().includes(searchQuery.toLowerCase()),
 		),
 	);
+
+	// Shared query names to exclude from saved list (shared version takes precedence)
+	const sharedQueryNames = $derived(
+		new Set(db.state.activeRepoQueries.map((q) => q.name.toLowerCase())),
+	);
+
+	const filteredSavedQueries = $derived(
+		db.state.activeConnectionSavedQueries.filter(
+			(item) =>
+				!sharedQueryNames.has(item.name.toLowerCase()) &&
+				(item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+				item.query.toLowerCase().includes(searchQuery.toLowerCase())),
+		),
+	);
+
+	const totalSavedCount = $derived(filteredSavedQueries.length + filteredSharedQueries.length);
+
+	const handleSharedQueryClick = (query: SharedQuery) => {
+		db.queryTabs.loadSharedQuery(query.id, query.name, query.query, () => db.ui.setActiveView("query"));
+	};
+
+	const handleShareQuery = async (item: typeof db.state.activeConnectionSavedQueries[0]) => {
+		try {
+			await db.sharedQueries.shareQuery(item);
+		} catch (error) {
+			console.error("Failed to share query:", error);
+		}
+	};
+
+	const handleUnshareQuery = async (queryId: string) => {
+		try {
+			// Save the query locally before removing from git (if not already saved)
+			const sharedQuery = db.sharedQueries.getQuery(queryId);
+			if (sharedQuery && db.state.activeConnectionId) {
+				const savedQueries = db.state.savedQueriesByConnection[db.state.activeConnectionId] ?? [];
+				const alreadySaved = savedQueries.some(
+					(q) => q.name.toLowerCase() === sharedQuery.name.toLowerCase(),
+				);
+				if (!alreadySaved) {
+					db.savedQueries.saveQuery(sharedQuery.name, sharedQuery.query, undefined, sharedQuery.parameters);
+				}
+			}
+			await db.sharedQueries.unshareQuery(queryId);
+		} catch (error) {
+			console.error("Failed to unshare query:", error);
+		}
+	};
 
 	const handleConnectionClick = async (connection: typeof db.state.connections[0]) => {
 		// If connection has a database instance, just activate it
@@ -212,6 +258,25 @@
 												{/if}
 											</span>
 											<span class="flex-1 truncate text-sm">{connection.name}</span>
+											{#if db.state.activeProjectHasGit}
+												<Tooltip.Root>
+												<Tooltip.Trigger>
+													{#snippet child({ props })}
+														<button
+															{...props}
+															type="button"
+															class="shrink-0 cursor-pointer"
+															onclick={(e) => { e.stopPropagation(); db.connections.toggleLocalOnly(connection.id); }}
+														>
+															<GitBranchIcon class={["size-3!", connection.isLocalOnly ? "text-muted-foreground/40" : "text-green-500"]} />
+														</button>
+													{/snippet}
+												</Tooltip.Trigger>
+												<Tooltip.Content>
+													{connection.isLocalOnly ? m.connection_share() : m.connection_mark_local_only()}
+												</Tooltip.Content>
+											</Tooltip.Root>
+											{/if}
 											{#if getConnectionLabels(connection).length > 0}
 												<Tooltip.Root>
 													<Tooltip.Trigger class="flex items-center">
@@ -489,51 +554,61 @@
 			</div>
 
 			<Sidebar.Group>
-				<Sidebar.GroupContent>
+				<Sidebar.GroupContent class="px-2">
 					<Sidebar.Menu>
-						<!-- Shared folder -->
-						<Collapsible bind:open={sharedExpanded}>
-							<Sidebar.MenuItem>
-								<CollapsibleTrigger>
-									{#snippet child({ props })}
-										<Sidebar.MenuButton {...props}>
-											<ChevronRightIcon class={["size-4 transition-transform", sharedExpanded && "rotate-90"]} />
-											<GitBranchIcon class="size-4" />
-											<span class="flex-1">{m.sidebar_shared()}</span>
-											<Badge variant="secondary" class="text-xs">{db.state.activeRepoQueries.length}</Badge>
-										</Sidebar.MenuButton>
-									{/snippet}
-								</CollapsibleTrigger>
-								<CollapsibleContent>
-									<div class="ms-4 border-s border-sidebar-border ps-2">
-										<SharedQueryLibrary />
-									</div>
-								</CollapsibleContent>
-							</Sidebar.MenuItem>
-						</Collapsible>
-
-						<!-- Saved folder -->
+						<!-- Saved folder (includes both local saved queries and shared queries) -->
 						<Collapsible bind:open={savedExpanded}>
 							<Sidebar.MenuItem>
 								<CollapsibleTrigger>
 									{#snippet child({ props })}
-										<Sidebar.MenuButton {...props}>
+										<Sidebar.MenuButton {...props} class="pr-1">
 											<ChevronRightIcon class={["size-4 transition-transform", savedExpanded && "rotate-90"]} />
 											<BookmarkIcon class="size-4" />
 											<span class="flex-1">{m.sidebar_saved()}</span>
-											<Badge variant="secondary" class="text-xs">{filteredSavedQueries.length}</Badge>
+											<Badge variant="secondary" class="text-xs">{totalSavedCount}</Badge>
 										</Sidebar.MenuButton>
 									{/snippet}
 								</CollapsibleTrigger>
 								<CollapsibleContent class="flex">
 									<Sidebar.Menu class="ms-4 border-s border-sidebar-border ps-2">
-										{#each filteredSavedQueries as item (item.id)}
+										<!-- Shared queries from git repo -->
+										{#each filteredSharedQueries as item (`shared:${item.id}`)}
 											<Sidebar.MenuItem>
 												<Sidebar.MenuButton
-													class="h-auto py-2 flex-col items-start gap-1 group"
+													class="h-auto py-2 flex-col items-start gap-1 group overflow-hidden"
+													onclick={() => handleSharedQueryClick(item)}
+												>
+													<div class="flex items-center w-full gap-2">
+														<div class="flex items-center gap-2 flex-1 min-w-0">
+															<FileTextIcon class="size-3 text-primary shrink-0" />
+															<span class="text-sm font-medium truncate">{item.name}</span>
+														</div>
+														<Tooltip.Root>
+															<Tooltip.Trigger>
+																{#snippet child({ props })}
+																	<button
+																		{...props}
+																		class="shrink-0 cursor-pointer text-green-500 hover:text-muted-foreground transition-colors"
+																		onclick={(e) => { e.stopPropagation(); handleUnshareQuery(item.id); }}
+																	>
+																		<GitBranchIcon class="size-3!" />
+																	</button>
+																{/snippet}
+															</Tooltip.Trigger>
+															<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
+														</Tooltip.Root>
+													</div>
+												</Sidebar.MenuButton>
+											</Sidebar.MenuItem>
+										{/each}
+										<!-- Local saved queries -->
+										{#each filteredSavedQueries as item (`saved:${item.id}`)}
+											<Sidebar.MenuItem>
+												<Sidebar.MenuButton
+													class="h-auto py-2 flex-col items-start gap-1 group overflow-hidden"
 													onclick={() => db.queryTabs.loadSaved(item.id)}
 												>
-													<div class="flex items-center justify-between w-full gap-2">
+													<div class="flex items-center w-full gap-2">
 														<div class="flex items-center gap-2 flex-1 min-w-0">
 															<BookmarkIcon class="size-3 text-primary shrink-0" />
 															<span class="text-sm font-medium truncate">{item.name}</span>
@@ -550,17 +625,30 @@
 														>
 															<Trash2Icon />
 														</Button>
+														{#if db.state.activeProjectHasGit}
+															<Tooltip.Root>
+																<Tooltip.Trigger>
+																	{#snippet child({ props })}
+																		<button
+																			{...props}
+																			class="shrink-0 cursor-pointer text-muted-foreground/40 hover:text-green-500 transition-colors"
+																			onclick={(e) => { e.stopPropagation(); handleShareQuery(item); }}
+																		>
+																			<GitBranchIcon class="size-3!" />
+																		</button>
+																	{/snippet}
+																</Tooltip.Trigger>
+																<Tooltip.Content>{m.connection_share()}</Tooltip.Content>
+															</Tooltip.Root>
+														{/if}
 													</div>
 													<p class="text-xs text-muted-foreground w-full text-start">
 														{m.sidebar_updated({ time: formatRelativeTime(item.updatedAt) })}
 													</p>
-													<p class="text-xs font-mono line-clamp-2 text-muted-foreground w-full text-left">
-														{item.query}
-													</p>
 												</Sidebar.MenuButton>
 											</Sidebar.MenuItem>
 										{/each}
-										{#if filteredSavedQueries.length === 0}
+										{#if totalSavedCount === 0}
 											<div class="text-center py-4 text-muted-foreground px-2">
 												<p class="text-xs">{m.sidebar_no_saved()}</p>
 											</div>
@@ -575,7 +663,7 @@
 							<Sidebar.MenuItem>
 								<CollapsibleTrigger>
 									{#snippet child({ props })}
-										<Sidebar.MenuButton {...props}>
+										<Sidebar.MenuButton {...props} class="pr-1">
 											<ChevronRightIcon class={["size-4 transition-transform", historyExpanded && "rotate-90"]} />
 											<HistoryIcon class="size-4" />
 											<span class="flex-1">{m.sidebar_history()}</span>

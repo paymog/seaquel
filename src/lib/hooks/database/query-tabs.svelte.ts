@@ -1,6 +1,7 @@
 import type { QueryTab, ExplainResult, ParsedQueryVisual } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
+import type { SharedQueryManager } from "./shared-query-manager.svelte.js";
 import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelte.js";
 
 /**
@@ -8,12 +9,18 @@ import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelt
  * Tabs are organized per-project.
  */
 export class QueryTabManager extends BaseTabManager<QueryTab> {
+  private sharedQueryManager: SharedQueryManager | null = null;
+
   constructor(
     state: DatabaseState,
     tabOrdering: TabOrderingManager,
     schedulePersistence: (projectId: string | null) => void,
   ) {
     super(state, tabOrdering, schedulePersistence);
+  }
+
+  setSharedQueryManager(manager: SharedQueryManager): void {
+    this.sharedQueryManager = manager;
   }
 
   protected get accessors(): TabStateAccessors<QueryTab> {
@@ -46,7 +53,7 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
   /**
    * Rename a query tab.
    */
-  rename(id: string, newName: string): void {
+  async rename(id: string, newName: string): Promise<void> {
     if (!this.state.activeProjectId) return;
 
     const tabs = this.getProjectTabs();
@@ -65,6 +72,18 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
           ...this.state.savedQueriesByConnection,
           [connectionId]: updatedSavedQueries,
         };
+      }
+
+      // Also update linked shared query (renames file and updates frontmatter)
+      if (tab.sharedQueryId && this.sharedQueryManager) {
+        await this.sharedQueryManager
+          .updateQuery(tab.sharedQueryId, { name: newName })
+          .then((newId) => {
+            if (newId && newId !== tab.sharedQueryId) {
+              this.updateTab(id, (t) => ({ ...t, sharedQueryId: newId }));
+              this.schedulePersistence(this.state.activeProjectId);
+            }
+          });
       }
 
       this.schedulePersistence(this.state.activeProjectId);

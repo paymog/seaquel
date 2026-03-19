@@ -19,7 +19,11 @@ import type {
   SyncState,
   DashboardTab,
   Dashboard,
+  SharedProject,
+  SharedConnection,
+  ConnectionOverride,
 } from "$lib/types";
+import type { ConnectionLabel } from "$lib/types/project";
 import type { SavedCanvas } from "$lib/types/canvas";
 
 /**
@@ -103,6 +107,20 @@ export class DatabaseState {
   activeRepoId = $state<string | null>(null);
   sharedQueriesByRepo = $state<Record<string, SharedQuery[]>>({});
   syncStateByRepo = $state<Record<string, SyncState>>({});
+
+  // === PROJECT GIT SYNC STATE ===
+  /** Git sync state per project (for projects with gitRepoPath) */
+  projectGitSyncState = $state<Record<string, SyncState>>({});
+
+  // === SHARED CONFIG STATE (from .seaquel/ directories) ===
+  /** Repo-wide shared labels from labels.yaml, keyed by repo ID */
+  sharedLabelsByRepo = $state<Record<string, ConnectionLabel[]>>({});
+  /** Shared projects from .seaquel/projects/, keyed by repo ID */
+  sharedProjectsByRepo = $state<Record<string, SharedProject[]>>({});
+  /** Shared connections keyed by shared project ID */
+  sharedConnectionsByProject = $state<Record<string, SharedConnection[]>>({});
+  /** Personal overrides for shared connections, keyed by shared connection ID */
+  connectionOverrides = $state<Record<string, ConnectionOverride>>({});
 
   // === AI STATE ===
   aiMessages = $state<AIMessage[]>([]);
@@ -348,6 +366,16 @@ export class DatabaseState {
     this.activeConnectionId ? (this.savedQueriesByConnection[this.activeConnectionId] ?? []) : [],
   );
 
+  // === PROJECT GIT DERIVED VALUES ===
+
+  // Derived: sync state for active project's git directory
+  activeProjectSyncState = $derived(
+    this.activeProjectId ? (this.projectGitSyncState[this.activeProjectId] ?? null) : null,
+  );
+
+  // Derived: whether active project has a git directory configured
+  activeProjectHasGit = $derived(!!this.activeProject?.gitRepoPath);
+
   // === SHARED QUERY LIBRARY DERIVED VALUES ===
 
   // Derived: active shared query repo object
@@ -365,4 +393,25 @@ export class DatabaseState {
 
   // Derived: all shared queries across all repos (for search)
   allSharedQueries = $derived(Object.values(this.sharedQueriesByRepo).flat());
+
+  // === SHARED CONFIG DERIVED VALUES ===
+
+  // Derived: shared labels for active repo
+  activeRepoSharedLabels = $derived(
+    this.activeRepoId ? (this.sharedLabelsByRepo[this.activeRepoId] ?? []) : [],
+  );
+
+  // Derived: shared projects for active repo
+  activeRepoSharedProjects = $derived(
+    this.activeRepoId ? (this.sharedProjectsByRepo[this.activeRepoId] ?? []) : [],
+  );
+
+  // Derived: all shared projects across all repos
+  allSharedProjects = $derived(Object.values(this.sharedProjectsByRepo).flat());
+
+  // Derived: all shared connections across all projects
+  allSharedConnections = $derived(Object.values(this.sharedConnectionsByProject).flat());
+
+  // Derived: all shared labels across all repos
+  allSharedLabels = $derived(Object.values(this.sharedLabelsByRepo).flat());
 }
