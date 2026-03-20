@@ -140,7 +140,7 @@
 			: undefined;
 
 		const saved: DashboardWidget = {
-			id: widget?.id ?? initialWidget?.id ?? `widget-${Date.now()}`,
+			id: widget?.id ?? initialWidget?.id ?? `widget-${crypto.randomUUID()}`,
 			title,
 			description: description || undefined,
 			x: liveWidget?.x ?? initialWidget?.x ?? 0,

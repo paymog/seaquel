@@ -24,7 +24,7 @@ export class DashboardManager {
 
     const now = new Date();
     const dashboard: Dashboard = {
-      id: `dashboard-${Date.now()}`,
+      id: `dashboard-${crypto.randomUUID()}`,
       name,
       projectId,
       widgets: [],

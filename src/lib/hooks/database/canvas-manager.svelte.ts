@@ -35,7 +35,7 @@ export class CanvasManager {
    * Add a table node to the canvas
    */
   addTableNode(table: SchemaTable, position?: XYPosition): string {
-    const id = crypto.randomUUID();
+    const id = `canvas-node-${crypto.randomUUID()}`;
     const connectionId = this.state.activeConnectionId;
     if (!connectionId) {
       throw new Error("No active connection");
@@ -92,7 +92,7 @@ export class CanvasManager {
    * Add a query node to the canvas
    */
   addQueryNode(query?: string, position?: XYPosition): string {
-    const id = crypto.randomUUID();
+    const id = `canvas-node-${crypto.randomUUID()}`;
     const connectionId = this.state.activeConnectionId;
     if (!connectionId) {
       throw new Error("No active connection");
@@ -133,7 +133,7 @@ export class CanvasManager {
     executionTime?: number,
     position?: XYPosition,
   ): string {
-    const id = crypto.randomUUID();
+    const id = `canvas-node-${crypto.randomUUID()}`;
 
     // Position to the right of the query node
     const queryNode = this.canvasState.getNode(queryNodeId);
@@ -178,7 +178,7 @@ export class CanvasManager {
     chartConfig?: ChartConfig,
     position?: XYPosition,
   ): string {
-    const id = crypto.randomUUID();
+    const id = `canvas-node-${crypto.randomUUID()}`;
 
     // Position to the right of the source node
     const sourceNode = this.canvasState.getNode(sourceNodeId);
@@ -580,7 +580,7 @@ export class CanvasManager {
 
     // Create new canvas
     const newCanvas: SavedCanvas = {
-      id: crypto.randomUUID(),
+      id: `canvas-${crypto.randomUUID()}`,
       name,
       projectId,
       nodes: serializedNodes,
@@ -697,7 +697,7 @@ export class CanvasManager {
    */
   addTimelineEntry(entry: Omit<CanvasTimelineEntry, "id" | "timestamp">): void {
     const newEntry: CanvasTimelineEntry = {
-      id: crypto.randomUUID(),
+      id: `timeline-${crypto.randomUUID()}`,
       timestamp: new Date().toISOString(),
       ...entry,
     };

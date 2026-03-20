@@ -53,7 +53,7 @@ export class ErdTabManager extends BaseTabManager<ErdTab> {
     }
 
     const newErdTab: ErdTab = {
-      id: `erd-${Date.now()}`,
+      id: `erd-${crypto.randomUUID()}`,
       name: `ERD: ${this.state.activeConnection.name}`,
       connectionId: this.state.activeConnectionId,
     };

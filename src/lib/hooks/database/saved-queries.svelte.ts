@@ -63,7 +63,7 @@ export class SavedQueryManager {
 
     // Create new saved query
     const newSavedQuery: SavedQuery = {
-      id: `saved-${Date.now()}`,
+      id: `saved-${crypto.randomUUID()}`,
       name,
       query,
       projectId,

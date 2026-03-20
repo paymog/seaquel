@@ -16,7 +16,7 @@ export class UIStateManager {
 
   sendAIMessage(content: string) {
     const userMessage: AIMessage = {
-      id: `msg-${Date.now()}`,
+      id: `msg-${crypto.randomUUID()}`,
       role: "user",
       content,
       timestamp: new Date(),
@@ -30,7 +30,7 @@ export class UIStateManager {
       ];
 
       const assistantMessage: AIMessage = {
-        id: `msg-${Date.now()}`,
+        id: `msg-${crypto.randomUUID()}`,
         role: "assistant",
         content: responses[Math.floor(Math.random() * responses.length)],
         timestamp: new Date(),

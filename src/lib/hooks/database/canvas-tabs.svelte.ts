@@ -55,7 +55,7 @@ export class CanvasTabManager extends BaseTabManager<CanvasTab> {
     }
 
     const newCanvasTab: CanvasTab = {
-      id: `canvas-${Date.now()}`,
+      id: `canvas-${crypto.randomUUID()}`,
       name: `Canvas: ${this.state.activeConnection.name}`,
       connectionId: this.state.activeConnectionId,
     };

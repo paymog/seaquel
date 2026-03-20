@@ -192,7 +192,7 @@ export class ConnectionManager {
    * Add a new database connection.
    */
   async add(connection: ConnectionInput): Promise<string> {
-    const connectionId = crypto.randomUUID();
+    const connectionId = `conn-${crypto.randomUUID()}`;
 
     const { effectiveConnectionString, tunnelLocalPort } = await this.setupSshTunnel(
       connection,

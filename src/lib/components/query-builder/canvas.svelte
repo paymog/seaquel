@@ -581,7 +581,7 @@
 			const cte = findCteById(sourceNode.cteId);
 			if (cte) {
 				const join = {
-					id: crypto.randomUUID(),
+					id: `join-${crypto.randomUUID()}`,
 					sourceTable: sourceNode.tableName,
 					sourceColumn,
 					targetTable: targetNode.tableName,
@@ -599,7 +599,7 @@
 			const subquery = findSubqueryById(sourceNode.subqueryId);
 			if (subquery) {
 				const join = {
-					id: crypto.randomUUID(),
+					id: `join-${crypto.randomUUID()}`,
 					sourceTable: sourceNode.tableName,
 					sourceColumn,
 					targetTable: targetNode.tableName,
@@ -705,7 +705,7 @@
 				};
 				// Add to the inner subqueries of the target
 				const newSubquery = {
-					id: crypto.randomUUID(),
+					id: `subquery-${crypto.randomUUID()}`,
 					position: relativePosition,
 					size: { width: 300, height: 200 },
 					role: 'where' as const,
@@ -741,7 +741,7 @@
 			const tableSchema = qb.getSchemaTable(dragType);
 			if (tableSchema) {
 				const canvasTable = {
-					id: crypto.randomUUID(),
+					id: `qb-table-${crypto.randomUUID()}`,
 					tableName: dragType,
 					position: relativePosition,
 					selectedColumns: new SvelteSet<string>(),
@@ -764,7 +764,7 @@
 			const tableSchema = qb.getSchemaTable(dragType);
 			if (tableSchema) {
 				const canvasTable = {
-					id: crypto.randomUUID(),
+					id: `qb-table-${crypto.randomUUID()}`,
 					tableName: dragType,
 					position: relativePosition,
 					selectedColumns: new SvelteSet<string>(),

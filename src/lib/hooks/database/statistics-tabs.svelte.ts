@@ -81,7 +81,7 @@ export class StatisticsTabManager extends BaseTabManager<StatisticsTab> {
     }
 
     const newTab: StatisticsTab = {
-      id: `stats-${Date.now()}`,
+      id: `stats-${crypto.randomUUID()}`,
       name: `Stats: ${this.state.activeConnection.name}`,
       connectionId: this.state.activeConnectionId,
       isLoading: true,

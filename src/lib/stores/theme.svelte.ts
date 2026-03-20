@@ -118,7 +118,7 @@ class ThemeStore {
     const now = new Date().toISOString();
     const newTheme: Theme = {
       ...theme,
-      id: crypto.randomUUID(),
+      id: `theme-${crypto.randomUUID()}`,
       isBuiltIn: false,
       createdAt: now,
       updatedAt: now,

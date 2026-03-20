@@ -99,7 +99,7 @@ export class ProjectManager {
   async add(name: string, description?: string): Promise<Project> {
     const now = new Date();
     const project: Project = {
-      id: `project-${Date.now()}`,
+      id: `project-${crypto.randomUUID()}`,
       name,
       description,
       createdAt: now,
@@ -380,7 +380,7 @@ export class ProjectManager {
     label: Omit<ConnectionLabel, "id" | "isPredefined">,
   ): Promise<ConnectionLabel> {
     const newLabel: ConnectionLabel = {
-      id: `label-${Date.now()}`,
+      id: `label-${crypto.randomUUID()}`,
       name: label.name,
       color: label.color,
       isPredefined: false,
@@ -477,7 +477,7 @@ export class ProjectManager {
 
         // Create a local DatabaseConnection from the shared template
         const connection: DatabaseConnection = {
-          id: crypto.randomUUID(),
+          id: `conn-${crypto.randomUUID()}`,
           name: sharedConn.name,
           type: sharedConn.type,
           host: sharedConn.host,

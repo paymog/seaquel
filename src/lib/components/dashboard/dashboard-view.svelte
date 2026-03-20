@@ -54,7 +54,7 @@
 		const defaultWidth = 400;
 		const defaultHeight = 300;
 		return {
-			id: `widget-${Date.now()}`,
+			id: `widget-${crypto.randomUUID()}`,
 			title: 'New Widget',
 			x: position.x - defaultWidth / 2,
 			y: position.y - defaultHeight / 2,

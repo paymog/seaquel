@@ -132,7 +132,7 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
     }
 
     const newTab: SchemaTab = {
-      id: `schema-tab-${Date.now()}`,
+      id: `schema-tab-${crypto.randomUUID()}`,
       table: updatedTable,
     };
 

@@ -351,7 +351,7 @@ export class ExplainTabManager extends BaseTabManager<ExplainTab> {
     if (!queryToExplain.trim()) return;
 
     // Create a new explain tab
-    const explainTabId = `explain-${Date.now()}`;
+    const explainTabId = `explain-${crypto.randomUUID()}`;
     const queryPreview = queryToExplain.substring(0, 30).replace(/\s+/g, " ").trim();
     const newExplainTab: ExplainTab = $state({
       id: explainTabId,
@@ -476,7 +476,7 @@ export class ExplainTabManager extends BaseTabManager<ExplainTab> {
     );
 
     // Create a new explain tab
-    const explainTabId = `explain-${Date.now()}`;
+    const explainTabId = `explain-${crypto.randomUUID()}`;
     const queryPreview = queryToExplain.substring(0, 30).replace(/\s+/g, " ").trim();
     const newExplainTab: ExplainTab = $state({
       id: explainTabId,

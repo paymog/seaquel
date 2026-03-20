@@ -487,7 +487,7 @@ export const projectStateRepo = {
     await db.execute("DELETE FROM saved_canvases WHERE project_id = ?", [state.projectId]);
     for (const canvas of state.savedCanvases ?? []) {
       await db.execute("INSERT INTO saved_canvases (id, project_id, data) VALUES (?, ?, ?)", [
-        (canvas as { id?: string }).id ?? crypto.randomUUID(),
+        (canvas as { id?: string }).id ?? `canvas-${crypto.randomUUID()}`,
         state.projectId,
         JSON.stringify(canvas),
       ]);

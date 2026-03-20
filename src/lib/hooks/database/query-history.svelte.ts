@@ -31,7 +31,7 @@ export class QueryHistoryManager {
       ...this.state.queryHistoryByConnection,
       [connectionId]: [
         {
-          id: `hist-${Date.now()}`,
+          id: `hist-${crypto.randomUUID()}`,
           query,
           timestamp: new Date(),
           executionTime: results.executionTime,

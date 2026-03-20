@@ -70,7 +70,7 @@ export class DashboardTabManager extends BaseTabManager<DashboardTab> {
     }
 
     const newTab: DashboardTab = {
-      id: `dash-${Date.now()}`,
+      id: `dash-${crypto.randomUUID()}`,
       name: dashboardName ?? "New Dashboard",
       dashboardId: dashboardId ?? "",
     };

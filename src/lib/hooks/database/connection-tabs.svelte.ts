@@ -148,7 +148,7 @@ export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
     const currentStep = resolvedMode === "wizard" ? "method" : "details";
 
     const newTab: ConnectionTab = {
-      id: `connection-${Date.now()}`,
+      id: `connection-${crypto.randomUUID()}`,
       name: prefill?.name ? `Connect: ${prefill.name}` : "New Connection",
       mode: resolvedMode,
       currentStep,
@@ -181,7 +181,7 @@ export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
     if (!this.state.activeProjectId) return null;
 
     const newTab: ConnectionTab = {
-      id: `connection-${Date.now()}`,
+      id: `connection-${crypto.randomUUID()}`,
       name: "New Connection",
       mode: "wizard",
       currentStep: "method",

@@ -224,7 +224,7 @@ export class VisualizeTabManager extends BaseTabManager<VisualizeTab> {
     // Create a new visualize tab
     const queryPreview = queryToVisualize.substring(0, 30).replace(/\s+/g, " ").trim();
     const newVisualizeTab: VisualizeTab = $state({
-      id: `visualize-${Date.now()}`,
+      id: `visualize-${crypto.randomUUID()}`,
       name: `Visual: ${queryPreview}...`,
       sourceQuery: queryToVisualize, // Keep original with {{}} for display
       parsedQuery,
@@ -279,7 +279,7 @@ export class VisualizeTabManager extends BaseTabManager<VisualizeTab> {
     // Create a new visualize tab
     const queryPreview = queryToVisualize.substring(0, 30).replace(/\s+/g, " ").trim();
     const newVisualizeTab: VisualizeTab = $state({
-      id: `visualize-${Date.now()}`,
+      id: `visualize-${crypto.randomUUID()}`,
       name: `Visual: ${queryPreview}...`,
       sourceQuery: queryToVisualize,
       parsedQuery,

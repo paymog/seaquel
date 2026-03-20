@@ -40,7 +40,7 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
 
     const tabs = this.getProjectTabs();
     const newTab: QueryTab = $state({
-      id: `tab-${Date.now()}`,
+      id: `tab-${crypto.randomUUID()}`,
       name: name || `Query ${tabs.length + 1}`,
       query: query || "",
       isExecuting: false,
@@ -202,7 +202,7 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     } else {
       // Create new tab with sharedQueryId
       const newTab: QueryTab = $state({
-        id: `tab-${Date.now()}`,
+        id: `tab-${crypto.randomUUID()}`,
         name,
         query,
         isExecuting: false,
