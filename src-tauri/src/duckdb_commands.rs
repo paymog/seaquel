@@ -1,4 +1,5 @@
 use duckdb::{Connection, types::ValueRef};
+use log::{debug, error, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -54,14 +55,19 @@ pub fn duckdb_connect(
     state: State<DuckDBState>,
     path: String,
 ) -> Result<DuckDBConnectResult, DuckDBError> {
+    info!("DuckDB connecting");
     let conn = if path == ":memory:" || path.is_empty() {
         Connection::open_in_memory()
     } else {
         Connection::open(&path)
     }
-    .map_err(|e| DuckDBError {
-        message: format!("Failed to open connection: {}", e),
-        code: "CONNECTION_ERROR".to_string(),
+    .map_err(|e| {
+        error!("DuckDB error: code=CONNECTION_ERROR");
+        trace!("DuckDB connection error: {}", e);
+        DuckDBError {
+            message: format!("Failed to open connection: {}", e),
+            code: "CONNECTION_ERROR".to_string(),
+        }
     })?;
 
     let connection_id = format!("duckdb-{}", Uuid::new_v4());
@@ -74,6 +80,7 @@ pub fn duckdb_connect(
         })?
         .insert(connection_id.clone(), conn);
 
+    info!("DuckDB connected: {}", connection_id);
     Ok(DuckDBConnectResult { connection_id })
 }
 
@@ -83,6 +90,7 @@ pub fn duckdb_disconnect(
     state: State<DuckDBState>,
     connection_id: String,
 ) -> Result<(), DuckDBError> {
+    info!("DuckDB disconnecting: {}", connection_id);
     state
         .connections
         .lock()
@@ -91,6 +99,7 @@ pub fn duckdb_disconnect(
             code: "LOCK_ERROR".to_string(),
         })?
         .remove(&connection_id);
+    info!("DuckDB disconnected: {}", connection_id);
     Ok(())
 }
 
@@ -101,6 +110,7 @@ pub fn duckdb_query(
     connection_id: String,
     sql: String,
 ) -> Result<DuckDBQueryResult, DuckDBError> {
+    debug!("DuckDB query started on {}", connection_id);
     let connections = state.connections.lock().map_err(|e| DuckDBError {
         message: format!("Failed to lock connections: {}", e),
         code: "LOCK_ERROR".to_string(),
@@ -153,6 +163,7 @@ pub fn duckdb_query(
         rows.push(values);
     }
 
+    debug!("DuckDB query completed on {}: {} rows", connection_id, rows.len());
     Ok(DuckDBQueryResult { columns, rows })
 }
 
@@ -163,6 +174,7 @@ pub fn duckdb_execute(
     connection_id: String,
     sql: String,
 ) -> Result<DuckDBExecuteResult, DuckDBError> {
+    debug!("DuckDB execute on {}", connection_id);
     let connections = state.connections.lock().map_err(|e| DuckDBError {
         message: format!("Failed to lock connections: {}", e),
         code: "LOCK_ERROR".to_string(),
@@ -174,11 +186,16 @@ pub fn duckdb_execute(
             code: "CONNECTION_NOT_FOUND".to_string(),
         })?;
 
-    let rows_affected = conn.execute(&sql, []).map_err(|e| DuckDBError {
-        message: format!("Failed to execute statement: {}", e),
-        code: "EXECUTE_ERROR".to_string(),
+    let rows_affected = conn.execute(&sql, []).map_err(|e| {
+        error!("DuckDB error: code=EXECUTE_ERROR");
+        trace!("DuckDB execute error: {}", e);
+        DuckDBError {
+            message: format!("Failed to execute statement: {}", e),
+            code: "EXECUTE_ERROR".to_string(),
+        }
     })?;
 
+    debug!("DuckDB execute on {}: {} rows affected", connection_id, rows_affected);
     Ok(DuckDBExecuteResult { rows_affected })
 }
 

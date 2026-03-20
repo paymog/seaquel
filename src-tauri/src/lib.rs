@@ -1,5 +1,6 @@
 use arboard::Clipboard;
 use image::ImageReader;
+use log::{debug, error, info, trace};
 use std::fs;
 use std::sync::Mutex;
 use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
@@ -112,6 +113,7 @@ fn read_tableplus_config() -> Result<Option<String>, CommandError> {
 
 #[tauri::command]
 fn copy_image_to_clipboard(path: String) -> Result<(), CommandError> {
+    debug!("Copying image to clipboard");
     let img = ImageReader::open(&path)
         .map_err(|e| CommandError {
             message: format!("Failed to open image: {}", e),
@@ -149,6 +151,7 @@ fn copy_image_to_clipboard(path: String) -> Result<(), CommandError> {
 
 #[tauri::command]
 fn open_path(path: String) -> Result<(), CommandError> {
+    debug!("Opening external path");
     opener::open(&path).map_err(|e| CommandError {
         message: format!("Failed to open path: {}", e),
         code: "OPEN_ERROR".to_string(),
@@ -188,23 +191,41 @@ async fn install_update(
     app: tauri::AppHandle,
     pending: tauri::State<'_, PendingUpdate>,
 ) -> Result<(), CommandError> {
-    let bytes = pending.bytes.lock().map_err(|e| CommandError {
-        message: format!("Failed to lock update state: {}", e),
-        code: "LOCK_ERROR".to_string(),
+    info!("Installing update");
+    let bytes = pending.bytes.lock().map_err(|e| {
+        error!("Command error: code=LOCK_ERROR");
+        trace!("Failed to lock update state: {}", e);
+        CommandError {
+            message: format!("Failed to lock update state: {}", e),
+            code: "LOCK_ERROR".to_string(),
+        }
     })?.take();
     if let Some(bytes) = bytes {
         // Re-check for update to get the Update object needed for install
-        if let Some(update) = app.updater().map_err(|e| CommandError {
-            message: format!("Failed to get updater: {}", e),
-            code: "UPDATE_ERROR".to_string(),
-        })?.check().await.map_err(|e| CommandError {
-            message: format!("Failed to check for update: {}", e),
-            code: "UPDATE_ERROR".to_string(),
-        })? {
-            update.install(&bytes).map_err(|e| CommandError {
-                message: format!("Failed to install update: {}", e),
+        if let Some(update) = app.updater().map_err(|e| {
+            error!("Command error: code=UPDATE_ERROR");
+            trace!("Failed to get updater: {}", e);
+            CommandError {
+                message: format!("Failed to get updater: {}", e),
                 code: "UPDATE_ERROR".to_string(),
+            }
+        })?.check().await.map_err(|e| {
+            error!("Command error: code=UPDATE_ERROR");
+            trace!("Failed to check for update: {}", e);
+            CommandError {
+                message: format!("Failed to check for update: {}", e),
+                code: "UPDATE_ERROR".to_string(),
+            }
+        })? {
+            update.install(&bytes).map_err(|e| {
+                error!("Command error: code=UPDATE_ERROR");
+                trace!("Failed to install update: {}", e);
+                CommandError {
+                    message: format!("Failed to install update: {}", e),
+                    code: "UPDATE_ERROR".to_string(),
+                }
             })?;
+            info!("Update installed, restarting");
             app.restart();
         }
     }
@@ -215,6 +236,7 @@ async fn install_update(
 async fn check_for_update_command(
     app: tauri::AppHandle,
 ) -> Result<Option<UpdateInfo>, CommandError> {
+    debug!("Checking for updates");
     let update = app
         .updater()
         .map_err(|e| CommandError {
@@ -230,6 +252,7 @@ async fn check_for_update_command(
 
     match update {
         Some(u) => {
+            info!("Update available: version={}", u.version);
             let info = UpdateInfo {
                 version: u.version.clone(),
                 date: u.date.map(|d| d.to_string()),
@@ -244,7 +267,10 @@ async fn check_for_update_command(
 
             Ok(Some(info))
         }
-        None => Ok(None),
+        None => {
+            debug!("No update available");
+            Ok(None)
+        }
     }
 }
 
@@ -342,6 +368,7 @@ fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    info!("Seaquel starting");
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -428,6 +455,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let _ = check_for_update(handle).await;
             });
+            info!("App setup complete");
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -446,10 +474,10 @@ async fn check_for_update(app: tauri::AppHandle) -> tauri_plugin_updater::Result
                     if total_size.is_none() {
                         total_size = content_length;
                     }
-                    println!("downloaded {downloaded} from {content_length:?}");
+                    debug!("Update download: {downloaded}/{content_length:?}");
                 },
                 || {
-                    println!("download finished");
+                    info!("Update download complete");
                 },
             )
             .await?;
@@ -460,7 +488,7 @@ async fn check_for_update(app: tauri::AppHandle) -> tauri_plugin_updater::Result
             size: total_size,
         };
 
-        println!("update downloaded, notifying frontend");
+        info!("Update downloaded, notifying frontend");
 
         // Store the bytes for later installation
         let pending = app.state::<PendingUpdate>();

@@ -1,3 +1,4 @@
+use log::{error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -39,6 +40,7 @@ pub async fn activate_license(
     key: String,
     instance_name: String,
 ) -> Result<LicenseResponse, LicenseError> {
+    info!("License activate requested");
     let client = reqwest::Client::new();
     let url = format!("{}/api/licenses/activate", base_url());
 
@@ -50,23 +52,33 @@ pub async fn activate_license(
         }))
         .send()
         .await
-        .map_err(|e| LicenseError {
-            message: format!("Failed to connect to license server: {}", e),
-            code: "NETWORK_ERROR".to_string(),
+        .map_err(|e| {
+            error!("License error: code=NETWORK_ERROR");
+            trace!("License network error: {}", e);
+            LicenseError {
+                message: format!("Failed to connect to license server: {}", e),
+                code: "NETWORK_ERROR".to_string(),
+            }
         })?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+        warn!("License API returned status {}", status);
         return Err(LicenseError {
             message: format!("License activation failed ({}): {}", status, body),
             code: "ACTIVATION_ERROR".to_string(),
         });
     }
 
-    response.json::<LicenseResponse>().await.map_err(|e| LicenseError {
-        message: format!("Invalid response from license server: {}", e),
-        code: "PARSE_ERROR".to_string(),
+    info!("License activate successful");
+    response.json::<LicenseResponse>().await.map_err(|e| {
+        error!("License error: code=PARSE_ERROR");
+        trace!("License parse error: {}", e);
+        LicenseError {
+            message: format!("Invalid response from license server: {}", e),
+            code: "PARSE_ERROR".to_string(),
+        }
     })
 }
 
@@ -75,6 +87,7 @@ pub async fn validate_license(
     key: String,
     instance_id: String,
 ) -> Result<LicenseResponse, LicenseError> {
+    info!("License validate requested");
     let client = reqwest::Client::new();
     let url = format!("{}/api/licenses/validate", base_url());
 
@@ -86,23 +99,33 @@ pub async fn validate_license(
         }))
         .send()
         .await
-        .map_err(|e| LicenseError {
-            message: format!("Failed to connect to license server: {}", e),
-            code: "NETWORK_ERROR".to_string(),
+        .map_err(|e| {
+            error!("License error: code=NETWORK_ERROR");
+            trace!("License network error: {}", e);
+            LicenseError {
+                message: format!("Failed to connect to license server: {}", e),
+                code: "NETWORK_ERROR".to_string(),
+            }
         })?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+        warn!("License API returned status {}", status);
         return Err(LicenseError {
             message: format!("License validation failed ({}): {}", status, body),
             code: "VALIDATION_ERROR".to_string(),
         });
     }
 
-    response.json::<LicenseResponse>().await.map_err(|e| LicenseError {
-        message: format!("Invalid response from license server: {}", e),
-        code: "PARSE_ERROR".to_string(),
+    info!("License validate successful");
+    response.json::<LicenseResponse>().await.map_err(|e| {
+        error!("License error: code=PARSE_ERROR");
+        trace!("License parse error: {}", e);
+        LicenseError {
+            message: format!("Invalid response from license server: {}", e),
+            code: "PARSE_ERROR".to_string(),
+        }
     })
 }
 
@@ -111,6 +134,7 @@ pub async fn deactivate_license(
     key: String,
     instance_id: String,
 ) -> Result<LicenseResponse, LicenseError> {
+    info!("License deactivate requested");
     let client = reqwest::Client::new();
     let url = format!("{}/api/licenses/deactivate", base_url());
 
@@ -122,22 +146,32 @@ pub async fn deactivate_license(
         }))
         .send()
         .await
-        .map_err(|e| LicenseError {
-            message: format!("Failed to connect to license server: {}", e),
-            code: "NETWORK_ERROR".to_string(),
+        .map_err(|e| {
+            error!("License error: code=NETWORK_ERROR");
+            trace!("License network error: {}", e);
+            LicenseError {
+                message: format!("Failed to connect to license server: {}", e),
+                code: "NETWORK_ERROR".to_string(),
+            }
         })?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+        warn!("License API returned status {}", status);
         return Err(LicenseError {
             message: format!("License deactivation failed ({}): {}", status, body),
             code: "DEACTIVATION_ERROR".to_string(),
         });
     }
 
-    response.json::<LicenseResponse>().await.map_err(|e| LicenseError {
-        message: format!("Invalid response from license server: {}", e),
-        code: "PARSE_ERROR".to_string(),
+    info!("License deactivate successful");
+    response.json::<LicenseResponse>().await.map_err(|e| {
+        error!("License error: code=PARSE_ERROR");
+        trace!("License parse error: {}", e);
+        LicenseError {
+            message: format!("Invalid response from license server: {}", e),
+            code: "PARSE_ERROR".to_string(),
+        }
     })
 }

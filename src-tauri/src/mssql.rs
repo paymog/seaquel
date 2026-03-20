@@ -1,4 +1,5 @@
 use async_native_tls::TlsStream;
+use log::{debug, error, info, trace};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -139,6 +140,8 @@ pub async fn mssql_connect(
     config: MssqlConfig,
     manager: State<'_, MssqlConnectionManager>,
 ) -> Result<MssqlConnection, MssqlError> {
+    let encrypt = config.encrypt.unwrap_or(true);
+    info!("MSSQL connecting (encrypt={})", encrypt);
     let mut tiberius_config = Config::new();
 
     tiberius_config.host(&config.host);
@@ -223,6 +226,7 @@ pub async fn mssql_connect(
         connections.insert(connection_id.clone(), ConnectionHandle { client });
     }
 
+    info!("MSSQL connected: {}", connection_id);
     Ok(MssqlConnection { connection_id })
 }
 
@@ -231,11 +235,14 @@ pub async fn mssql_disconnect(
     connection_id: String,
     manager: State<'_, MssqlConnectionManager>,
 ) -> Result<(), MssqlError> {
+    info!("MSSQL disconnecting: {}", connection_id);
     let mut connections = manager.connections.lock().await;
 
     if connections.remove(&connection_id).is_some() {
+        info!("MSSQL disconnected: {}", connection_id);
         Ok(())
     } else {
+        error!("MSSQL error: code=CONNECTION_NOT_FOUND");
         Err(MssqlError {
             message: format!("Connection not found: {}", connection_id),
             code: "CONNECTION_NOT_FOUND".to_string(),
@@ -249,16 +256,24 @@ pub async fn mssql_query(
     sql: String,
     manager: State<'_, MssqlConnectionManager>,
 ) -> Result<MssqlQueryResult, MssqlError> {
+    debug!("MSSQL query started on {}", connection_id);
     let mut connections = manager.connections.lock().await;
 
-    let handle = connections.get_mut(&connection_id).ok_or(MssqlError {
-        message: format!("Connection not found: {}", connection_id),
-        code: "CONNECTION_NOT_FOUND".to_string(),
+    let handle = connections.get_mut(&connection_id).ok_or_else(|| {
+        error!("MSSQL error: code=CONNECTION_NOT_FOUND");
+        MssqlError {
+            message: format!("Connection not found: {}", connection_id),
+            code: "CONNECTION_NOT_FOUND".to_string(),
+        }
     })?;
 
-    let rows = handle.client.query(&sql).await.map_err(|e| MssqlError {
-        message: format!("Query failed: {}", e),
-        code: "QUERY_ERROR".to_string(),
+    let rows = handle.client.query(&sql).await.map_err(|e| {
+        error!("MSSQL error: code=QUERY_ERROR");
+        trace!("MSSQL query error: {}", e);
+        MssqlError {
+            message: format!("Query failed: {}", e),
+            code: "QUERY_ERROR".to_string(),
+        }
     })?;
 
     // Get column names from first row or return empty result
@@ -274,6 +289,7 @@ pub async fn mssql_query(
         .map(|row| row_to_json(row))
         .collect();
 
+    debug!("MSSQL query completed on {}: {} rows", connection_id, json_rows.len());
     Ok(MssqlQueryResult {
         columns,
         rows: json_rows,
@@ -287,21 +303,31 @@ pub async fn mssql_execute(
     sql: String,
     manager: State<'_, MssqlConnectionManager>,
 ) -> Result<MssqlQueryResult, MssqlError> {
+    debug!("MSSQL execute on {}", connection_id);
     let mut connections = manager.connections.lock().await;
 
-    let handle = connections.get_mut(&connection_id).ok_or(MssqlError {
-        message: format!("Connection not found: {}", connection_id),
-        code: "CONNECTION_NOT_FOUND".to_string(),
+    let handle = connections.get_mut(&connection_id).ok_or_else(|| {
+        error!("MSSQL error: code=CONNECTION_NOT_FOUND");
+        MssqlError {
+            message: format!("Connection not found: {}", connection_id),
+            code: "CONNECTION_NOT_FOUND".to_string(),
+        }
     })?;
 
-    let result = handle.client.execute(&sql).await.map_err(|e| MssqlError {
-        message: format!("Execute failed: {}", e),
-        code: "EXECUTE_ERROR".to_string(),
+    let result = handle.client.execute(&sql).await.map_err(|e| {
+        error!("MSSQL error: code=EXECUTE_ERROR");
+        trace!("MSSQL execute error: {}", e);
+        MssqlError {
+            message: format!("Execute failed: {}", e),
+            code: "EXECUTE_ERROR".to_string(),
+        }
     })?;
 
+    let rows_affected: u64 = result.rows_affected().iter().sum();
+    debug!("MSSQL execute on {}: {} rows affected", connection_id, rows_affected);
     Ok(MssqlQueryResult {
         columns: vec![],
         rows: vec![],
-        rows_affected: result.rows_affected().iter().sum(),
+        rows_affected,
     })
 }

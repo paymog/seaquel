@@ -14,6 +14,7 @@ import { isTauri, isDemo } from "$lib/utils/environment";
 import { getKeyringService } from "$lib/services/keyring";
 import { SvelteSet } from "svelte/reactivity";
 import type { SharedRepoManager } from "./shared-repo-manager.svelte.js";
+import { log } from "$lib/utils/logger";
 
 type ConnectionInput = Omit<DatabaseConnection, "id" | "projectId" | "labelIds"> & {
   projectId?: string;
@@ -155,6 +156,7 @@ export class ConnectionManager {
     }
 
     try {
+      void log.info(`Establishing SSH tunnel for ${connectionId}`);
       const tunnelResult = await createSshTunnel({
         sshHost: connection.sshTunnel.host,
         sshPort: connection.sshTunnel.port,
@@ -175,6 +177,7 @@ export class ConnectionManager {
         effectiveConnectionString = url.toString();
       }
 
+      void log.info(`SSH tunnel established for ${connectionId}`);
       toast.success(`SSH tunnel established on port ${tunnelResult.localPort}`);
       this.tunnelIds.set(connectionId, tunnelResult.tunnelId);
 
@@ -183,6 +186,7 @@ export class ConnectionManager {
         tunnelLocalPort: tunnelResult.localPort,
       };
     } catch (error) {
+      void log.error(`SSH tunnel failed for ${connectionId}`);
       errorToast(`SSH tunnel failed: ${JSON.stringify(error)}`);
       throw error;
     }
@@ -192,6 +196,7 @@ export class ConnectionManager {
    * Add a new database connection.
    */
   async add(connection: ConnectionInput): Promise<string> {
+    void log.info(`Adding connection: type=${connection.type}`);
     const connectionId = `conn-${crypto.randomUUID()}`;
 
     const { effectiveConnectionString, tunnelLocalPort } = await this.setupSshTunnel(
@@ -312,6 +317,8 @@ export class ConnectionManager {
       newConnection.mssqlConnectionId,
     );
 
+    void log.info(`Schema loaded for ${newConnection.id}: ${schemasWithTables.length} tables`);
+
     // Create initial query tab for new connection
     this.onCreateInitialTab();
 
@@ -324,6 +331,7 @@ export class ConnectionManager {
       sshKeyPassphrase: connection.sshKeyPassphrase,
     });
 
+    void log.info(`Connection established: ${newConnection.id}`);
     return newConnection.id;
   }
 
@@ -331,6 +339,7 @@ export class ConnectionManager {
    * Reconnect to an existing connection.
    */
   async reconnect(connectionId: string, connection: ConnectionInput): Promise<string> {
+    void log.info(`Reconnecting: ${connectionId}`);
     const existingConnection = this.state.connections.find((c) => c.id === connectionId);
     if (!existingConnection) {
       throw new Error(`Connection with id ${connectionId} not found`);
@@ -656,6 +665,7 @@ export class ConnectionManager {
    * Remove a connection and all its state.
    */
   async remove(id: string): Promise<void> {
+    void log.info(`Removing connection: ${id}`);
     // Prevent deletion of demo connection in demo mode
     if (isDemo() && id === "demo-connection") {
       return;
@@ -800,6 +810,7 @@ export class ConnectionManager {
       return false;
     }
 
+    void log.info(`Auto-reconnect attempt: ${connectionId}`);
     this.connectingIds.add(connectionId);
     try {
       return await this._autoReconnect(connectionId, connection);
@@ -827,22 +838,21 @@ export class ConnectionManager {
           connectionString: connection.connectionString,
         });
         return true;
-      } catch (error) {
-        console.warn(`Auto-reconnect failed for ${connection.type}:`, error);
-        console.log("B");
+      } catch {
+        void log.warn(`Auto-reconnect failed: ${connectionId}`);
         return false;
       }
     }
 
     // For other databases, check if password is saved
     if (!connection.savePassword) {
-      console.log("C");
+      void log.debug(`Auto-reconnect skipped (no saved password): ${connectionId}`);
       return false;
     }
 
     const keyring = getKeyringService();
     if (!keyring.isAvailable()) {
-      console.log("D");
+      void log.debug(`Auto-reconnect skipped (keyring unavailable): ${connectionId}`);
       return false;
     }
 
@@ -850,7 +860,7 @@ export class ConnectionManager {
       // Load credentials from keyring
       const password = await keyring.getDbPassword(connectionId);
       if (!password) {
-        console.log("E");
+        void log.debug(`Auto-reconnect skipped (no password in keyring): ${connectionId}`);
         return false;
       }
 
@@ -868,12 +878,11 @@ export class ConnectionManager {
 
         // If SSH is enabled but credentials not saved, we can't auto-reconnect
         if (connection.sshTunnel.authMethod === "password" && !sshPassword) {
-          console.log("F");
+          void log.debug(`Auto-reconnect skipped (no SSH password): ${connectionId}`);
           return false;
         }
         if (connection.sshTunnel.authMethod === "key" && !connection.sshTunnel.keyPath) {
-          // SSH key auth requires keyPath to be stored
-          console.log("G");
+          void log.debug(`Auto-reconnect skipped (no SSH key path): ${connectionId}`);
           return false;
         }
       }
@@ -898,10 +907,10 @@ export class ConnectionManager {
         saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
       });
 
+      void log.info(`Auto-reconnect successful: ${connectionId}`);
       return true;
-    } catch (error) {
-      console.warn("Auto-reconnect failed:", error);
-      console.log("Z");
+    } catch {
+      void log.warn(`Auto-reconnect failed: ${connectionId}`);
       return false;
     }
   }
@@ -991,6 +1000,7 @@ export class ConnectionManager {
    * Toggle connection state (disconnect if connected).
    */
   async toggle(id: string): Promise<void> {
+    void log.info(`Connection disconnected: ${id}`);
     const connection = this.state.connections.find((c) => c.id === id);
     if (connection) {
       const wasConnected = !!connection.providerConnectionId || !!connection.mssqlConnectionId;

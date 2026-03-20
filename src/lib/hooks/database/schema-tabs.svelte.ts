@@ -6,6 +6,7 @@ import { getAdapter, type DatabaseAdapter } from "$lib/db";
 import { mssqlQuery } from "$lib/services/mssql";
 import type { ProviderRegistry } from "$lib/providers";
 import { handleError, createError } from "$lib/errors";
+import { log } from "$lib/utils/logger";
 
 /**
  * Manages schema tabs: add, remove, set active.
@@ -156,6 +157,7 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
       ? await this.providers.getForType(connectionType ?? "")
       : null;
 
+    void log.debug(`Loading metadata for ${tables.length} tables on ${connectionId}`);
     // Process tables in parallel but update state as each completes
     const promises = tables.map(async (table, index) => {
       try {
@@ -223,6 +225,7 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
           };
         }
       } catch (error) {
+        void log.error(`Metadata load failed for ${connectionId}`);
         handleError(
           createError(
             "SCHEMA_LOAD_FAILED",
@@ -236,5 +239,6 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
     });
 
     await Promise.allSettled(promises);
+    void log.debug(`Metadata loaded for ${connectionId}`);
   }
 }

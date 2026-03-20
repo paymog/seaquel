@@ -1,6 +1,7 @@
 import { setContext, getContext } from "svelte";
 import type { SchemaTable } from "$lib/types";
 import type { DatabaseAdapter } from "$lib/db";
+import { log } from "$lib/utils/logger";
 import { DatabaseState } from "./database/state.svelte.js";
 import { PersistenceManager } from "./database/persistence-manager.svelte.js";
 import { StateRestorationManager } from "./database/state-restoration.svelte.js";
@@ -280,15 +281,23 @@ class UseDatabase {
    */
   private async initializeApp(): Promise<void> {
     try {
+      void log.info("Initializing app");
+
       // Initialize projects (runs migrations if needed)
       await this.projects.initialize();
+      void log.info("Projects initialized");
 
       // Initialize connections (also loads saved queries, history, and dashboards)
       await this.connections.initializePersistedConnections();
+      void log.info(`Persisted connections loaded (count=${this.state.connections.length})`);
 
       // Initialize shared repos
       await this.initializeSharedRepos();
+      void log.info(`Shared repos initialized (count=${this.state.sharedRepos.length})`);
+
+      void log.info("App ready");
     } catch (error) {
+      void log.error("App initialization failed");
       console.error("Failed to initialize app:", error);
     } finally {
       this._readyResolve();

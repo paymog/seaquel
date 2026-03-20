@@ -6,6 +6,7 @@ import type { StateRestorationManager } from "./state-restoration.svelte.js";
 import { SEAQUEL_DIR, type SharedRepoManager } from "./shared-repo-manager.svelte.js";
 import { MigrationManager } from "./migration.svelte.js";
 import { isTauri } from "$lib/utils/environment";
+import { log } from "$lib/utils/logger";
 import {
   mkdir,
   remove as removeDir,
@@ -348,6 +349,8 @@ export class ProjectManager {
    */
   async setActive(id: string | null): Promise<void> {
     if (id === this.state.activeProjectId) return;
+
+    void log.info(`Project changed: from=${this.state.activeProjectId} to=${id}`);
 
     // Save current project state before switching
     if (this.state.activeProjectId) {

@@ -33,6 +33,7 @@ import {
   connectionOverridesRepo,
 } from "$lib/storage";
 import { getKeyringService } from "$lib/services/keyring";
+import { log } from "$lib/utils/logger";
 
 /**
  * Manages persistence of projects, connections, and their state to SQLite.
@@ -303,6 +304,7 @@ export class PersistenceManager {
   // === PROJECT STATE PERSISTENCE (tabs, active IDs) ===
 
   async persistProjectState(projectId: string): Promise<void> {
+    void log.debug(`Persisting project state: ${projectId}`);
     try {
       const db = await getDatabase();
 
@@ -337,6 +339,7 @@ export class PersistenceManager {
       // Also persist saved queries (per-project)
       await savedQueriesRepo.saveAll(db, projectId, this.serializeSavedQueries(projectId));
     } catch (error) {
+      void log.error(`Persistence failed: ${projectId}`);
       console.error(`Failed to persist state for project ${projectId}:`, error);
     }
   }
@@ -372,10 +375,12 @@ export class PersistenceManager {
   // === CONNECTION DATA PERSISTENCE (history, saved queries) ===
 
   async persistConnectionData(connectionId: string): Promise<void> {
+    void log.debug(`Persisting connection data: ${connectionId}`);
     try {
       const db = await getDatabase();
       await queryHistoryRepo.replaceAll(db, connectionId, this.serializeQueryHistory(connectionId));
     } catch (error) {
+      void log.error(`Persistence failed: ${connectionId}`);
       console.error(`Failed to persist data for connection ${connectionId}:`, error);
     }
   }

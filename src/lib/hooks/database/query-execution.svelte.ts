@@ -15,6 +15,7 @@ import { m } from "$lib/paraglide/messages.js";
 import { mssqlQuery, mssqlExecute } from "$lib/services/mssql";
 import type { ProviderRegistry } from "$lib/providers";
 import { extractErrorMessage } from "$lib/errors";
+import { log } from "$lib/utils/logger";
 
 /**
  * Manages query execution, pagination, and CRUD operations.
@@ -344,6 +345,9 @@ export class QueryExecutionManager {
         effectivePageSize,
         connection,
       );
+      void log.info(
+        `Query executed on ${connection.id}: ${result.rowCount} rows in ${result.executionTime}ms`,
+      );
       const results: StatementResult[] = [
         {
           ...result,
@@ -364,6 +368,7 @@ export class QueryExecutionManager {
         this.queryHistory.addToHistory(statement.sql, results[0]);
       }
     } catch (error) {
+      void log.error(`Query execution failed on ${connection.id}`);
       const results: StatementResult[] = [
         {
           columns: ["Error"],
@@ -439,6 +444,9 @@ export class QueryExecutionManager {
         connection,
         bindValues,
       );
+      void log.info(
+        `Query executed on ${connection.id}: ${result.rowCount} rows in ${result.executionTime}ms`,
+      );
       const results: StatementResult[] = [
         {
           ...result,
@@ -459,6 +467,7 @@ export class QueryExecutionManager {
         this.queryHistory.addToHistory(statement.sql, results[0]);
       }
     } catch (error) {
+      void log.error(`Query execution failed on ${connection.id}`);
       const results: StatementResult[] = [
         {
           columns: ["Error"],
@@ -568,6 +577,20 @@ export class QueryExecutionManager {
     // Re-index displayed results
     const indexedResults = results.map((r, idx) => ({ ...r, statementIndex: idx }));
 
+    // Log summary for all statements
+    const totalTime = allResults.reduce((sum, r) => sum + (r.executionTime ?? 0), 0);
+    const totalRows = allResults.reduce((sum, r) => sum + (r.isError ? 0 : r.rowCount), 0);
+    const errorCount = allResults.filter((r) => r.isError).length;
+    if (errorCount > 0) {
+      void log.warn(
+        `Query batch on ${connection.id}: ${allResults.length} statements, ${errorCount} failed, ${totalRows} rows in ${Math.round(totalTime * 100) / 100}ms`,
+      );
+    } else {
+      void log.info(
+        `Query batch on ${connection.id}: ${allResults.length} statements, ${totalRows} rows in ${Math.round(totalTime * 100) / 100}ms`,
+      );
+    }
+
     // Update tab with filtered results
     this.updateQueryTabState(tabId, {
       results: indexedResults,
@@ -669,6 +692,20 @@ export class QueryExecutionManager {
           isError: true,
         });
       }
+    }
+
+    // Log summary for all statements
+    const totalTimeP = allResults.reduce((sum, r) => sum + (r.executionTime ?? 0), 0);
+    const totalRowsP = allResults.reduce((sum, r) => sum + (r.isError ? 0 : r.rowCount), 0);
+    const errorCountP = allResults.filter((r) => r.isError).length;
+    if (errorCountP > 0) {
+      void log.warn(
+        `Query batch on ${connection.id}: ${allResults.length} statements, ${errorCountP} failed, ${totalRowsP} rows in ${Math.round(totalTimeP * 100) / 100}ms`,
+      );
+    } else {
+      void log.info(
+        `Query batch on ${connection.id}: ${allResults.length} statements, ${totalRowsP} rows in ${Math.round(totalTimeP * 100) / 100}ms`,
+      );
     }
 
     // Filter out utility results (SET, PRAGMA, etc.)
@@ -814,6 +851,7 @@ export class QueryExecutionManager {
     const connection = this.state.activeConnection;
     const isMssql = connection?.type === "mssql" && connection?.mssqlConnectionId;
 
+    void log.debug(`Cell update on ${connection?.id}`);
     try {
       if (isMssql) {
         // SQL Server: use square brackets for identifiers and inline values
@@ -873,6 +911,7 @@ export class QueryExecutionManager {
     const connection = this.state.activeConnection;
     const isMssql = connection?.type === "mssql" && connection?.mssqlConnectionId;
 
+    void log.debug(`Row insert on ${connection?.id}`);
     try {
       if (isMssql) {
         // SQL Server: use square brackets for identifiers and inline values
@@ -950,6 +989,7 @@ export class QueryExecutionManager {
     const connection = this.state.activeConnection;
     const isMssql = connection?.type === "mssql" && connection?.mssqlConnectionId;
 
+    void log.debug(`Row delete on ${connection?.id}`);
     try {
       if (isMssql) {
         // SQL Server: use square brackets for identifiers and inline values
