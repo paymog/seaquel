@@ -344,6 +344,7 @@
   "settings_version": "Version",
   "settings_config_dir": "Konfigurationsverzeichnis",
   "settings_data_dir": "Datenverzeichnis",
+  "settings_log_dir": "Protokollverzeichnis",
   "settings_theme": "Modus",
   "settings_theme_label": "Farbmodus",
   "settings_theme_description": "Hell-, Dunkel- oder Systemmodus auswählen",

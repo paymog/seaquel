@@ -4,6 +4,7 @@ use std::fs;
 use std::sync::Mutex;
 use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
+use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
 use tauri_plugin_updater::UpdaterExt;
 
 mod duckdb_commands;
@@ -342,6 +343,20 @@ fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets([
+                    Target::new(TargetKind::Stdout),
+                    Target::new(TargetKind::LogDir { file_name: Some("seaquel".into()) }),
+                    Target::new(TargetKind::Webview),
+                ])
+                .level(log::LevelFilter::Info)
+                .level_for("seaquel_lib", log::LevelFilter::Trace)
+                .timezone_strategy(TimezoneStrategy::UseLocal)
+                .max_file_size(5_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
+                .build(),
+        )
         .plugin(tauri_plugin_os::init())
         .manage(TunnelManager::new())
         .manage(MssqlConnectionManager::new())

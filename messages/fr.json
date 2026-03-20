@@ -344,6 +344,7 @@
   "settings_version": "Version",
   "settings_config_dir": "Répertoire de configuration",
   "settings_data_dir": "Répertoire de données",
+  "settings_log_dir": "Répertoire des journaux",
   "settings_theme": "Mode",
   "settings_theme_label": "Mode de couleur",
   "settings_theme_description": "Sélectionnez le mode clair, sombre ou système",

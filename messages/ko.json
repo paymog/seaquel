@@ -344,6 +344,7 @@
   "settings_version": "버전",
   "settings_config_dir": "구성 디렉토리",
   "settings_data_dir": "데이터 디렉토리",
+  "settings_log_dir": "로그 디렉토리",
   "settings_theme": "모드",
   "settings_theme_label": "색상 모드",
   "settings_theme_description": "라이트, 다크 또는 시스템 모드 선택",

@@ -353,6 +353,7 @@
   "settings_version": "Version",
   "settings_config_dir": "Config Directory",
   "settings_data_dir": "Data Directory",
+  "settings_log_dir": "Log Directory",
   "settings_theme": "Mode",
   "settings_theme_label": "Color Mode",
   "settings_theme_description": "Select light, dark, or system mode",

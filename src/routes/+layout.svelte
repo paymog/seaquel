@@ -28,6 +28,7 @@
     import { tablePlusImportStore } from "$lib/stores/tableplus-import.svelte.js";
     import { tutorialProgressStore } from "$lib/stores/tutorial-progress.svelte.js";
     import { isTauri } from "$lib/utils/environment";
+    import { initLogger } from "$lib/utils/logger";
     import { initializeDemo } from "$lib/demo/init";
     import { createDemoDashboard } from "$lib/demo/sample-dashboard";
     import { updateStore } from "$lib/stores/update.svelte.js";
@@ -48,6 +49,7 @@
 
     // Initialize stores on mount
     onMount(async () => {
+        await initLogger();
         await themeStore.initialize();
         await tutorialProgressStore.initialize();
 

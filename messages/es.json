@@ -344,6 +344,7 @@
   "settings_version": "Versión",
   "settings_config_dir": "Directorio de configuración",
   "settings_data_dir": "Directorio de datos",
+  "settings_log_dir": "Directorio de registros",
   "settings_theme": "Modo",
   "settings_theme_label": "Modo de color",
   "settings_theme_description": "Selecciona modo claro, oscuro o del sistema",

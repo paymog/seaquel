@@ -348,6 +348,7 @@
   "settings_version": "الإصدار",
   "settings_config_dir": "دليل الإعدادات",
   "settings_data_dir": "دليل البيانات",
+  "settings_log_dir": "دليل السجلات",
   "settings_theme": "الوضع",
   "settings_theme_label": "وضع الألوان",
   "settings_theme_description": "اختر الوضع الفاتح أو الداكن أو وضع النظام",

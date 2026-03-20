@@ -20,7 +20,7 @@
 	} from "$lib/stores/settings-dialog.svelte.js";
 	import { themeStore } from "$lib/stores/theme.svelte.js";
 	import { getVersion } from "@tauri-apps/api/app";
-	import { appConfigDir, appDataDir } from "@tauri-apps/api/path";
+	import { appConfigDir, appDataDir, appLogDir } from "@tauri-apps/api/path";
 	import { setMode, resetMode, mode } from "mode-watcher";
 	import { setTheme } from "@tauri-apps/api/app";
 	import { toast } from "svelte-sonner";
@@ -61,6 +61,7 @@ import { errorToast } from "$lib/utils/toast";
 	let appVersion = $state<string>("");
 	let configPath = $state<string>("");
 	let dataPath = $state<string>("");
+	let logPath = $state<string>("");
 
 	// Delete confirmation state
 	let deleteDialogOpen = $state(false);
@@ -78,6 +79,7 @@ import { errorToast } from "$lib/utils/toast";
 			appVersion = await getVersion();
 			configPath = await appConfigDir();
 			dataPath = await appDataDir();
+			logPath = await appLogDir();
 		} catch (error) {
 			console.error("Failed to load app info:", error);
 		}
@@ -458,6 +460,10 @@ import { errorToast } from "$lib/utils/toast";
 								<div class="grid grid-cols-[140px_1fr] gap-2 text-sm">
 									<span class="text-muted-foreground">{m.settings_data_dir()}</span>
 									<span class="font-mono text-xs break-all select-all">{dataPath || "..."}</span>
+								</div>
+								<div class="grid grid-cols-[140px_1fr] gap-2 text-sm">
+									<span class="text-muted-foreground">{m.settings_log_dir()}</span>
+									<span class="font-mono text-xs break-all select-all">{logPath || "..."}</span>
 								</div>
 							</div>
 

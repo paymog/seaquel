@@ -57,6 +57,7 @@
     "clipboard-manager:allow-write-text",
     "process:allow-restart",
     "keyring:default",
-    "deep-link:default"
+    "deep-link:default",
+    "log:default"
   ]
 }
