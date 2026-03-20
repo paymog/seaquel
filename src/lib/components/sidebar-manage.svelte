@@ -31,11 +31,16 @@
 	const db = useDatabase();
 	const features = getFeatures();
 
+	const hasActiveConnection = $derived(
+		!!db.state.activeConnectionId && !!db.state.activeConnection &&
+		!!(db.state.activeConnection.database || db.state.activeConnection.mssqlConnectionId || db.state.activeConnection.providerConnectionId)
+	);
+
 	let sidebarTab = $state<"schema" | "queries" | "dashboards">(db.state.activeConnectionId ? "schema" : "queries");
 
 	// When connection becomes inactive, switch away from schema tab
 	$effect(() => {
-		if (!db.state.activeConnectionId && sidebarTab === "schema") {
+		if (!hasActiveConnection && sidebarTab === "schema") {
 			sidebarTab = "queries";
 		}
 	});
@@ -442,7 +447,7 @@
 	{#if db.state.activeProjectId && db.state.projectConnections.length > 0}
 		<Tabs bind:value={sidebarTab} class="w-full px-2">
 			<TabsList class="w-full justify-start rounded-none h-10 bg-transparent px-2">
-				{#if db.state.activeConnectionId}
+				{#if hasActiveConnection}
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
@@ -526,15 +531,14 @@
 				</div>
 			</div>
 			<Sidebar.Group>
-				<Sidebar.GroupLabel>{db.state.activeConnection.name}</Sidebar.GroupLabel>
-				<Sidebar.GroupContent>
+				<Sidebar.GroupContent class="px-2">
 					<Sidebar.Menu>
 						{#each [...tablesBySchema.entries()] as [schemaName, tables] (schemaName)}
 							<Collapsible open={expandedSchemas.has(schemaName)} onOpenChange={() => toggleSchema(schemaName)}>
 								<Sidebar.MenuItem>
 									<CollapsibleTrigger>
 										{#snippet child({ props })}
-											<Sidebar.MenuButton {...props}>
+											<Sidebar.MenuButton {...props} class="pr-1">
 												<ChevronRightIcon class={["size-4 transition-transform", expandedSchemas.has(schemaName) && "rotate-90"]} />
 												<FolderIcon class="size-4" />
 												<span class="flex-1">{schemaName}</span>
@@ -542,10 +546,10 @@
 											</Sidebar.MenuButton>
 										{/snippet}
 									</CollapsibleTrigger>
-									<CollapsibleContent>
+									<CollapsibleContent class="flex">
 										<Sidebar.Menu class="ms-4 border-s border-sidebar-border ps-2">
 											{#each tables as table (table.name)}
-												<Sidebar.MenuItem class="group/table-row flex pr-2">
+												<Sidebar.MenuItem class="group/table-row flex">
 													<Sidebar.MenuButton onclick={() => handleTableClick(table)}>
 														<TableIcon class="size-4" />
 														<span class="flex-1">{table.name}</span>
@@ -554,7 +558,7 @@
 															{#snippet child({ props })}
 																<button
 																	{...props}
-																	class="TTTabsolute end-0 top-1.5 flex size-5 items-center justify-center rounded-md text-sidebar-foreground opacity-0 ring-sidebar-ring transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:outline-hidden group-hover/table-row:opacity-100 data-[state=open]:opacity-100"
+																	class="end-0 top-1.5 flex size-5 items-center justify-center rounded-md text-sidebar-foreground opacity-0 ring-sidebar-ring transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:outline-hidden group-hover/table-row:opacity-100 data-[state=open]:opacity-100"
 																>
 																	<MoreHorizontalIcon class="size-4" />
 																</button>
@@ -823,55 +827,43 @@
 			aria-hidden={sidebarTab !== "dashboards"}
 			inert={sidebarTab !== "dashboards" ? true : undefined}
 		>
+			<div class="px-4 py-2">
+				<Button
+					variant="outline"
+					size="sm"
+					class="w-full text-xs"
+					onclick={async () => {
+						const dashboard = await db.dashboards.createDashboard("New Dashboard");
+						if (dashboard) {
+							db.dashboardTabs.add(dashboard.id, dashboard.name);
+						}
+					}}
+				>
+					<PlusIcon class="size-3 me-1" />
+					New Dashboard
+				</Button>
+			</div>
 			<Sidebar.Group>
-				<Sidebar.GroupContent>
-					<div class="px-4 py-2">
-						<Button
-							variant="outline"
-							size="sm"
-							class="w-full text-xs"
-							onclick={async () => {
-								const dashboard = await db.dashboards.createDashboard("New Dashboard");
-								if (dashboard) {
-									db.dashboardTabs.add(dashboard.id, dashboard.name);
-								}
-							}}
-						>
-							<PlusIcon class="size-3 me-1" />
-							New Dashboard
-						</Button>
-					</div>
+				<Sidebar.GroupContent class="px-2">
 					<Sidebar.Menu>
 						{#each db.state.projectDashboards as dashboard (dashboard.id)}
 							<Sidebar.MenuItem>
 								<ContextMenu.Root>
 									<ContextMenu.Trigger>
 										<Sidebar.MenuButton
-											class="text-xs"
+											class="text-xs pr-1"
 											onclick={() => {
 												db.dashboardTabs.add(dashboard.id, dashboard.name);
 											}}
 										>
 											<LayoutDashboardIcon class="size-3" />
 											<span class="flex-1 truncate">{dashboard.name}</span>
-											<Badge variant="secondary" class="text-xs px-1 py-0">
+											<Badge variant="secondary" class="text-xs ">
 												{dashboard.widgets.length}
 											</Badge>
 										</Sidebar.MenuButton>
 									</ContextMenu.Trigger>
 									<ContextMenu.Content class="w-40">
-										<ContextMenu.Item
-											onclick={() => {
-												const newName = prompt("Rename dashboard:", dashboard.name);
-												if (newName?.trim()) {
-													db.dashboards.renameDashboard(dashboard.id, newName.trim());
-												}
-											}}
-										>
-											<PencilIcon class="size-4 me-2" />
-											Rename
-										</ContextMenu.Item>
-										<ContextMenu.Separator />
 										<ContextMenu.Item
 											class="text-destructive focus:text-destructive"
 											onclick={() => {

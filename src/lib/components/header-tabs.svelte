@@ -61,7 +61,17 @@
 
     const finishEditing = () => {
         if (editingTabId && editingTabName.trim()) {
-            db.queryTabs.rename(editingTabId, editingTabName.trim());
+            // Check if it's a dashboard tab or query tab
+            const dashboardTab = db.state.dashboardTabs.find(t => t.id === editingTabId);
+            if (dashboardTab) {
+                db.dashboardTabs.rename(editingTabId, editingTabName.trim());
+                const dashboard = db.state.projectDashboards.find((d: { id: string }) => d.id === dashboardTab.dashboardId);
+                if (dashboard) {
+                    db.dashboards.renameDashboard(dashboard.id, editingTabName.trim());
+                }
+            } else {
+                db.queryTabs.rename(editingTabId, editingTabName.trim());
+            }
         }
         editingTabId = null;
         editingTabName = "";
@@ -769,7 +779,27 @@
                                         onclick={() => handleDashboardTabClick(id)}
                                     >
                                         <LayoutDashboardIcon class="size-3 text-muted-foreground" />
-                                        <span class="pr-4">{dashboardTab.name}</span>
+                                        {#if editingTabId === id}
+                                            <input
+                                                bind:value={editingTabName}
+                                                class="h-5 px-1 text-xs pr-4 outline-none ring-0"
+                                                style="width: {editingInputWidth}px"
+                                                onkeydown={handleKeydown}
+                                                onblur={finishEditing}
+                                                onclick={(e) => e.stopPropagation()}
+                                                {@attach autofocus()}
+                                            />
+                                        {:else}
+                                            <span
+                                                class="pr-4"
+                                                ondblclick={(e) => {
+                                                    e.stopPropagation();
+                                                    startEditing(id, dashboardTab.name, e.currentTarget);
+                                                }}
+                                            >
+                                                {dashboardTab.name}
+                                            </span>
+                                        {/if}
                                         <Button
                                             size="icon"
                                             variant="ghost"

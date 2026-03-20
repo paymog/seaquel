@@ -709,7 +709,7 @@ export class ConnectionManager {
         (c) =>
           c.projectId === connection.projectId && (c.providerConnectionId || c.mssqlConnectionId),
       );
-      this.setActiveForProject(nextConnection?.id || "", connection.projectId);
+      this.setActiveForProject(nextConnection?.id ?? null, connection.projectId);
     }
   }
 
@@ -726,7 +726,7 @@ export class ConnectionManager {
   /**
    * Set the active connection for a specific project.
    */
-  setActiveForProject(connectionId: string, projectId: string): void {
+  setActiveForProject(connectionId: string | null, projectId: string): void {
     this.state.activeConnectionIdByProject = {
       ...this.state.activeConnectionIdByProject,
       [projectId]: connectionId,
@@ -1029,7 +1029,7 @@ export class ConnectionManager {
               (c.providerConnectionId || c.mssqlConnectionId) &&
               c.id !== id,
           );
-          this.setActiveForProject(nextConnection?.id || "", connection.projectId);
+          this.setActiveForProject(nextConnection?.id ?? null, connection.projectId);
         }
       }
     }

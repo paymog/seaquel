@@ -632,7 +632,18 @@ export class ProjectManager {
     this.state.activeStatisticsTabIdByProject[projectId] =
       persistedState.activeStatisticsTabId ?? null;
     this.state.activeCanvasTabIdByProject[projectId] = persistedState.activeCanvasTabId ?? null;
-    this.state.activeConnectionIdByProject[projectId] = persistedState.activeConnectionId;
+    // Only restore active connection if the connection is actually connected
+    const restoredConnection = persistedState.activeConnectionId
+      ? this.state.connections.find((c) => c.id === persistedState.activeConnectionId)
+      : null;
+    const isConnected =
+      restoredConnection &&
+      (restoredConnection.database ||
+        restoredConnection.mssqlConnectionId ||
+        restoredConnection.providerConnectionId);
+    this.state.activeConnectionIdByProject[projectId] = isConnected
+      ? persistedState.activeConnectionId
+      : null;
     this.state.activeView = persistedState.activeView;
 
     // Restore starter tabs
