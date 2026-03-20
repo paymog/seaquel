@@ -74,6 +74,7 @@ export class StateRestorationManager {
       createdAt: new Date(q.createdAt),
       updatedAt: new Date(q.updatedAt),
       parameters: q.parameters,
+      starred: q.starred,
     }));
     this.state.savedQueriesByProject = {
       ...this.state.savedQueriesByProject,

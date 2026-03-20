@@ -101,6 +101,8 @@ export class DatabaseState {
   // === QUERY DATA STATE ===
   queryHistoryByConnection = $state<Record<string, QueryHistoryItem[]>>({});
   savedQueriesByProject = $state<Record<string, SavedQuery[]>>({});
+  /** Set of shared query IDs that the user has starred (persisted locally) */
+  starredSharedQueryIds = $state<Set<string>>(new Set());
 
   // === SHARED QUERY LIBRARY STATE ===
   sharedRepos = $state<SharedQueryRepo[]>([]);

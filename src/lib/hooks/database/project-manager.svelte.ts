@@ -671,6 +671,9 @@ export class ProjectManager {
     this.state.activeDashboardTabIdByProject[projectId] =
       persistedState.activeDashboardTabId ?? null;
 
+    // Restore starred shared query IDs
+    this.state.starredSharedQueryIds = new Set(persistedState.starredSharedQueryIds ?? []);
+
     // Connection tabs are transient - always initialize empty
     this.state.connectionTabsByProject[projectId] = [];
     this.state.activeConnectionTabIdByProject[projectId] = null;

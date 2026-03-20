@@ -48,7 +48,9 @@
 	let connectionsExpanded = $state(true);
 	let expandedSchemas = new SvelteSet<string>();
 	let historyExpanded = $state(true);
-	let savedExpanded = $state(true);
+	let starredExpanded = $state(true);
+	let localExpanded = $state(true);
+	let sharedExpanded = $state(true);
 	let searchQuery = $state("");
 	let schemaSearchQuery = $state("");
 	let isRefreshingSchema = $state(false);
@@ -170,7 +172,24 @@
 		),
 	);
 
-	const totalSavedCount = $derived(filteredSavedQueries.length + filteredSharedQueries.length);
+	// Starred queries: starred saved queries + starred shared queries
+	const starredSavedQueries = $derived(
+		filteredSavedQueries.filter((item) => item.starred),
+	);
+	const starredSharedQueries = $derived(
+		filteredSharedQueries.filter((item) => db.state.starredSharedQueryIds.has(item.id)),
+	);
+	const totalStarredCount = $derived(starredSavedQueries.length + starredSharedQueries.length);
+
+	// Local queries: non-shared, non-starred saved queries
+	const localQueries = $derived(
+		filteredSavedQueries.filter((item) => !item.starred),
+	);
+
+	// Shared queries: shared, non-starred queries
+	const nonStarredSharedQueries = $derived(
+		filteredSharedQueries.filter((item) => !db.state.starredSharedQueryIds.has(item.id)),
+	);
 
 	const handleSharedQueryClick = (query: SharedQuery) => {
 		db.queryTabs.loadSharedQuery(query.id, query.name, query.query, () => db.ui.setActiveView("query"));
@@ -178,7 +197,12 @@
 
 	const handleShareQuery = async (item: typeof db.state.projectSavedQueries[0]) => {
 		try {
-			await db.sharedQueries.shareQuery(item);
+			const sharedId = await db.sharedQueries.shareQuery(item);
+			if (sharedId && item.starred) {
+				db.savedQueries.toggleSharedQueryStarred(sharedId);
+				// Clear starred on the local saved query — the shared version now owns the starred state
+				db.savedQueries.toggleSavedQueryStarred(item.id);
+			}
 		} catch (error) {
 			console.error("Failed to share query:", error);
 		}
@@ -186,16 +210,30 @@
 
 	const handleUnshareQuery = async (queryId: string) => {
 		try {
+			const wasStarred = db.state.starredSharedQueryIds.has(queryId);
 			// Save the query locally before removing from git (if not already saved)
 			const sharedQuery = db.sharedQueries.getQuery(queryId);
 			if (sharedQuery && db.state.activeProjectId) {
 				const savedQueries = db.state.savedQueriesByProject[db.state.activeProjectId] ?? [];
-				const alreadySaved = savedQueries.some(
+				const existingSaved = savedQueries.find(
 					(q) => q.name.toLowerCase() === sharedQuery.name.toLowerCase(),
 				);
-				if (!alreadySaved) {
-					db.savedQueries.saveQuery(sharedQuery.name, sharedQuery.query, undefined, sharedQuery.parameters);
+				if (existingSaved) {
+					// Sync starred state to the existing local query
+					if (wasStarred && !existingSaved.starred) {
+						db.savedQueries.toggleSavedQueryStarred(existingSaved.id);
+					} else if (!wasStarred && existingSaved.starred) {
+						db.savedQueries.toggleSavedQueryStarred(existingSaved.id);
+					}
+				} else {
+					const savedId = db.savedQueries.saveQuery(sharedQuery.name, sharedQuery.query, undefined, sharedQuery.parameters);
+					if (savedId && wasStarred) {
+						db.savedQueries.toggleSavedQueryStarred(savedId);
+					}
 				}
+			}
+			if (wasStarred) {
+				db.savedQueries.toggleSharedQueryStarred(queryId);
 			}
 			await db.sharedQueries.unshareQuery(queryId);
 		} catch (error) {
@@ -620,23 +658,244 @@
 			<Sidebar.Group>
 				<Sidebar.GroupContent class="px-2">
 					<Sidebar.Menu>
-						<!-- Saved folder (includes both local saved queries and shared queries) -->
-						<Collapsible bind:open={savedExpanded}>
+						<!-- Starred folder -->
+						<Collapsible bind:open={starredExpanded}>
 							<Sidebar.MenuItem>
 								<CollapsibleTrigger>
 									{#snippet child({ props })}
 										<Sidebar.MenuButton {...props} class="pr-1">
-											<ChevronRightIcon class={["size-4 transition-transform", savedExpanded && "rotate-90"]} />
-											<BookmarkIcon class="size-4" />
-											<span class="flex-1">{m.sidebar_saved()}</span>
-											<Badge variant="secondary" class="text-xs">{totalSavedCount}</Badge>
+											<ChevronRightIcon class={["size-4 transition-transform", starredExpanded && "rotate-90"]} />
+											<StarIcon class="size-4" />
+											<span class="flex-1">{m.sidebar_starred()}</span>
+											<Badge variant="secondary" class="text-xs">{totalStarredCount}</Badge>
 										</Sidebar.MenuButton>
 									{/snippet}
 								</CollapsibleTrigger>
 								<CollapsibleContent class="flex">
 									<Sidebar.Menu class="ms-4 border-s border-sidebar-border ps-2">
-										<!-- Shared queries from git repo -->
-										{#each filteredSharedQueries as item (`shared:${item.id}`)}
+										{#each starredSharedQueries as item (`starred-shared:${item.id}`)}
+											<Sidebar.MenuItem>
+												<Sidebar.MenuButton
+													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
+													onclick={() => handleSharedQueryClick(item)}
+												>
+													<div class="flex items-center w-full gap-2">
+														<div class="flex items-center gap-2 flex-1 min-w-0">
+															<FileTextIcon class="size-3 text-primary shrink-0" />
+															<span class="text-sm font-medium truncate">{item.name}</span>
+														</div>
+														<Button
+															size="icon"
+															variant="ghost"
+															class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity hover:text-destructive"
+															aria-label={m.history_delete_saved()}
+															onclick={(e) => {
+																e.stopPropagation();
+																queryToDelete = { id: item.id, name: item.name, type: "shared" };
+																showDeleteQueryDialog = true;
+															}}
+														>
+															<Trash2Icon />
+														</Button>
+														<Button
+															size="icon"
+															variant="ghost"
+															class={["size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 text-yellow-500"]}
+															aria-label={m.sidebar_unstar_query()}
+															onclick={(e) => {
+																e.stopPropagation();
+																db.savedQueries.toggleSharedQueryStarred(item.id);
+															}}
+														>
+															<StarIcon class="fill-current" />
+														</Button>
+														<Tooltip.Root>
+															<Tooltip.Trigger>
+																{#snippet child({ props })}
+																	<button
+																		{...props}
+																		class="shrink-0 cursor-pointer text-green-500 hover:text-muted-foreground transition-colors"
+																		onclick={(e) => { e.stopPropagation(); handleUnshareQuery(item.id); }}
+																	>
+																		<GitBranchIcon class="size-3!" />
+																	</button>
+																{/snippet}
+															</Tooltip.Trigger>
+															<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
+														</Tooltip.Root>
+													</div>
+												</Sidebar.MenuButton>
+											</Sidebar.MenuItem>
+										{/each}
+										{#each starredSavedQueries as item (`starred-saved:${item.id}`)}
+											<Sidebar.MenuItem>
+												<Sidebar.MenuButton
+													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
+													onclick={() => db.queryTabs.loadSaved(item.id)}
+												>
+													<div class="flex items-center w-full gap-2">
+														<div class="flex items-center gap-2 flex-1 min-w-0">
+															<BookmarkIcon class="size-3 text-primary shrink-0" />
+															<span class="text-sm font-medium truncate">{item.name}</span>
+														</div>
+														<Button
+															size="icon"
+															variant="ghost"
+															class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity hover:text-destructive"
+															aria-label={m.history_delete_saved()}
+															onclick={(e) => {
+																e.stopPropagation();
+																queryToDelete = { id: item.id, name: item.name, type: "saved" };
+																showDeleteQueryDialog = true;
+															}}
+														>
+															<Trash2Icon />
+														</Button>
+														<Button
+															size="icon"
+															variant="ghost"
+															class={["size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 text-yellow-500"]}
+															aria-label={m.sidebar_unstar_query()}
+															onclick={(e) => {
+																e.stopPropagation();
+																db.savedQueries.toggleSavedQueryStarred(item.id);
+															}}
+														>
+															<StarIcon class="fill-current" />
+														</Button>
+														{#if db.state.activeProjectHasGit}
+															<Tooltip.Root>
+																<Tooltip.Trigger>
+																	{#snippet child({ props })}
+																		<button
+																			{...props}
+																			class="shrink-0 cursor-pointer text-muted-foreground/40 hover:text-green-500 transition-colors"
+																			onclick={(e) => { e.stopPropagation(); handleShareQuery(item); }}
+																		>
+																			<GitBranchIcon class="size-3!" />
+																		</button>
+																	{/snippet}
+																</Tooltip.Trigger>
+																<Tooltip.Content>{m.connection_share()}</Tooltip.Content>
+															</Tooltip.Root>
+														{/if}
+													</div>
+													<p class="text-xs text-muted-foreground w-full text-start">
+														{m.sidebar_updated({ time: formatRelativeTime(item.updatedAt) })}
+													</p>
+												</Sidebar.MenuButton>
+											</Sidebar.MenuItem>
+										{/each}
+										{#if totalStarredCount === 0}
+											<div class="text-center py-4 text-muted-foreground px-2">
+												<p class="text-xs">{m.sidebar_no_starred()}</p>
+											</div>
+										{/if}
+									</Sidebar.Menu>
+								</CollapsibleContent>
+							</Sidebar.MenuItem>
+						</Collapsible>
+
+						<!-- Local folder (non-shared, non-starred saved queries) -->
+						<Collapsible bind:open={localExpanded}>
+							<Sidebar.MenuItem>
+								<CollapsibleTrigger>
+									{#snippet child({ props })}
+										<Sidebar.MenuButton {...props} class="pr-1">
+											<ChevronRightIcon class={["size-4 transition-transform", localExpanded && "rotate-90"]} />
+											<BookmarkIcon class="size-4" />
+											<span class="flex-1">{m.sidebar_local()}</span>
+											<Badge variant="secondary" class="text-xs">{localQueries.length}</Badge>
+										</Sidebar.MenuButton>
+									{/snippet}
+								</CollapsibleTrigger>
+								<CollapsibleContent class="flex">
+									<Sidebar.Menu class="ms-4 border-s border-sidebar-border ps-2">
+										{#each localQueries as item (`local:${item.id}`)}
+											<Sidebar.MenuItem>
+												<Sidebar.MenuButton
+													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
+													onclick={() => db.queryTabs.loadSaved(item.id)}
+												>
+													<div class="flex items-center w-full gap-2">
+														<div class="flex items-center gap-2 flex-1 min-w-0">
+															<BookmarkIcon class="size-3 text-primary shrink-0" />
+															<span class="text-sm font-medium truncate">{item.name}</span>
+														</div>
+														<Button
+															size="icon"
+															variant="ghost"
+															class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity hover:text-destructive"
+															aria-label={m.history_delete_saved()}
+															onclick={(e) => {
+																e.stopPropagation();
+																queryToDelete = { id: item.id, name: item.name, type: "saved" };
+																showDeleteQueryDialog = true;
+															}}
+														>
+															<Trash2Icon />
+														</Button>
+														<Button
+															size="icon"
+															variant="ghost"
+															class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity"
+															aria-label={m.sidebar_star_query()}
+															onclick={(e) => {
+																e.stopPropagation();
+																db.savedQueries.toggleSavedQueryStarred(item.id);
+															}}
+														>
+															<StarIcon />
+														</Button>
+														{#if db.state.activeProjectHasGit}
+															<Tooltip.Root>
+																<Tooltip.Trigger>
+																	{#snippet child({ props })}
+																		<button
+																			{...props}
+																			class="shrink-0 cursor-pointer text-muted-foreground/40 hover:text-green-500 transition-colors"
+																			onclick={(e) => { e.stopPropagation(); handleShareQuery(item); }}
+																		>
+																			<GitBranchIcon class="size-3!" />
+																		</button>
+																	{/snippet}
+																</Tooltip.Trigger>
+																<Tooltip.Content>{m.connection_share()}</Tooltip.Content>
+															</Tooltip.Root>
+														{/if}
+													</div>
+													<p class="text-xs text-muted-foreground w-full text-start">
+														{m.sidebar_updated({ time: formatRelativeTime(item.updatedAt) })}
+													</p>
+												</Sidebar.MenuButton>
+											</Sidebar.MenuItem>
+										{/each}
+										{#if localQueries.length === 0}
+											<div class="text-center py-4 text-muted-foreground px-2">
+												<p class="text-xs">{m.sidebar_no_local()}</p>
+											</div>
+										{/if}
+									</Sidebar.Menu>
+								</CollapsibleContent>
+							</Sidebar.MenuItem>
+						</Collapsible>
+
+						<!-- Shared folder (shared, non-starred queries) -->
+						<Collapsible bind:open={sharedExpanded}>
+							<Sidebar.MenuItem>
+								<CollapsibleTrigger>
+									{#snippet child({ props })}
+										<Sidebar.MenuButton {...props} class="pr-1">
+											<ChevronRightIcon class={["size-4 transition-transform", sharedExpanded && "rotate-90"]} />
+											<GitBranchIcon class="size-4" />
+											<span class="flex-1">{m.sidebar_shared()}</span>
+											<Badge variant="secondary" class="text-xs">{nonStarredSharedQueries.length}</Badge>
+										</Sidebar.MenuButton>
+									{/snippet}
+								</CollapsibleTrigger>
+								<CollapsibleContent class="flex">
+									<Sidebar.Menu class="ms-4 border-s border-sidebar-border ps-2">
+										{#each nonStarredSharedQueries as item (`shared:${item.id}`)}
 											<Sidebar.MenuItem>
 												<ContextMenu.Root>
 													<ContextMenu.Trigger>
@@ -661,6 +920,18 @@
 																	}}
 																>
 																	<Trash2Icon />
+																</Button>
+																<Button
+																	size="icon"
+																	variant="ghost"
+																	class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity"
+																	aria-label={m.sidebar_star_query()}
+																	onclick={(e) => {
+																		e.stopPropagation();
+																		db.savedQueries.toggleSharedQueryStarred(item.id);
+																	}}
+																>
+																	<StarIcon />
 																</Button>
 																<Tooltip.Root>
 																	<Tooltip.Trigger>
@@ -697,57 +968,9 @@
 												</ContextMenu.Root>
 											</Sidebar.MenuItem>
 										{/each}
-										<!-- Local saved queries -->
-										{#each filteredSavedQueries as item (`saved:${item.id}`)}
-											<Sidebar.MenuItem>
-												<Sidebar.MenuButton
-													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
-													onclick={() => db.queryTabs.loadSaved(item.id)}
-												>
-													<div class="flex items-center w-full gap-2">
-														<div class="flex items-center gap-2 flex-1 min-w-0">
-															<BookmarkIcon class="size-3 text-primary shrink-0" />
-															<span class="text-sm font-medium truncate">{item.name}</span>
-														</div>
-														<Button
-															size="icon"
-															variant="ghost"
-															class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity hover:text-destructive"
-															aria-label={m.history_delete_saved()}
-															onclick={(e) => {
-																e.stopPropagation();
-																queryToDelete = { id: item.id, name: item.name, type: "saved" };
-																showDeleteQueryDialog = true;
-															}}
-														>
-															<Trash2Icon />
-														</Button>
-														{#if db.state.activeProjectHasGit}
-															<Tooltip.Root>
-																<Tooltip.Trigger>
-																	{#snippet child({ props })}
-																		<button
-																			{...props}
-																			class="shrink-0 cursor-pointer text-muted-foreground/40 hover:text-green-500 transition-colors"
-																			onclick={(e) => { e.stopPropagation(); handleShareQuery(item); }}
-																		>
-																			<GitBranchIcon class="size-3!" />
-																		</button>
-																	{/snippet}
-																</Tooltip.Trigger>
-																<Tooltip.Content>{m.connection_share()}</Tooltip.Content>
-															</Tooltip.Root>
-														{/if}
-													</div>
-													<p class="text-xs text-muted-foreground w-full text-start">
-														{m.sidebar_updated({ time: formatRelativeTime(item.updatedAt) })}
-													</p>
-												</Sidebar.MenuButton>
-											</Sidebar.MenuItem>
-										{/each}
-										{#if totalSavedCount === 0}
+										{#if nonStarredSharedQueries.length === 0}
 											<div class="text-center py-4 text-muted-foreground px-2">
-												<p class="text-xs">{m.sidebar_no_saved()}</p>
+												<p class="text-xs">{m.sidebar_no_shared()}</p>
 											</div>
 										{/if}
 									</Sidebar.Menu>

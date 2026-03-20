@@ -140,4 +140,6 @@ export interface PersistedProjectState {
   dashboardTabs?: import("./persisted").PersistedDashboardTab[];
   /** Currently active dashboard tab */
   activeDashboardTabId?: string | null;
+  /** IDs of shared queries that are starred */
+  starredSharedQueryIds?: string[];
 }

@@ -118,4 +118,31 @@ export class SavedQueryManager {
     };
     this.scheduleProjectPersistence(projectId);
   }
+
+  toggleSavedQueryStarred(id: string) {
+    if (!this.state.activeProjectId) return;
+
+    const projectId = this.state.activeProjectId;
+    const savedQueries = this.state.savedQueriesByProject[projectId] ?? [];
+    const updatedQueries = savedQueries.map((q) =>
+      q.id === id ? { ...q, starred: !q.starred } : q,
+    );
+
+    this.state.savedQueriesByProject = {
+      ...this.state.savedQueriesByProject,
+      [projectId]: updatedQueries,
+    };
+    this.scheduleProjectPersistence(projectId);
+  }
+
+  toggleSharedQueryStarred(id: string) {
+    const newSet = new Set(this.state.starredSharedQueryIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    this.state.starredSharedQueryIds = newSet;
+    this.scheduleProjectPersistence(this.state.activeProjectId);
+  }
 }

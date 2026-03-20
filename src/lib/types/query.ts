@@ -193,6 +193,8 @@ export interface SavedQuery {
   updatedAt: Date;
   /** Optional parameter definitions for parameterized queries */
   parameters?: QueryParameter[];
+  /** Whether this query is starred for quick access */
+  starred?: boolean;
 }
 
 /**

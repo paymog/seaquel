@@ -230,6 +230,7 @@ export class PersistenceManager {
       createdAt: q.createdAt.toISOString(),
       updatedAt: q.updatedAt.toISOString(),
       parameters: q.parameters,
+      starred: q.starred,
     }));
   }
 
@@ -332,6 +333,7 @@ export class PersistenceManager {
         activeConnectionTabId: null,
         dashboardTabs: this.serializeDashboardTabs(projectId),
         activeDashboardTabId: this.state.activeDashboardTabIdByProject[projectId] ?? null,
+        starredSharedQueryIds: Array.from(this.state.starredSharedQueryIds),
       };
 
       await projectStateRepo.save(db, state);

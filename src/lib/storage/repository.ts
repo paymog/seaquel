@@ -351,6 +351,20 @@ export const projectStateRepo = {
       // Column doesn't exist yet (pre-migration)
     }
 
+    // Read starred_shared_query_ids if the column exists
+    let starredSharedQueryIds: string[] = [];
+    try {
+      const starredRow = await db.query<{ starred_shared_query_ids: string }>(
+        "SELECT starred_shared_query_ids FROM project_state WHERE project_id = ?",
+        [projectId],
+      );
+      if (starredRow.length > 0) {
+        starredSharedQueryIds = JSON.parse(starredRow[0].starred_shared_query_ids);
+      }
+    } catch {
+      // Column doesn't exist yet (pre-migration)
+    }
+
     return {
       projectId,
       queryTabs,
@@ -373,6 +387,7 @@ export const projectStateRepo = {
       savedCanvases,
       dashboardTabs,
       activeDashboardTabId,
+      starredSharedQueryIds,
     };
   },
 
@@ -407,6 +422,16 @@ export const projectStateRepo = {
       );
     } catch {
       // Column may not exist yet (pre-v3 migration)
+    }
+
+    // Save starred shared query IDs
+    try {
+      await db.execute(
+        `UPDATE project_state SET starred_shared_query_ids = ? WHERE project_id = ?`,
+        [JSON.stringify(state.starredSharedQueryIds ?? []), state.projectId],
+      );
+    } catch {
+      // Column may not exist yet (pre-migration)
     }
 
     // Replace all tabs for this project
@@ -521,6 +546,7 @@ export const savedQueriesRepo = {
       name: r.name,
       query: r.query,
       parameters: r.parameters ? JSON.parse(r.parameters) : undefined,
+      starred: !!(r as Record<string, unknown>).starred,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));
@@ -534,14 +560,15 @@ export const savedQueriesRepo = {
     await db.execute("DELETE FROM saved_queries WHERE project_id = ?", [projectId]);
     for (const q of queries) {
       await db.execute(
-        `INSERT INTO saved_queries (id, project_id, name, query, parameters, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO saved_queries (id, project_id, name, query, parameters, starred, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           q.id,
           projectId,
           q.name,
           q.query,
           q.parameters ? JSON.stringify(q.parameters) : null,
+          q.starred ? 1 : 0,
           q.createdAt,
           q.updatedAt,
         ],

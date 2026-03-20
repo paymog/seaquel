@@ -314,8 +314,16 @@
   "sidebar_no_connection_queries": "Connect to a database to see queries",
   "sidebar_history": "History",
   "sidebar_saved": "Saved",
+  "sidebar_starred": "Starred",
+  "sidebar_local": "Local",
+  "sidebar_shared": "Shared",
   "sidebar_no_history": "No history found",
   "sidebar_no_saved": "No saved queries",
+  "sidebar_no_starred": "No starred queries",
+  "sidebar_no_local": "No local queries",
+  "sidebar_no_shared": "No shared queries",
+  "sidebar_star_query": "Star query",
+  "sidebar_unstar_query": "Unstar query",
   "sidebar_tables_count": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

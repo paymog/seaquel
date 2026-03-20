@@ -143,6 +143,8 @@ export interface PersistedSavedQuery {
   updatedAt: string;
   /** Optional parameter definitions */
   parameters?: PersistedQueryParameter[];
+  /** Whether this query is starred */
+  starred?: boolean;
 }
 
 /**

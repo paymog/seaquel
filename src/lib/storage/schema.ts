@@ -75,7 +75,8 @@ const DDL_STATEMENTS = [
     active_visualize_tab_id TEXT,
     active_starter_tab_id TEXT,
     active_dashboard_tab_id TEXT,
-    tab_order TEXT NOT NULL DEFAULT '[]'
+    tab_order TEXT NOT NULL DEFAULT '[]',
+    starred_shared_query_ids TEXT NOT NULL DEFAULT '[]'
   )`,
 
   // All tab types (discriminated by tab_type)
@@ -104,6 +105,7 @@ const DDL_STATEMENTS = [
     name TEXT NOT NULL,
     query TEXT NOT NULL,
     parameters TEXT,
+    starred INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
@@ -255,6 +257,16 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
       table: "connections",
       column: "shared_connection_id",
       sql: "ALTER TABLE connections ADD COLUMN shared_connection_id TEXT",
+    },
+    {
+      table: "saved_queries",
+      column: "starred",
+      sql: "ALTER TABLE saved_queries ADD COLUMN starred INTEGER NOT NULL DEFAULT 0",
+    },
+    {
+      table: "project_state",
+      column: "starred_shared_query_ids",
+      sql: "ALTER TABLE project_state ADD COLUMN starred_shared_query_ids TEXT NOT NULL DEFAULT '[]'",
     },
   ];
 
