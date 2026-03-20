@@ -39,6 +39,16 @@
 		}
 	});
 
+	// Refresh all widgets when the active connection changes
+	let prevConnectionId = $state(db.state.activeConnectionId);
+	$effect(() => {
+		const connectionId = db.state.activeConnectionId;
+		if (connectionId !== prevConnectionId) {
+			prevConnectionId = connectionId;
+			handleRefreshAll();
+		}
+	});
+
 	async function createDashboardForTab() {
 		if (!tab) return;
 		const newDashboard = await db.dashboards.createDashboard(tab.name);
