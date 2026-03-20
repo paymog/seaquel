@@ -273,6 +273,8 @@
   "history_delete_saved": "Eliminar consulta guardada",
   "query_delete_title": "Eliminar consulta",
   "query_delete_description": "¿Estás seguro de que deseas eliminar \"{name}\"? Esta acción no se puede deshacer.",
+  "dashboard_delete_title": "Eliminar panel",
+  "dashboard_delete_description": "¿Estás seguro de que deseas eliminar \"{name}\"? Esta acción no se puede deshacer.",
   "row_actions_delete": "Eliminar fila",
   "save_query_title": "Guardar consulta",
   "save_query_description": "Dale un nombre a tu consulta para guardarla para uso posterior",

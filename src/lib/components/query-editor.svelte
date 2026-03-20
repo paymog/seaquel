@@ -793,8 +793,8 @@ import { errorToast } from "$lib/utils/toast";
 								{/snippet}
 							</EmptyState>
 						{:else}
-							<div class="flex-1 flex items-center justify-center p-6 overflow-auto">
-								<div class="w-full max-w-md space-y-6">
+							<div class="flex-1 overflow-auto p-6">
+								<div class="w-full max-w-md space-y-6 mx-auto my-auto min-h-full flex flex-col justify-center">
 									<div class="text-center">
 										<PlayIcon class="size-10 mx-auto mb-2 opacity-20" />
 										<p class="font-medium">{m.query_no_results()}</p>

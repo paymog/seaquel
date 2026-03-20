@@ -32,6 +32,14 @@
 	const features = getFeatures();
 
 	let sidebarTab = $state<"schema" | "queries" | "dashboards">(db.state.activeConnectionId ? "schema" : "queries");
+
+	// When connection becomes inactive, switch away from schema tab
+	$effect(() => {
+		if (!db.state.activeConnectionId && sidebarTab === "schema") {
+			sidebarTab = "queries";
+		}
+	});
+
 	let connectionsExpanded = $state(true);
 	let expandedSchemas = new SvelteSet<string>();
 	let historyExpanded = $state(true);
@@ -58,6 +66,24 @@
 		}
 		showDeleteQueryDialog = false;
 		queryToDelete = null;
+	};
+
+	// Delete dashboard confirmation dialog state
+	let showDeleteDashboardDialog = $state(false);
+	let dashboardToDelete = $state<{ id: string; name: string } | null>(null);
+
+	const confirmDeleteDashboard = () => {
+		if (!dashboardToDelete) return;
+		db.dashboards.deleteDashboard(dashboardToDelete.id);
+		// Close any tabs for this dashboard
+		const tabsToClose = db.state.dashboardTabs.filter(
+			(t) => t.dashboardId === dashboardToDelete!.id
+		);
+		for (const t of tabsToClose) {
+			db.dashboardTabs.remove(t.id);
+		}
+		showDeleteDashboardDialog = false;
+		dashboardToDelete = null;
 	};
 
 	// Labels dialog state
@@ -412,8 +438,8 @@
 		</Collapsible>
 	</Sidebar.Group>
 
-	<!-- Schema/Queries tabs - show when a project is active -->
-	{#if db.state.activeProjectId}
+	<!-- Schema/Queries/Dashboards tabs - show when project has connections -->
+	{#if db.state.activeProjectId && db.state.projectConnections.length > 0}
 		<Tabs bind:value={sidebarTab} class="w-full px-2">
 			<TabsList class="w-full justify-start rounded-none h-10 bg-transparent px-2">
 				{#if db.state.activeConnectionId}
@@ -569,7 +595,7 @@
 		</div>
 	{/if}
 
-	{#if db.state.activeProjectId}
+	{#if db.state.activeProjectId && db.state.projectConnections.length > 0}
 		<!-- Queries Tab Panel -->
 		<div
 			class={["flex flex-col", sidebarTab !== "queries" && "hidden"]}
@@ -849,14 +875,8 @@
 										<ContextMenu.Item
 											class="text-destructive focus:text-destructive"
 											onclick={() => {
-												db.dashboards.deleteDashboard(dashboard.id);
-												// Close any tabs for this dashboard
-												const tabsToClose = db.state.dashboardTabs.filter(
-													(t) => t.dashboardId === dashboard.id
-												);
-												for (const t of tabsToClose) {
-													db.dashboardTabs.remove(t.id);
-												}
+												dashboardToDelete = { id: dashboard.id, name: dashboard.name };
+												showDeleteDashboardDialog = true;
 											}}
 										>
 											<Trash2Icon class="size-4 me-2" />
@@ -950,6 +970,24 @@
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel>{m.theme_delete_cancel()}</AlertDialog.Cancel>
 			<AlertDialog.Action onclick={confirmDeleteQuery} class="bg-destructive text-white hover:bg-destructive/90">
+				{m.theme_delete_confirm()}
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
+
+<!-- Delete Dashboard Confirmation Dialog -->
+<AlertDialog.Root bind:open={showDeleteDashboardDialog}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>{m.dashboard_delete_title()}</AlertDialog.Title>
+			<AlertDialog.Description>
+				{m.dashboard_delete_description({ name: dashboardToDelete?.name ?? "" })}
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel>{m.theme_delete_cancel()}</AlertDialog.Cancel>
+			<AlertDialog.Action onclick={confirmDeleteDashboard} class="bg-destructive text-white hover:bg-destructive/90">
 				{m.theme_delete_confirm()}
 			</AlertDialog.Action>
 		</AlertDialog.Footer>

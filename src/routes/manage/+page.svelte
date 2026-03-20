@@ -9,7 +9,6 @@
     import AIAssistant from "$lib/components/ai-assistant.svelte";
     import StarterTabContent from "$lib/components/starter-tabs/starter-tab-content.svelte";
     import GettingStartedContent from "$lib/components/starter-tabs/getting-started-content.svelte";
-    import NoTabsEmptyState from "$lib/components/starter-tabs/no-tabs-empty-state.svelte";
     import { ScrollArea } from "$lib/components/ui/scroll-area";
     import { useDatabase } from "$lib/hooks/database.svelte.js";
     import { useShortcuts } from "$lib/shortcuts/index.js";
@@ -72,21 +71,28 @@
     {#if db.state.connectionsLoading || db.state.projectsLoading}
         <!-- Loading state - show nothing to prevent flash -->
     {:else if activeTabType === "connection" && db.state.activeConnectionTab}
-        <!-- Connection tab takes priority -->
+        <!-- Connection tab takes priority (adding/editing connections) -->
         <div class="flex-1 min-h-0 flex flex-col">
             {#key db.state.activeConnectionTab.id}
                 <ConnectionTabView tab={db.state.activeConnectionTab} />
             {/key}
         </div>
-    {:else if activeTabType === "query"}
+    {:else if db.state.projectConnections.length === 0}
+        <!-- New project with no connections - show starter tab content -->
+        <div class="flex-1 min-h-0 flex flex-col">
+            {#if db.state.activeStarterTab}
+                <StarterTabContent tab={db.state.activeStarterTab} />
+            {:else}
+                <GettingStartedContent />
+            {/if}
+        </div>
+    {:else if activeTabType === "query" && db.state.activeQueryTab}
         <div class="flex-1 min-h-0 flex flex-col">
             <QueryEditor />
         </div>
-    {:else if activeTabType === "dashboard"}
+    {:else if activeTabType === "dashboard" && db.state.activeDashboardTab}
         <div class="flex-1 min-h-0 flex flex-col">
-            {#if db.state.activeDashboardTab}
-                <DashboardView />
-            {/if}
+            <DashboardView />
         </div>
     {:else if db.state.activeConnection}
         <!-- Views that require an active connection -->
@@ -109,18 +115,14 @@
                 {/if}
             {:else if activeTabType === "visualize"}
                 <QueryVisualViewer />
+            {:else}
+                <GettingStartedContent />
             {/if}
         </div>
     {:else}
-        <!-- Starter Tab Content Area -->
+        <!-- Project has connections but no open tabs -->
         <div class="flex-1 min-h-0 flex flex-col">
-            {#if db.state.activeStarterTab}
-                <StarterTabContent tab={db.state.activeStarterTab} />
-            {:else if db.state.projectConnections.length === 0}
-                <GettingStartedContent />
-            {:else}
-                <NoTabsEmptyState />
-            {/if}
+            <GettingStartedContent />
         </div>
     {/if}
 </SidebarInset>

@@ -404,8 +404,8 @@
 {#if isManagePage}
     {#if db.state.connectionsLoading || db.state.projectsLoading}
         <!-- Loading state - show nothing -->
-    {:else if db.state.activeConnection}
-        <!-- Regular tabs -->
+    {:else if db.state.activeProjectId && db.state.projectConnections.length > 0}
+        <!-- Regular tabs (project has connections) -->
         <div class="flex items-center gap-1 h-full min-w-0">
             <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide">
                 <div
@@ -826,7 +826,7 @@
             </Tooltip.Root>
         </div>
     {:else}
-        <!-- No active connection - show starter tabs + any connection tabs -->
+        <!-- New project with no connections - show starter tabs + any connection tabs -->
         <div class="flex items-center gap-1 h-full min-w-0">
             <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide">
                 <div class="flex items-center gap-1 w-max">

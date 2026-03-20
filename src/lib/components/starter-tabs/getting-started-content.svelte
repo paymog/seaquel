@@ -61,7 +61,7 @@
 </script>
 
 <div class="flex-1 flex items-center justify-center p-8 overflow-auto">
-	<div class="max-w-lg w-full space-y-8">
+	<div class="max-w-2xl w-full space-y-8">
 		<!-- Header -->
 		<div class="text-center space-y-2">
 			<DatabaseIcon class="size-12 mx-auto text-muted-foreground/50" />
@@ -97,10 +97,10 @@
 				<div class="grid gap-2">
 					{#each recentConnections as connection (connection.id)}
 						<Card
-							class="cursor-pointer hover:bg-muted/50 transition-colors"
+							class="cursor-pointer hover:bg-muted/50 transition-colors overflow-hidden"
 							onclick={() => handleConnectionClick(connection)}
 						>
-							<CardContent class="p-3 flex items-center gap-3">
+							<CardContent class="p-3 flex items-center gap-3 overflow-hidden">
 								<span class="flex size-2 items-center justify-center shrink-0">
 									{#if db.connections.connectingIds.has(connection.id)}
 										<LoaderIcon class="size-3 animate-spin text-muted-foreground" />
@@ -113,13 +113,17 @@
 										></span>
 									{/if}
 								</span>
-								<div class="flex-1 min-w-0">
+								<div class="flex-1 min-w-0 overflow-hidden">
 									<p class="font-medium truncate">{connection.name}</p>
 									<p class="text-xs text-muted-foreground truncate">
-										{connection.host}:{connection.port} / {connection.databaseName}
+										{#if connection.type === "sqlite" || connection.type === "duckdb"}
+											{connection.databaseName}
+										{:else}
+											{connection.host}:{connection.port} / {connection.databaseName}
+										{/if}
 									</p>
 								</div>
-								<PlugIcon class="size-4 text-muted-foreground" />
+								<PlugIcon class="size-4 text-muted-foreground shrink-0" />
 							</CardContent>
 						</Card>
 					{/each}

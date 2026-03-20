@@ -24,7 +24,7 @@
 
 <button
 	type="button"
-	class="flex flex-col items-start gap-3 p-4 rounded-lg text-left transition-all hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+	class="flex flex-col items-center gap-3 p-4 rounded-lg text-left transition-all hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
 	{onclick}
 >
 	<div class="size-10 rounded-lg flex items-center justify-center {iconColor}">

@@ -122,7 +122,7 @@ npm install
 ### Commands
 
 ```bash
-npm run tauri dev       # Start development (frontend + Tauri)
+npm run tauri:dev       # Start development, note "tauri:dev" vs the default "tauri dev"
 npm run tauri build     # Build production app
 npm run check           # Type checking
 npm run check:watch     # Type checking (watch mode)

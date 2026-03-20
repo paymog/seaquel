@@ -273,6 +273,8 @@
   "history_delete_saved": "حذف الاستعلام المحفوظ",
   "query_delete_title": "حذف الاستعلام",
   "query_delete_description": "هل أنت متأكد من حذف \"{name}\"؟ لا يمكن التراجع عن هذا الإجراء.",
+  "dashboard_delete_title": "حذف لوحة المعلومات",
+  "dashboard_delete_description": "هل أنت متأكد من حذف \"{name}\"؟ لا يمكن التراجع عن هذا الإجراء.",
   "row_actions_delete": "حذف الصف",
   "save_query_title": "حفظ الاستعلام",
   "save_query_description": "أعطِ استعلامك اسماً لحفظه للاستخدام لاحقاً",

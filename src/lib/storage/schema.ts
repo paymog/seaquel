@@ -280,6 +280,11 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
     // Delete orphans where connection no longer exists
     await db.execute("DELETE FROM saved_queries WHERE project_id IS NULL");
   }
+  // Drop legacy connection_id column and its index (now project-level)
+  if (sqCols.some((c) => c.name === "connection_id")) {
+    await db.execute("DROP INDEX IF EXISTS idx_saved_queries_connection");
+    await db.execute("ALTER TABLE saved_queries DROP COLUMN connection_id");
+  }
 
   // Migrate dashboards from connection_id to project_id
   const dbCols = await db.query<{ name: string }>("PRAGMA table_info(dashboards)");
@@ -295,6 +300,11 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
     );
     // Delete orphans where connection no longer exists
     await db.execute("DELETE FROM dashboards WHERE project_id IS NULL");
+  }
+  // Drop legacy connection_id column and its index (now project-level)
+  if (dbCols.some((c) => c.name === "connection_id")) {
+    await db.execute("DROP INDEX IF EXISTS idx_dashboards_connection");
+    await db.execute("ALTER TABLE dashboards DROP COLUMN connection_id");
   }
 
   // === DDL statements (creates new tables/indexes, safe to run repeatedly) ===
