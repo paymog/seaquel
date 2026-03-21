@@ -197,11 +197,12 @@
 
 	const handleShareQuery = async (item: typeof db.state.projectSavedQueries[0]) => {
 		try {
+			const wasStarred = item.starred;
+			// Delete the local copy first so it disappears immediately
+			db.savedQueries.deleteSavedQuery(item.id);
 			const sharedId = await db.sharedQueries.shareQuery(item);
-			if (sharedId && item.starred) {
+			if (sharedId && wasStarred) {
 				db.savedQueries.toggleSharedQueryStarred(sharedId);
-				// Clear starred on the local saved query — the shared version now owns the starred state
-				db.savedQueries.toggleSavedQueryStarred(item.id);
 			}
 		} catch (error) {
 			console.error("Failed to share query:", error);
@@ -211,31 +212,18 @@
 	const handleUnshareQuery = async (queryId: string) => {
 		try {
 			const wasStarred = db.state.starredSharedQueryIds.has(queryId);
-			// Save the query locally before removing from git (if not already saved)
+			// Create a local copy before removing from git
 			const sharedQuery = db.sharedQueries.getQuery(queryId);
-			if (sharedQuery && db.state.activeProjectId) {
-				const savedQueries = db.state.savedQueriesByProject[db.state.activeProjectId] ?? [];
-				const existingSaved = savedQueries.find(
-					(q) => q.name.toLowerCase() === sharedQuery.name.toLowerCase(),
-				);
-				if (existingSaved) {
-					// Sync starred state to the existing local query
-					if (wasStarred && !existingSaved.starred) {
-						db.savedQueries.toggleSavedQueryStarred(existingSaved.id);
-					} else if (!wasStarred && existingSaved.starred) {
-						db.savedQueries.toggleSavedQueryStarred(existingSaved.id);
-					}
-				} else {
-					const savedId = db.savedQueries.saveQuery(sharedQuery.name, sharedQuery.query, undefined, sharedQuery.parameters);
-					if (savedId && wasStarred) {
-						db.savedQueries.toggleSavedQueryStarred(savedId);
-					}
+			if (sharedQuery) {
+				const savedId = db.savedQueries.saveQuery(sharedQuery.name, sharedQuery.query, undefined, sharedQuery.parameters);
+				if (savedId && wasStarred) {
+					db.savedQueries.toggleSavedQueryStarred(savedId);
 				}
 			}
+			await db.sharedQueries.unshareQuery(queryId);
 			if (wasStarred) {
 				db.savedQueries.toggleSharedQueryStarred(queryId);
 			}
-			await db.sharedQueries.unshareQuery(queryId);
 		} catch (error) {
 			console.error("Failed to unshare query:", error);
 		}
@@ -724,6 +712,11 @@
 															<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
 														</Tooltip.Root>
 													</div>
+													{#if item.updatedAt}
+														<p class="text-xs text-muted-foreground w-full text-start">
+															{m.sidebar_updated({ time: formatRelativeTime(item.updatedAt) })}
+														</p>
+													{/if}
 												</Sidebar.MenuButton>
 											</Sidebar.MenuItem>
 										{/each}
@@ -948,6 +941,11 @@
 																	<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
 																</Tooltip.Root>
 															</div>
+															{#if item.updatedAt}
+																<p class="text-xs text-muted-foreground w-full text-start">
+																	{m.sidebar_updated({ time: formatRelativeTime(item.updatedAt) })}
+																</p>
+															{/if}
 														</Sidebar.MenuButton>
 													</ContextMenu.Trigger>
 													<ContextMenu.Content class="w-44">

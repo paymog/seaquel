@@ -203,6 +203,7 @@ class UseDatabase {
       (connectionId) => this.state.connections.find((c) => c.id === connectionId)?.name || "",
     );
     this.savedQueries = new SavedQueryManager(this.state, scheduleProjectPersistence);
+    this.savedQueries.setRemoveTab((id) => this.queryTabs.remove(id));
     this.queries = new QueryExecutionManager(this.state, this.history, providers);
 
     // Shared query library

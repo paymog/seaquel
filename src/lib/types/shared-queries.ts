@@ -58,6 +58,8 @@ export interface SharedQuery {
   tags: string[];
   /** Folder path for tree display (derived from filePath) */
   folder: string;
+  /** File modification time (from filesystem metadata) */
+  updatedAt?: Date;
 }
 
 /**

@@ -91,6 +91,7 @@ export class SharedQueryManager {
       databaseType: options?.databaseType,
       tags: options?.tags ?? [],
       folder,
+      updatedAt: new Date(),
     };
 
     // Serialize to file content

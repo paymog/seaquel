@@ -29,6 +29,7 @@ import {
   mkdir,
   remove,
   rename,
+  stat,
 } from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
 
@@ -640,6 +641,14 @@ export class SharedRepoManager {
           const query = parseQueryFile(content, repoId, entryRelativePath, folderPrefix);
 
           if (query) {
+            try {
+              const meta = await stat(filePath);
+              if (meta.mtime) {
+                query.updatedAt = new Date(meta.mtime);
+              }
+            } catch {
+              // Ignore stat errors
+            }
             queries.push(query);
           }
         }

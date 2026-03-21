@@ -7,10 +7,16 @@ import type { DatabaseState } from "./state.svelte.js";
  * Note: loadSavedQuery is in UseDatabase as it orchestrates with tabs and views.
  */
 export class SavedQueryManager {
+  private removeTab: ((id: string) => void) | null = null;
+
   constructor(
     private state: DatabaseState,
     private scheduleProjectPersistence: (projectId: string | null) => void,
   ) {}
+
+  setRemoveTab(fn: (id: string) => void) {
+    this.removeTab = fn;
+  }
 
   saveQuery(
     name: string,
@@ -106,16 +112,14 @@ export class SavedQueryManager {
       [projectId]: filtered,
     };
 
-    // Remove savedQueryId from any tabs using this query
+    // Close any tabs linked to this query
     const tabs = this.state.queryTabsByProject[projectId] ?? [];
-    const updatedTabs = tabs.map((tab: QueryTab) =>
-      tab.savedQueryId === id ? { ...tab, savedQueryId: undefined } : tab,
-    );
+    for (const tab of tabs) {
+      if (tab.savedQueryId === id && this.removeTab) {
+        this.removeTab(tab.id);
+      }
+    }
 
-    this.state.queryTabsByProject = {
-      ...this.state.queryTabsByProject,
-      [projectId]: updatedTabs,
-    };
     this.scheduleProjectPersistence(projectId);
   }
 
