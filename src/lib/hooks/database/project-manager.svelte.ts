@@ -207,6 +207,7 @@ export class ProjectManager {
     if (!project) return;
 
     const hadGitPath = !!project.gitRepoPath;
+    const oldGitRepoPath = project.gitRepoPath;
 
     // Update the project
     await this.update(projectId, { gitRepoPath: path });
@@ -280,8 +281,49 @@ export class ProjectManager {
         }
       }
     } else if (!path) {
-      // Clearing git path - don't remove the repo entry, just unlink
-      // The activeRepoId will be managed on project switch
+      // Clearing git path - clean up shared state for the old repo
+      const oldRepo = oldGitRepoPath
+        ? this.state.sharedRepos.find((r) => r.path === oldGitRepoPath)
+        : null;
+
+      if (oldRepo) {
+        // Remove local connections that were imported from this repo's shared connections
+        const repoId = oldRepo.id;
+        const sharedProjects = this.state.sharedProjectsByRepo[repoId] ?? [];
+        const sharedConnectionIds = new Set(
+          sharedProjects.flatMap((sp) =>
+            (this.state.sharedConnectionsByProject[sp.id] ?? []).map((sc) => sc.id),
+          ),
+        );
+        if (sharedConnectionIds.size > 0) {
+          const importedConnections = this.state.connections.filter(
+            (c) =>
+              c.projectId === projectId &&
+              c.sharedConnectionId &&
+              sharedConnectionIds.has(c.sharedConnectionId),
+          );
+          for (const conn of importedConnections) {
+            await this.persistence.removePersistedConnection(conn.id);
+          }
+          this.state.connections = this.state.connections.filter(
+            (c) =>
+              !(
+                c.projectId === projectId &&
+                c.sharedConnectionId &&
+                sharedConnectionIds.has(c.sharedConnectionId)
+              ),
+          );
+        }
+
+        // Remove the repo and all its shared state (queries, configs, etc.)
+        if (this.sharedRepos) {
+          this.sharedRepos.removeRepo(repoId);
+        }
+      }
+
+      if (this.state.activeProjectId === projectId) {
+        this.state.activeRepoId = null;
+      }
     }
   }
 
