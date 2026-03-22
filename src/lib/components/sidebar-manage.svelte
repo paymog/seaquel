@@ -1109,21 +1109,6 @@
 															<span class="text-xs text-muted-foreground">{formatRelativeTime(item.timestamp)}</span>
 															<Badge variant="secondary" class="text-xs">{item.executionTime}ms</Badge>
 														</div>
-														<Button
-															size="icon"
-															variant="ghost"
-															class={[
-																"size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3",
-																item.favorite && "text-yellow-500",
-															]}
-															aria-label={item.favorite ? m.history_remove_favorite() : m.history_add_favorite()}
-															onclick={(e) => {
-																e.stopPropagation();
-																db.history.toggleQueryFavorite(item.id);
-															}}
-														>
-															<StarIcon class={[item.favorite && "fill-current"]} />
-														</Button>
 													</div>
 													<p class="text-xs font-mono line-clamp-2 text-muted-foreground w-full text-left">
 														{item.query}
