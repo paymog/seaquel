@@ -19,9 +19,10 @@
 		initialWidget?: DashboardWidget | null;
 		onClose: () => void;
 		onSave: (widget: DashboardWidget) => void;
+		onDelete?: (widgetId: string) => void;
 	}
 
-	let { open, widget, dashboardId, initialWidget = null, onClose, onSave }: Props = $props();
+	let { open, widget, dashboardId, initialWidget = null, onClose, onSave, onDelete }: Props = $props();
 
 	const db = useDatabase();
 
@@ -456,11 +457,19 @@
 		</div>
 
 		<!-- Footer -->
-		<div class="flex items-center justify-end gap-2 border-t px-4 py-3">
-			<Button variant="outline" size="sm" onclick={onClose}>Cancel</Button>
-			<Button size="sm" onclick={handleSave}>
-				{widget ? 'Save Changes' : 'Add Widget'}
-			</Button>
+		<div class="flex items-center border-t px-4 py-3">
+			{#if widget && onDelete}
+				<Button variant="ghost" size="sm" class="text-destructive hover:text-destructive" onclick={() => onDelete(widget.id)}>
+					Delete
+				</Button>
+			{/if}
+			<div class="flex-1"></div>
+			<div class="flex items-center gap-2">
+				<Button variant="outline" size="sm" onclick={onClose}>Cancel</Button>
+				<Button size="sm" onclick={handleSave}>
+					{widget ? 'Save Changes' : 'Add Widget'}
+				</Button>
+			</div>
 		</div>
 	</div>
 {/if}

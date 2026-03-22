@@ -55,7 +55,7 @@
 			<span class="text-xs">{widget.error}</span>
 		</div>
 	{:else if formattedValue !== null}
-		<p class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+		<p class="text-2xl font-medium text-muted-foreground uppercase tracking-wider">
 			{widget.kpiConfig?.label ?? widget.title}
 		</p>
 		<p class="font-bold tabular-nums" style="font-size: clamp(2rem, 30cqh, 8rem); line-height: 1.1;">

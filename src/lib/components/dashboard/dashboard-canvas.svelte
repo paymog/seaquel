@@ -11,11 +11,13 @@
 		dashboard: Dashboard;
 		editingWidgetId?: string | null;
 		onEditWidget: (widget: DashboardWidget) => void;
+		onDuplicateWidget: (widget: DashboardWidget) => void;
+		onDeleteWidget: (widgetId: string) => void;
 		onAddWidgetAt: (position: { x: number; y: number }) => void;
 		onContextMenu: (event: MouseEvent, position: { x: number; y: number }) => void;
 	}
 
-	let { dashboard, editingWidgetId = null, onEditWidget, onAddWidgetAt, onContextMenu }: Props = $props();
+	let { dashboard, editingWidgetId = null, onEditWidget, onDuplicateWidget, onDeleteWidget, onAddWidgetAt, onContextMenu }: Props = $props();
 
 	const db = useDatabase();
 
@@ -40,6 +42,8 @@
 				widget,
 				onEditWidget,
 				onRefreshWidget: handleRefreshWidget,
+				onDuplicateWidget: onDuplicateWidget,
+				onDeleteWidget: onDeleteWidget,
 				onResizeEnd: handleResizeEnd,
 			},
 			selected: editingWidgetId === widget.id,

@@ -9,6 +9,8 @@
 			widget: DashboardWidget;
 			onEditWidget: (widget: DashboardWidget) => void;
 			onRefreshWidget: (widgetId: string) => void;
+			onDuplicateWidget: (widget: DashboardWidget) => void;
+			onDeleteWidget: (widgetId: string) => void;
 			onResizeEnd: (widgetId: string, size: { width: number; height: number }) => void;
 		};
 		selected?: boolean;
@@ -43,5 +45,7 @@
 		isEditing={selected}
 		onclick={() => data.onEditWidget(data.widget)}
 		onRefresh={() => data.onRefreshWidget(id)}
+		onDuplicate={() => data.onDuplicateWidget(data.widget)}
+		onDelete={() => data.onDeleteWidget(id)}
 	/>
 </div>

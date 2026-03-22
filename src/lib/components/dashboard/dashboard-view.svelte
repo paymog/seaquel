@@ -5,6 +5,7 @@
 	import DashboardToolbar from './dashboard-toolbar.svelte';
 	import DashboardCanvas from './dashboard-canvas.svelte';
 	import DashboardWidgetEditor from './dashboard-widget-editor.svelte';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import { Loader2Icon } from '@lucide/svelte';
 	import { ChartBarIcon, GaugeIcon, TypeIcon } from '@lucide/svelte';
 	import { isTauri } from '$lib/utils/environment';
@@ -27,6 +28,10 @@
 		const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
 		return getCurrentWebviewWindow();
 	}
+
+	// Delete confirmation state
+	let showDeleteWidgetDialog = $state(false);
+	let widgetToDeleteId = $state<string | null>(null);
 
 	// Context menu state
 	let contextMenuOpen = $state(false);
@@ -124,6 +129,34 @@
 		widgetEditorOpen = true;
 	}
 
+	function handleDuplicateWidget(widget: DashboardWidget) {
+		if (!dashboard) return;
+		const duplicate: DashboardWidget = {
+			...widget,
+			id: `widget-${crypto.randomUUID()}`,
+			title: `${widget.title} (copy)`,
+			x: widget.x + 40,
+			y: widget.y + 40,
+		};
+		db.dashboards.addWidget(dashboard.id, duplicate);
+		db.dashboards.executeWidget(dashboard.id, duplicate.id);
+	}
+
+	function handleDeleteWidget(widgetId: string) {
+		widgetToDeleteId = widgetId;
+		showDeleteWidgetDialog = true;
+	}
+
+	function confirmDeleteWidget() {
+		if (!dashboard || !widgetToDeleteId) return;
+		if (editingWidget?.id === widgetToDeleteId) {
+			handleWidgetEditorClose();
+		}
+		db.dashboards.removeWidget(dashboard.id, widgetToDeleteId);
+		widgetToDeleteId = null;
+		showDeleteWidgetDialog = false;
+	}
+
 	function handleRefreshAll() {
 		if (!dashboard) return;
 		db.dashboards.executeAllWidgets(dashboard.id);
@@ -198,6 +231,8 @@
 				{dashboard}
 				editingWidgetId={editingWidget?.id}
 				onEditWidget={handleEditWidget}
+				onDuplicateWidget={handleDuplicateWidget}
+				onDeleteWidget={handleDeleteWidget}
 				onAddWidgetAt={handleAddWidgetAt}
 				onContextMenu={handleCanvasContextMenu}
 			/>
@@ -210,10 +245,28 @@
 				initialWidget={pendingWidget}
 				onClose={handleWidgetEditorClose}
 				onSave={handleWidgetSave}
+				onDelete={handleDeleteWidget}
 			/>
 		</div>
 	{/if}
 </div>
+
+<AlertDialog.Root bind:open={showDeleteWidgetDialog}>
+	<AlertDialog.Content>
+		<AlertDialog.Header>
+			<AlertDialog.Title>Delete Widget</AlertDialog.Title>
+			<AlertDialog.Description>
+				Are you sure you want to delete this widget? This action cannot be undone.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action onclick={confirmDeleteWidget} class="bg-destructive text-white hover:bg-destructive/90">
+				Delete
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
 
 {#if contextMenuOpen}
 	<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
