@@ -102,6 +102,7 @@ export type {
   RepoSyncStatus,
   SharedQueryRepo,
   SharedQuery,
+  SharedDashboard,
   SyncState,
   GitCredentials,
   SyncResult,

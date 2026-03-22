@@ -334,6 +334,7 @@ export class PersistenceManager {
         dashboardTabs: this.serializeDashboardTabs(projectId),
         activeDashboardTabId: this.state.activeDashboardTabIdByProject[projectId] ?? null,
         starredSharedQueryIds: Array.from(this.state.starredSharedQueryIds),
+        starredSharedDashboardIds: Array.from(this.state.starredSharedDashboardIds),
       };
 
       await projectStateRepo.save(db, state);

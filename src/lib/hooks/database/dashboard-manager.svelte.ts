@@ -279,6 +279,7 @@ export class DashboardManager {
         widgets: JSON.parse(r.widgets),
         viewport: JSON.parse(r.viewport),
         dateFilter: r.dateFilter ? JSON.parse(r.dateFilter) : null,
+        starred: r.starred,
         createdAt: new Date(r.createdAt),
         updatedAt: new Date(r.updatedAt),
       }));
@@ -292,6 +293,31 @@ export class DashboardManager {
     }
   }
 
+  // === STARRING ===
+
+  toggleDashboardStarred(id: string): void {
+    const projectId = this.state.activeProjectId;
+    if (!projectId) return;
+
+    const dashboards = this.state.dashboardsByProject[projectId] ?? [];
+    this.state.dashboardsByProject = {
+      ...this.state.dashboardsByProject,
+      [projectId]: dashboards.map((d) => (d.id === id ? { ...d, starred: !d.starred } : d)),
+    };
+    this.scheduleProjectPersistence(projectId);
+  }
+
+  toggleSharedDashboardStarred(id: string): void {
+    const newSet = new Set(this.state.starredSharedDashboardIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    this.state.starredSharedDashboardIds = newSet;
+    this.scheduleProjectPersistence(this.state.activeProjectId);
+  }
+
   // === HELPERS ===
 
   getDashboard(id: string): Dashboard | undefined {
@@ -299,6 +325,25 @@ export class DashboardManager {
       const found = dashboards.find((d) => d.id === id);
       if (found) return found;
     }
+
+    // Also search shared dashboards (their IDs contain ":" as repoId:filePath)
+    for (const dashboards of Object.values(this.state.sharedDashboardsByRepo)) {
+      const found = dashboards.find((d) => d.id === id);
+      if (found) {
+        // Convert SharedDashboard to Dashboard shape for the view
+        return {
+          id: found.id,
+          name: found.name,
+          projectId: found.repoId,
+          widgets: found.widgets,
+          viewport: found.viewport,
+          dateFilter: found.dateFilter ?? null,
+          createdAt: found.updatedAt ?? new Date(),
+          updatedAt: found.updatedAt ?? new Date(),
+        };
+      }
+    }
+
     return undefined;
   }
 
@@ -343,6 +388,7 @@ export class DashboardManager {
         viewport: JSON.stringify(dashboard.viewport),
         widgets: JSON.stringify(widgetsForStorage),
         dateFilter: dashboard.dateFilter ? JSON.stringify(dashboard.dateFilter) : null,
+        starred: dashboard.starred,
         createdAt: dashboard.createdAt.toISOString(),
         updatedAt: dashboard.updatedAt.toISOString(),
       };

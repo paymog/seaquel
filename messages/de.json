@@ -683,6 +683,12 @@
   "sidebar_no_starred": "Keine favorisierten Abfragen",
   "sidebar_no_local": "Keine lokalen Abfragen",
   "sidebar_no_shared": "Keine geteilten Abfragen",
+  "sidebar_no_shared_dashboards": "Keine geteilten Dashboards",
+  "sidebar_share_queries": "Abfragen teilen",
+  "sidebar_share_dashboards": "Dashboards teilen",
+  "sidebar_search_dashboards": "Dashboards suchen...",
+  "sidebar_no_starred_dashboards": "Keine markierten Dashboards",
+  "sidebar_no_local_dashboards": "Keine lokalen Dashboards",
   "sidebar_star_query": "Abfrage favorisieren",
   "sidebar_unstar_query": "Abfrage aus Favoriten entfernen",
 

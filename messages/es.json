@@ -683,6 +683,12 @@
   "sidebar_no_starred": "No hay consultas destacadas",
   "sidebar_no_local": "No hay consultas locales",
   "sidebar_no_shared": "No hay consultas compartidas",
+  "sidebar_no_shared_dashboards": "No hay dashboards compartidos",
+  "sidebar_share_queries": "Compartir consultas",
+  "sidebar_share_dashboards": "Compartir dashboards",
+  "sidebar_search_dashboards": "Buscar dashboards...",
+  "sidebar_no_starred_dashboards": "No hay dashboards destacados",
+  "sidebar_no_local_dashboards": "No hay dashboards locales",
   "sidebar_star_query": "Destacar consulta",
   "sidebar_unstar_query": "Quitar destaque de consulta",
 

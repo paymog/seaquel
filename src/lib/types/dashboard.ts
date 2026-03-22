@@ -65,6 +65,7 @@ export interface Dashboard {
   dateFilter?: { start: string; end: string } | null;
   createdAt: Date;
   updatedAt: Date;
+  starred?: boolean;
 }
 
 /**

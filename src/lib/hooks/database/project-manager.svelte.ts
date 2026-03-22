@@ -219,6 +219,7 @@ export class ProjectManager {
         const projectDir = await join(path, SEAQUEL_DIR, "projects", dirName);
         await mkdir(await join(projectDir, "connections"), { recursive: true });
         await mkdir(await join(projectDir, "queries"), { recursive: true });
+        await mkdir(await join(projectDir, "dashboards"), { recursive: true });
       } catch {
         // Directory may already exist
       }
@@ -715,6 +716,7 @@ export class ProjectManager {
 
     // Restore starred shared query IDs
     this.state.starredSharedQueryIds = new Set(persistedState.starredSharedQueryIds ?? []);
+    this.state.starredSharedDashboardIds = new Set(persistedState.starredSharedDashboardIds ?? []);
 
     // Connection tabs are transient - always initialize empty
     this.state.connectionTabsByProject[projectId] = [];

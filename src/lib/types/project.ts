@@ -142,4 +142,6 @@ export interface PersistedProjectState {
   activeDashboardTabId?: string | null;
   /** IDs of shared queries that are starred */
   starredSharedQueryIds?: string[];
+  /** IDs of shared dashboards that are starred */
+  starredSharedDashboardIds?: string[];
 }

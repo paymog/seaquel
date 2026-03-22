@@ -28,6 +28,7 @@ import { CanvasState } from "./database/canvas-state.svelte.js";
 import { CanvasManager } from "./database/canvas-manager.svelte.js";
 import { SharedRepoManager } from "./database/shared-repo-manager.svelte.js";
 import { SharedQueryManager } from "./database/shared-query-manager.svelte.js";
+import { SharedDashboardManager } from "./database/shared-dashboard-manager.svelte.js";
 import { ProviderRegistry } from "$lib/providers";
 
 /**
@@ -68,6 +69,7 @@ class UseDatabase {
   readonly sharedRepos: SharedRepoManager;
   readonly connectionTabs: ConnectionTabManager;
   readonly sharedQueries: SharedQueryManager;
+  readonly sharedDashboards: SharedDashboardManager;
 
   private _stateRestoration: StateRestorationManager;
   private _readyResolve!: () => void;
@@ -211,6 +213,7 @@ class UseDatabase {
       this.persistence.scheduleSharedRepos(),
     );
     this.sharedQueries = new SharedQueryManager(this.state, this.sharedRepos);
+    this.sharedDashboards = new SharedDashboardManager(this.state, this.sharedRepos);
     this.queryTabs.setSharedQueryManager(this.sharedQueries);
 
     // Connections (depends on other managers)

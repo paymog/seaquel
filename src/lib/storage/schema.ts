@@ -76,7 +76,8 @@ const DDL_STATEMENTS = [
     active_starter_tab_id TEXT,
     active_dashboard_tab_id TEXT,
     tab_order TEXT NOT NULL DEFAULT '[]',
-    starred_shared_query_ids TEXT NOT NULL DEFAULT '[]'
+    starred_shared_query_ids TEXT NOT NULL DEFAULT '[]',
+    starred_shared_dashboard_ids TEXT NOT NULL DEFAULT '[]'
   )`,
 
   // All tab types (discriminated by tab_type)
@@ -197,6 +198,7 @@ const DDL_STATEMENTS = [
     viewport TEXT NOT NULL DEFAULT '{"x":0,"y":0,"zoom":1}',
     widgets TEXT NOT NULL DEFAULT '[]',
     date_filter TEXT,
+    starred INTEGER DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
@@ -267,6 +269,16 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
       table: "project_state",
       column: "starred_shared_query_ids",
       sql: "ALTER TABLE project_state ADD COLUMN starred_shared_query_ids TEXT NOT NULL DEFAULT '[]'",
+    },
+    {
+      table: "project_state",
+      column: "starred_shared_dashboard_ids",
+      sql: "ALTER TABLE project_state ADD COLUMN starred_shared_dashboard_ids TEXT NOT NULL DEFAULT '[]'",
+    },
+    {
+      table: "dashboards",
+      column: "starred",
+      sql: "ALTER TABLE dashboards ADD COLUMN starred INTEGER DEFAULT 0",
     },
   ];
 

@@ -683,6 +683,12 @@
   "sidebar_no_starred": "Aucune requête en favoris",
   "sidebar_no_local": "Aucune requête locale",
   "sidebar_no_shared": "Aucune requête partagée",
+  "sidebar_no_shared_dashboards": "Aucun tableau de bord partagé",
+  "sidebar_share_queries": "Partager les requêtes",
+  "sidebar_share_dashboards": "Partager les tableaux de bord",
+  "sidebar_search_dashboards": "Rechercher des tableaux de bord...",
+  "sidebar_no_starred_dashboards": "Aucun tableau de bord favori",
+  "sidebar_no_local_dashboards": "Aucun tableau de bord local",
   "sidebar_star_query": "Ajouter aux favoris",
   "sidebar_unstar_query": "Retirer des favoris",
 

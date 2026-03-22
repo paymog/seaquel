@@ -683,6 +683,12 @@
   "sidebar_no_starred": "즐겨찾기한 쿼리 없음",
   "sidebar_no_local": "로컬 쿼리 없음",
   "sidebar_no_shared": "공유된 쿼리 없음",
+  "sidebar_no_shared_dashboards": "공유된 대시보드 없음",
+  "sidebar_share_queries": "쿼리 공유",
+  "sidebar_share_dashboards": "대시보드 공유",
+  "sidebar_search_dashboards": "대시보드 검색...",
+  "sidebar_no_starred_dashboards": "즐겨찾기한 대시보드 없음",
+  "sidebar_no_local_dashboards": "로컬 대시보드 없음",
   "sidebar_star_query": "쿼리 즐겨찾기",
   "sidebar_unstar_query": "쿼리 즐겨찾기 해제",
 

@@ -63,6 +63,30 @@ export interface SharedQuery {
 }
 
 /**
+ * A shared dashboard loaded from a .json file in the repo.
+ */
+export interface SharedDashboard {
+  /** Unique identifier (derived from repo ID + file path) */
+  id: string;
+  /** ID of the containing repo */
+  repoId: string;
+  /** Relative path within the repo */
+  filePath: string;
+  /** Display name */
+  name: string;
+  /** Optional description */
+  description?: string;
+  /** Dashboard widgets (serialized) */
+  widgets: import("./dashboard").DashboardWidget[];
+  /** Dashboard viewport */
+  viewport: { x: number; y: number; zoom: number };
+  /** Date filter */
+  dateFilter?: { start: string; end: string } | null;
+  /** File modification time */
+  updatedAt?: Date;
+}
+
+/**
  * State of the sync operation for a repository.
  */
 export interface SyncState {

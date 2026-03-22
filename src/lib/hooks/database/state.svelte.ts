@@ -22,6 +22,7 @@ import type {
   SharedProject,
   SharedConnection,
   ConnectionOverride,
+  SharedDashboard,
 } from "$lib/types";
 import type { ConnectionLabel } from "$lib/types/project";
 import type { SavedCanvas } from "$lib/types/canvas";
@@ -103,11 +104,14 @@ export class DatabaseState {
   savedQueriesByProject = $state<Record<string, SavedQuery[]>>({});
   /** Set of shared query IDs that the user has starred (persisted locally) */
   starredSharedQueryIds = $state<Set<string>>(new Set());
+  /** Set of shared dashboard IDs that the user has starred (persisted locally) */
+  starredSharedDashboardIds = $state<Set<string>>(new Set());
 
   // === SHARED QUERY LIBRARY STATE ===
   sharedRepos = $state<SharedQueryRepo[]>([]);
   activeRepoId = $state<string | null>(null);
   sharedQueriesByRepo = $state<Record<string, SharedQuery[]>>({});
+  sharedDashboardsByRepo = $state<Record<string, SharedDashboard[]>>({});
   syncStateByRepo = $state<Record<string, SyncState>>({});
 
   // === PROJECT GIT SYNC STATE ===
@@ -388,6 +392,11 @@ export class DatabaseState {
     this.activeRepoId ? (this.sharedQueriesByRepo[this.activeRepoId] ?? []) : [],
   );
 
+  // Derived: shared dashboards for active repo
+  activeRepoDashboards = $derived(
+    this.activeRepoId ? (this.sharedDashboardsByRepo[this.activeRepoId] ?? []) : [],
+  );
+
   // Derived: sync state for active repo
   activeRepoSyncState = $derived(
     this.activeRepoId ? (this.syncStateByRepo[this.activeRepoId] ?? null) : null,
@@ -395,6 +404,9 @@ export class DatabaseState {
 
   // Derived: all shared queries across all repos (for search)
   allSharedQueries = $derived(Object.values(this.sharedQueriesByRepo).flat());
+
+  // Derived: all shared dashboards across all repos (for search)
+  allSharedDashboards = $derived(Object.values(this.sharedDashboardsByRepo).flat());
 
   // === SHARED CONFIG DERIVED VALUES ===
 

@@ -8,7 +8,7 @@
 	import { Input } from "$lib/components/ui/input";
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
 	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon } from "@lucide/svelte";
-	import type { SharedQuery } from "$lib/types";
+	import type { SharedQuery, SharedDashboard, Dashboard } from "$lib/types";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -19,8 +19,10 @@
 	import { isDemo, getFeatures } from "$lib/features";
 	import ConnectionLabelPicker from "$lib/components/connection-label-picker.svelte";
 	import { buildDeepLinkUrl } from "$lib/services/deep-link";
-	import { LinkIcon } from "@lucide/svelte";
+	import { LinkIcon, SettingsIcon } from "@lucide/svelte";
 	import { toast } from "svelte-sonner";
+	import ProjectSettingsDialog from "$lib/components/project-settings-dialog.svelte";
+    import { snippets } from "monaco-sql-languages";
 
 	interface Props {
 		version?: string;
@@ -77,21 +79,27 @@
 
 	// Delete dashboard confirmation dialog state
 	let showDeleteDashboardDialog = $state(false);
-	let dashboardToDelete = $state<{ id: string; name: string } | null>(null);
+	let dashboardToDelete = $state<{ id: string; name: string; type: "local" | "shared" } | null>(null);
 
 	const confirmDeleteDashboard = () => {
 		if (!dashboardToDelete) return;
-		db.dashboards.deleteDashboard(dashboardToDelete.id);
-		// Close any tabs for this dashboard
-		const tabsToClose = db.state.dashboardTabs.filter(
-			(t) => t.dashboardId === dashboardToDelete!.id
-		);
-		for (const t of tabsToClose) {
-			db.dashboardTabs.remove(t.id);
+		if (dashboardToDelete.type === "shared") {
+			db.sharedDashboards.deleteDashboard(dashboardToDelete.id);
+		} else {
+			db.dashboards.deleteDashboard(dashboardToDelete.id);
+			const tabsToClose = db.state.dashboardTabs.filter(
+				(t) => t.dashboardId === dashboardToDelete!.id
+			);
+			for (const t of tabsToClose) {
+				db.dashboardTabs.remove(t.id);
+			}
 		}
 		showDeleteDashboardDialog = false;
 		dashboardToDelete = null;
 	};
+
+	// Project settings dialog state
+	let showProjectSettingsDialog = $state(false);
 
 	// Labels dialog state
 	let showLabelsDialog = $state(false);
@@ -294,6 +302,94 @@
 		const url = buildDeepLinkUrl(repo.remoteUrl, query.filePath, repo.branch);
 		await navigator.clipboard.writeText(url);
 		toast.success("Link copied to clipboard");
+	};
+
+	// Dashboard section state
+	let dashboardStarredExpanded = $state(true);
+	let dashboardLocalExpanded = $state(true);
+	let dashboardSharedExpanded = $state(true);
+	let dashboardSearchQuery = $state("");
+
+	// Filtered shared dashboards
+	const filteredSharedDashboards = $derived(
+		db.state.activeRepoDashboards.filter(
+			(item) => item.name.toLowerCase().includes(dashboardSearchQuery.toLowerCase()),
+		),
+	);
+
+	// Shared dashboard names to exclude from local list
+	const sharedDashboardNames = $derived(
+		new Set(db.state.activeRepoDashboards.map((d) => d.name.toLowerCase())),
+	);
+
+	// Local dashboards (exclude those that exist as shared, filter by search)
+	const filteredLocalDashboards = $derived(
+		db.state.projectDashboards.filter(
+			(item) =>
+				!sharedDashboardNames.has(item.name.toLowerCase()) &&
+				item.name.toLowerCase().includes(dashboardSearchQuery.toLowerCase()),
+		),
+	);
+
+	// Starred dashboards
+	const starredLocalDashboards = $derived(
+		filteredLocalDashboards.filter((item) => item.starred),
+	);
+	const starredSharedDashboards = $derived(
+		filteredSharedDashboards.filter((item) => db.state.starredSharedDashboardIds.has(item.id)),
+	);
+	const totalStarredDashboardCount = $derived(starredLocalDashboards.length + starredSharedDashboards.length);
+
+	// Non-starred local dashboards
+	const nonStarredLocalDashboards = $derived(
+		filteredLocalDashboards.filter((item) => !item.starred),
+	);
+
+	// Non-starred shared dashboards
+	const nonStarredSharedDashboards = $derived(
+		filteredSharedDashboards.filter((item) => !db.state.starredSharedDashboardIds.has(item.id)),
+	);
+
+	const handleShareDashboard = async (dashboard: Dashboard) => {
+		try {
+			const wasStarred = dashboard.starred;
+			db.dashboards.deleteDashboard(dashboard.id);
+			const sharedId = await db.sharedDashboards.shareDashboard(dashboard);
+			if (sharedId && wasStarred) {
+				db.dashboards.toggleSharedDashboardStarred(sharedId);
+			}
+		} catch (error) {
+			console.error("Failed to share dashboard:", error);
+		}
+	};
+
+	const handleUnshareDashboard = async (dashboardId: string) => {
+		try {
+			const wasStarred = db.state.starredSharedDashboardIds.has(dashboardId);
+			const sharedDashboard = db.sharedDashboards.getDashboard(dashboardId);
+			if (sharedDashboard) {
+				const local = await db.dashboards.createDashboard(sharedDashboard.name);
+				if (local) {
+					for (const widget of sharedDashboard.widgets) {
+						await db.dashboards.addWidget(local.id, { ...widget, id: `widget-${crypto.randomUUID()}` });
+					}
+					await db.dashboards.updateViewport(local.id, sharedDashboard.viewport);
+					if (wasStarred) {
+						db.dashboards.toggleDashboardStarred(local.id);
+					}
+				}
+			}
+			await db.sharedDashboards.unshareDashboard(dashboardId);
+			if (wasStarred) {
+				db.dashboards.toggleSharedDashboardStarred(dashboardId);
+			}
+		} catch (error) {
+			console.error("Failed to unshare dashboard:", error);
+		}
+	};
+
+	const handleSharedDashboardClick = (dashboard: SharedDashboard) => {
+		db.dashboardTabs.add(dashboard.id, dashboard.name);
 	};
 </script>
 
@@ -724,7 +820,7 @@
 											<Sidebar.MenuItem>
 												<Sidebar.MenuButton
 													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
-													onclick={() => db.queryTabs.loadSaved(item.id)}
+													onclick={() => db.queryTabs.loadSaved(item.id, () => db.ui.setActiveView("query"))}
 												>
 													<div class="flex items-center w-full gap-2">
 														<div class="flex items-center gap-2 flex-1 min-w-0">
@@ -808,7 +904,7 @@
 											<Sidebar.MenuItem>
 												<Sidebar.MenuButton
 													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
-													onclick={() => db.queryTabs.loadSaved(item.id)}
+													onclick={() => db.queryTabs.loadSaved(item.id, () => db.ui.setActiveView("query"))}
 												>
 													<div class="flex items-center w-full gap-2">
 														<div class="flex items-center gap-2 flex-1 min-w-0">
@@ -968,7 +1064,16 @@
 										{/each}
 										{#if nonStarredSharedQueries.length === 0}
 											<div class="text-center py-4 text-muted-foreground px-2">
-												<p class="text-xs">{m.sidebar_no_shared()}</p>
+												{#if !db.state.activeProjectHasGit}
+													<button
+														class="text-xs text-primary hover:underline cursor-pointer"
+														onclick={() => { showProjectSettingsDialog = true; }}
+													>
+														{m.sidebar_share_queries()}
+													</button>
+												{:else}
+													<p class="text-xs">{m.sidebar_no_shared()}</p>
+												{/if}
 											</div>
 										{/if}
 									</Sidebar.Menu>
@@ -996,7 +1101,7 @@
 											<Sidebar.MenuItem>
 												<Sidebar.MenuButton
 													class="h-auto py-2 flex-col items-start gap-1 group"
-													onclick={() => db.queryTabs.loadFromHistory(item.id)}
+													onclick={() => db.queryTabs.loadFromHistory(item.id, () => db.ui.setActiveView("query"))}
 												>
 													<div class="flex items-center justify-between w-full gap-2">
 														<div class="flex items-center gap-2 flex-1 min-w-0">
@@ -1048,61 +1153,367 @@
 			aria-hidden={sidebarTab !== "dashboards"}
 			inert={sidebarTab !== "dashboards" ? true : undefined}
 		>
-			<div class="px-4 py-2">
-				<Button
-					variant="outline"
-					size="sm"
-					class="w-full text-xs"
-					onclick={async () => {
-						const dashboard = await db.dashboards.createDashboard("New Dashboard");
-						if (dashboard) {
-							db.dashboardTabs.add(dashboard.id, dashboard.name);
-						}
-					}}
-				>
-					<PlusIcon class="size-3 me-1" />
-					New Dashboard
-				</Button>
+			<div class="px-4 py-2 flex">
+			    <div class="flex items-center gap-1">
+    				<div class="relative">
+    					<SearchIcon class="absolute start-2 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+    					<Input
+    						bind:value={dashboardSearchQuery}
+    						placeholder={m.sidebar_search_dashboards()}
+    						class="ps-8 h-8 text-sm"
+    					/>
+    				</div>
+                    <Tooltip.Root>
+                        <Tooltip.Trigger>
+                            {#snippet child({ props })}
+                                <Button {...props}
+                   					variant="ghost"
+                   					size="icon"
+                   					class="size-8 shrink-0"
+                   					onclick={async () => {
+                  						const dashboard = await db.dashboards.createDashboard("New Dashboard");
+                  						if (dashboard) {
+                 							db.dashboardTabs.add(dashboard.id, dashboard.name);
+                  						}
+                   					}}
+                				>
+                   					<PlusIcon class="size-4" />
+                				</Button>
+                            {/snippet}
+                        </Tooltip.Trigger>
+                        <Tooltip.Content>{m.sidebar_new_dashboard()}</Tooltip.Content>
+                    </Tooltip.Root>
+    				
+    			</div>
 			</div>
 			<Sidebar.Group>
 				<Sidebar.GroupContent class="px-2">
 					<Sidebar.Menu>
-						{#each db.state.projectDashboards as dashboard (dashboard.id)}
+						<!-- Starred folder -->
+						<Collapsible bind:open={dashboardStarredExpanded}>
 							<Sidebar.MenuItem>
-								<ContextMenu.Root>
-									<ContextMenu.Trigger>
-										<Sidebar.MenuButton
-											class="text-xs pr-1"
-											onclick={() => {
-												db.dashboardTabs.add(dashboard.id, dashboard.name);
-											}}
-										>
-											<LayoutDashboardIcon class="size-3" />
-											<span class="flex-1 truncate">{dashboard.name}</span>
-											<Badge variant="secondary" class="text-xs ">
-												{dashboard.widgets.length}
-											</Badge>
+								<CollapsibleTrigger>
+									{#snippet child({ props })}
+										<Sidebar.MenuButton {...props} class="pr-1">
+											<ChevronRightIcon class={["size-4 transition-transform", dashboardStarredExpanded && "rotate-90"]} />
+											<StarIcon class="size-4" />
+											<span class="flex-1">{m.sidebar_starred()}</span>
+											<Badge variant="secondary" class="text-xs">{totalStarredDashboardCount}</Badge>
 										</Sidebar.MenuButton>
-									</ContextMenu.Trigger>
-									<ContextMenu.Content class="w-40">
-										<ContextMenu.Item
-											class="text-destructive focus:text-destructive"
-											onclick={() => {
-												dashboardToDelete = { id: dashboard.id, name: dashboard.name };
-												showDeleteDashboardDialog = true;
-											}}
-										>
-											<Trash2Icon class="size-4 me-2" />
-											Delete
-										</ContextMenu.Item>
-									</ContextMenu.Content>
-								</ContextMenu.Root>
+									{/snippet}
+								</CollapsibleTrigger>
+								<CollapsibleContent class="flex">
+									<Sidebar.Menu class="ms-4 border-s border-sidebar-border ps-2">
+										{#each starredSharedDashboards as item (`db-starred-shared:${item.id}`)}
+											<Sidebar.MenuItem>
+												<Sidebar.MenuButton
+													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
+													onclick={() => handleSharedDashboardClick(item)}
+												>
+													<div class="flex items-center w-full gap-2">
+														<div class="flex items-center gap-2 flex-1 min-w-0">
+															<LayoutDashboardIcon class="size-3 text-primary shrink-0" />
+															<span class="text-sm font-medium truncate">{item.name}</span>
+														</div>
+														<Button
+															size="icon"
+															variant="ghost"
+															class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity hover:text-destructive"
+															onclick={(e) => {
+																e.stopPropagation();
+																dashboardToDelete = { id: item.id, name: item.name, type: "shared" };
+																showDeleteDashboardDialog = true;
+															}}
+														>
+															<Trash2Icon />
+														</Button>
+														<Button
+															size="icon"
+															variant="ghost"
+															class={["size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 text-yellow-500"]}
+															onclick={(e) => {
+																e.stopPropagation();
+																db.dashboards.toggleSharedDashboardStarred(item.id);
+															}}
+														>
+															<StarIcon class="fill-current" />
+														</Button>
+														<Tooltip.Root>
+															<Tooltip.Trigger>
+																{#snippet child({ props })}
+																	<button
+																		{...props}
+																		class="shrink-0 cursor-pointer text-green-500 hover:text-muted-foreground transition-colors"
+																		onclick={(e) => { e.stopPropagation(); handleUnshareDashboard(item.id); }}
+																	>
+																		<GitBranchIcon class="size-3!" />
+																	</button>
+																{/snippet}
+															</Tooltip.Trigger>
+															<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
+														</Tooltip.Root>
+													</div>
+													{#if item.updatedAt}
+														<p class="text-xs text-muted-foreground w-full text-start">
+															{m.sidebar_updated({ time: formatRelativeTime(item.updatedAt) })}
+														</p>
+													{/if}
+												</Sidebar.MenuButton>
+											</Sidebar.MenuItem>
+										{/each}
+										{#each starredLocalDashboards as item (`db-starred-local:${item.id}`)}
+											<Sidebar.MenuItem>
+												<Sidebar.MenuButton
+													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
+													onclick={() => db.dashboardTabs.add(item.id, item.name)}
+												>
+													<div class="flex items-center w-full gap-2">
+														<div class="flex items-center gap-2 flex-1 min-w-0">
+															<LayoutDashboardIcon class="size-3 text-primary shrink-0" />
+															<span class="text-sm font-medium truncate">{item.name}</span>
+														</div>
+														<Button
+															size="icon"
+															variant="ghost"
+															class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity hover:text-destructive"
+															onclick={(e) => {
+																e.stopPropagation();
+																dashboardToDelete = { id: item.id, name: item.name, type: "local" };
+																showDeleteDashboardDialog = true;
+															}}
+														>
+															<Trash2Icon />
+														</Button>
+														<Button
+															size="icon"
+															variant="ghost"
+															class={["size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 text-yellow-500"]}
+															onclick={(e) => {
+																e.stopPropagation();
+																db.dashboards.toggleDashboardStarred(item.id);
+															}}
+														>
+															<StarIcon class="fill-current" />
+														</Button>
+														{#if db.state.activeProjectHasGit}
+															<Tooltip.Root>
+																<Tooltip.Trigger>
+																	{#snippet child({ props })}
+																		<button
+																			{...props}
+																			class="shrink-0 cursor-pointer text-muted-foreground/40 hover:text-green-500 transition-colors"
+																			onclick={(e) => { e.stopPropagation(); handleShareDashboard(item); }}
+																		>
+																			<GitBranchIcon class="size-3!" />
+																		</button>
+																	{/snippet}
+																</Tooltip.Trigger>
+																<Tooltip.Content>{m.connection_share()}</Tooltip.Content>
+															</Tooltip.Root>
+														{/if}
+													</div>
+													<p class="text-xs text-muted-foreground w-full text-start">
+														{m.sidebar_updated({ time: formatRelativeTime(item.updatedAt) })}
+													</p>
+												</Sidebar.MenuButton>
+											</Sidebar.MenuItem>
+										{/each}
+										{#if totalStarredDashboardCount === 0}
+											<div class="text-center py-4 text-muted-foreground px-2">
+												<p class="text-xs">{m.sidebar_no_starred_dashboards()}</p>
+											</div>
+										{/if}
+									</Sidebar.Menu>
+								</CollapsibleContent>
 							</Sidebar.MenuItem>
-						{:else}
-							<div class="px-4 py-6 text-center text-xs text-muted-foreground">
-								No dashboards yet. Create one to get started.
-							</div>
-						{/each}
+						</Collapsible>
+
+						<!-- Local folder -->
+						<Collapsible bind:open={dashboardLocalExpanded}>
+							<Sidebar.MenuItem>
+								<CollapsibleTrigger>
+									{#snippet child({ props })}
+										<Sidebar.MenuButton {...props} class="pr-1">
+											<ChevronRightIcon class={["size-4 transition-transform", dashboardLocalExpanded && "rotate-90"]} />
+											<BookmarkIcon class="size-4" />
+											<span class="flex-1">{m.sidebar_local()}</span>
+											<Badge variant="secondary" class="text-xs">{nonStarredLocalDashboards.length}</Badge>
+										</Sidebar.MenuButton>
+									{/snippet}
+								</CollapsibleTrigger>
+								<CollapsibleContent class="flex">
+									<Sidebar.Menu class="ms-4 border-s border-sidebar-border ps-2">
+										{#each nonStarredLocalDashboards as item (`db-local:${item.id}`)}
+											<Sidebar.MenuItem>
+												<Sidebar.MenuButton
+													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
+													onclick={() => db.dashboardTabs.add(item.id, item.name)}
+												>
+													<div class="flex items-center w-full gap-2">
+														<div class="flex items-center gap-2 flex-1 min-w-0">
+															<LayoutDashboardIcon class="size-3 text-primary shrink-0" />
+															<span class="text-sm font-medium truncate">{item.name}</span>
+														</div>
+														<Button
+															size="icon"
+															variant="ghost"
+															class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity hover:text-destructive"
+															onclick={(e) => {
+																e.stopPropagation();
+																dashboardToDelete = { id: item.id, name: item.name, type: "local" };
+																showDeleteDashboardDialog = true;
+															}}
+														>
+															<Trash2Icon />
+														</Button>
+														<Button
+															size="icon"
+															variant="ghost"
+															class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity"
+															onclick={(e) => {
+																e.stopPropagation();
+																db.dashboards.toggleDashboardStarred(item.id);
+															}}
+														>
+															<StarIcon />
+														</Button>
+														{#if db.state.activeProjectHasGit}
+															<Tooltip.Root>
+																<Tooltip.Trigger>
+																	{#snippet child({ props })}
+																		<button
+																			{...props}
+																			class="shrink-0 cursor-pointer text-muted-foreground/40 hover:text-green-500 transition-colors"
+																			onclick={(e) => { e.stopPropagation(); handleShareDashboard(item); }}
+																		>
+																			<GitBranchIcon class="size-3!" />
+																		</button>
+																	{/snippet}
+																</Tooltip.Trigger>
+																<Tooltip.Content>{m.connection_share()}</Tooltip.Content>
+															</Tooltip.Root>
+														{/if}
+													</div>
+													<p class="text-xs text-muted-foreground w-full text-start">
+														{m.sidebar_updated({ time: formatRelativeTime(item.updatedAt) })}
+													</p>
+												</Sidebar.MenuButton>
+											</Sidebar.MenuItem>
+										{/each}
+										{#if nonStarredLocalDashboards.length === 0}
+											<div class="text-center py-4 text-muted-foreground px-2">
+												<p class="text-xs">{m.sidebar_no_local_dashboards()}</p>
+											</div>
+										{/if}
+									</Sidebar.Menu>
+								</CollapsibleContent>
+							</Sidebar.MenuItem>
+						</Collapsible>
+
+						<!-- Shared folder -->
+						<Collapsible bind:open={dashboardSharedExpanded}>
+							<Sidebar.MenuItem>
+								<CollapsibleTrigger>
+									{#snippet child({ props })}
+										<Sidebar.MenuButton {...props} class="pr-1">
+											<ChevronRightIcon class={["size-4 transition-transform", dashboardSharedExpanded && "rotate-90"]} />
+											<GitBranchIcon class="size-4" />
+											<span class="flex-1">{m.sidebar_shared()}</span>
+											<Badge variant="secondary" class="text-xs">{nonStarredSharedDashboards.length}</Badge>
+										</Sidebar.MenuButton>
+									{/snippet}
+								</CollapsibleTrigger>
+								<CollapsibleContent class="flex">
+									<Sidebar.Menu class="ms-4 border-s border-sidebar-border ps-2">
+										{#each nonStarredSharedDashboards as item (`db-shared:${item.id}`)}
+											<Sidebar.MenuItem>
+												<ContextMenu.Root>
+													<ContextMenu.Trigger>
+														<Sidebar.MenuButton
+															class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
+															onclick={() => handleSharedDashboardClick(item)}
+														>
+															<div class="flex items-center w-full gap-2">
+																<div class="flex items-center gap-2 flex-1 min-w-0">
+																	<LayoutDashboardIcon class="size-3 text-primary shrink-0" />
+																	<span class="text-sm font-medium truncate">{item.name}</span>
+																</div>
+																<Button
+																	size="icon"
+																	variant="ghost"
+																	class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity hover:text-destructive"
+																	onclick={(e) => {
+																		e.stopPropagation();
+																		dashboardToDelete = { id: item.id, name: item.name, type: "shared" };
+																		showDeleteDashboardDialog = true;
+																	}}
+																>
+																	<Trash2Icon />
+																</Button>
+																<Button
+																	size="icon"
+																	variant="ghost"
+																	class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity"
+																	onclick={(e) => {
+																		e.stopPropagation();
+																		db.dashboards.toggleSharedDashboardStarred(item.id);
+																	}}
+																>
+																	<StarIcon />
+																</Button>
+																<Tooltip.Root>
+																	<Tooltip.Trigger>
+																		{#snippet child({ props })}
+																			<button
+																				{...props}
+																				class="shrink-0 cursor-pointer text-green-500 hover:text-muted-foreground transition-colors"
+																				onclick={(e) => { e.stopPropagation(); handleUnshareDashboard(item.id); }}
+																			>
+																				<GitBranchIcon class="size-3!" />
+																			</button>
+																		{/snippet}
+																	</Tooltip.Trigger>
+																	<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
+																</Tooltip.Root>
+															</div>
+															{#if item.updatedAt}
+																<p class="text-xs text-muted-foreground w-full text-start">
+																	{m.sidebar_updated({ time: formatRelativeTime(item.updatedAt) })}
+																</p>
+															{/if}
+														</Sidebar.MenuButton>
+													</ContextMenu.Trigger>
+													<ContextMenu.Content class="w-44">
+														<ContextMenu.Item onclick={() => handleUnshareDashboard(item.id)}>
+															<GitBranchIcon class="size-4 me-2" />
+															{m.connection_mark_local_only()}
+														</ContextMenu.Item>
+														<ContextMenu.Item class="text-destructive" onclick={() => { dashboardToDelete = { id: item.id, name: item.name, type: "shared" }; showDeleteDashboardDialog = true; }}>
+															<Trash2Icon class="size-4 me-2" />
+															{m.history_delete_saved()}
+														</ContextMenu.Item>
+													</ContextMenu.Content>
+												</ContextMenu.Root>
+											</Sidebar.MenuItem>
+										{/each}
+										{#if nonStarredSharedDashboards.length === 0}
+											<div class="text-center py-4 text-muted-foreground px-2">
+												{#if !db.state.activeProjectHasGit}
+													<button
+														class="text-xs text-primary hover:underline cursor-pointer"
+														onclick={() => { showProjectSettingsDialog = true; }}
+													>
+														{m.sidebar_share_dashboards()}
+													</button>
+												{:else}
+													<p class="text-xs">{m.sidebar_no_shared_dashboards()}</p>
+												{/if}
+											</div>
+										{/if}
+									</Sidebar.Menu>
+								</CollapsibleContent>
+							</Sidebar.MenuItem>
+						</Collapsible>
 					</Sidebar.Menu>
 				</Sidebar.GroupContent>
 			</Sidebar.Group>
@@ -1117,7 +1528,8 @@
 			{#if sidebarTab === "schema" && db.state.activeConnection}
 				{m.sidebar_tables_count({ count: db.state.activeSchema.length })}
 			{:else if sidebarTab === "dashboards"}
-				{db.state.projectDashboards.length} dashboard{db.state.projectDashboards.length !== 1 ? 's' : ''}
+				{@const total = db.state.projectDashboards.length + db.state.activeRepoDashboards.length}
+				{total} dashboard{total !== 1 ? 's' : ''}
 			{:else if sidebarTab === "queries"}
 				{m.sidebar_queries_stats({ executed: db.state.activeConnectionQueryHistory.length, saved: db.state.projectSavedQueries.length })}
 			{:else}
@@ -1188,6 +1600,11 @@
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>
+
+<!-- Project Settings Dialog -->
+{#if db.state.activeProjectId}
+	<ProjectSettingsDialog projectId={db.state.activeProjectId} bind:open={showProjectSettingsDialog} />
+{/if}
 
 <!-- Delete Dashboard Confirmation Dialog -->
 <AlertDialog.Root bind:open={showDeleteDashboardDialog}>

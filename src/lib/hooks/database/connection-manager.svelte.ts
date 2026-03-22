@@ -502,13 +502,6 @@ export class ConnectionManager {
     // Set this as the active connection (only after schema loading succeeds)
     this.setActiveForProject(connectionId, existingConnection.projectId);
 
-    // Create initial query tab if no tabs exist for the project
-    const projectId = existingConnection.projectId;
-    const tabs = this.state.queryTabsByProject[projectId] ?? [];
-    if (tabs.length === 0) {
-      this.onCreateInitialTab();
-    }
-
     // Persist the connection to store (password saved to keyring if enabled)
     await this.persistence.persistConnection(updatedConnection, {
       savePassword: connection.savePassword,
@@ -844,49 +837,56 @@ export class ConnectionManager {
       }
     }
 
-    // For other databases, check if password is saved
-    if (!connection.savePassword) {
-      void log.debug(`Auto-reconnect skipped (no saved password): ${connectionId}`);
+    // Resolve the password: try keyring first, then fall back to in-memory password
+    let password: string | undefined;
+
+    if (connection.savePassword) {
+      const keyring = getKeyringService();
+      if (keyring.isAvailable()) {
+        try {
+          password = (await keyring.getDbPassword(connectionId)) || undefined;
+        } catch {
+          // Keyring access failed, continue with fallback
+        }
+      }
+    }
+
+    // Fall back to in-memory password (e.g., user connected earlier this session)
+    if (!password && connection.password) {
+      password = connection.password;
+    }
+
+    if (!password) {
+      void log.debug(`Auto-reconnect skipped (no password available): ${connectionId}`);
       return false;
     }
 
-    const keyring = getKeyringService();
-    if (!keyring.isAvailable()) {
-      void log.debug(`Auto-reconnect skipped (keyring unavailable): ${connectionId}`);
-      return false;
+    // Load SSH credentials if needed
+    let sshPassword: string | undefined;
+    let sshKeyPassphrase: string | undefined;
+
+    if (connection.sshTunnel?.enabled) {
+      const keyring = getKeyringService();
+
+      if (connection.saveSshPassword && keyring.isAvailable()) {
+        sshPassword = (await keyring.getSshPassword(connectionId)) || undefined;
+      }
+      if (connection.saveSshKeyPassphrase && keyring.isAvailable()) {
+        sshKeyPassphrase = (await keyring.getSshKeyPassphrase(connectionId)) || undefined;
+      }
+
+      // If SSH is enabled but credentials not available, we can't auto-reconnect
+      if (connection.sshTunnel.authMethod === "password" && !sshPassword) {
+        void log.debug(`Auto-reconnect skipped (no SSH password): ${connectionId}`);
+        return false;
+      }
+      if (connection.sshTunnel.authMethod === "key" && !connection.sshTunnel.keyPath) {
+        void log.debug(`Auto-reconnect skipped (no SSH key path): ${connectionId}`);
+        return false;
+      }
     }
 
     try {
-      // Load credentials from keyring
-      const password = await keyring.getDbPassword(connectionId);
-      if (!password) {
-        void log.debug(`Auto-reconnect skipped (no password in keyring): ${connectionId}`);
-        return false;
-      }
-
-      // Load SSH credentials if needed
-      let sshPassword: string | undefined;
-      let sshKeyPassphrase: string | undefined;
-
-      if (connection.sshTunnel?.enabled) {
-        if (connection.saveSshPassword) {
-          sshPassword = (await keyring.getSshPassword(connectionId)) || undefined;
-        }
-        if (connection.saveSshKeyPassphrase) {
-          sshKeyPassphrase = (await keyring.getSshKeyPassphrase(connectionId)) || undefined;
-        }
-
-        // If SSH is enabled but credentials not saved, we can't auto-reconnect
-        if (connection.sshTunnel.authMethod === "password" && !sshPassword) {
-          void log.debug(`Auto-reconnect skipped (no SSH password): ${connectionId}`);
-          return false;
-        }
-        if (connection.sshTunnel.authMethod === "key" && !connection.sshTunnel.keyPath) {
-          void log.debug(`Auto-reconnect skipped (no SSH key path): ${connectionId}`);
-          return false;
-        }
-      }
-
       // Attempt reconnection
       await this.reconnect(connectionId, {
         name: connection.name,

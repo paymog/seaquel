@@ -309,6 +309,7 @@
   "sidebar_refresh_schema": "Refresh schema",
   "sidebar_search_tables": "Search tables...",
   "sidebar_search_queries": "Search queries...",
+  "sidebar_new_dashboard": "New dashboard",
   "sidebar_no_connection": "No active connection",
   "sidebar_no_connection_schema": "Connect to a database to browse its schema",
   "sidebar_no_connection_queries": "Connect to a database to see queries",
@@ -322,6 +323,12 @@
   "sidebar_no_starred": "No starred queries",
   "sidebar_no_local": "No local queries",
   "sidebar_no_shared": "No shared queries",
+  "sidebar_no_shared_dashboards": "No shared dashboards",
+  "sidebar_share_queries": "Share queries",
+  "sidebar_share_dashboards": "Share dashboards",
+  "sidebar_search_dashboards": "Search dashboards...",
+  "sidebar_no_starred_dashboards": "No starred dashboards",
+  "sidebar_no_local_dashboards": "No local dashboards",
   "sidebar_star_query": "Star query",
   "sidebar_unstar_query": "Unstar query",
   "sidebar_tables_count": [
@@ -771,7 +778,6 @@
   "command_new_dashboard": "New Dashboard",
   "command_open_dashboard": "Open: {name}",
   "command_group_dashboards": "Dashboards",
-  "sidebar_shared": "Shared",
 
   "common_cancel": "Cancel",
   "common_save": "Save",

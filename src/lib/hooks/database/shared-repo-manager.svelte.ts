@@ -1,6 +1,7 @@
 import type {
   SharedQueryRepo,
   SharedQuery,
+  SharedDashboard,
   SyncState,
   GitCredentials,
   RepoSyncStatus,
@@ -12,6 +13,7 @@ import type { ConnectionLabel } from "$lib/types/project";
 import type { DatabaseState } from "./state.svelte.js";
 import * as gitService from "$lib/services/git";
 import { parseQueryFile } from "$lib/services/query-file-parser";
+import { parseDashboardFile } from "$lib/services/dashboard-file-parser";
 import {
   parseLabelsFile,
   parseProjectFile,
@@ -223,6 +225,9 @@ export class SharedRepoManager {
     const { [repoId]: _queries, ...remainingQueries } = this.state.sharedQueriesByRepo;
     this.state.sharedQueriesByRepo = remainingQueries;
 
+    const { [repoId]: _dashboards2, ...remainingDashboards } = this.state.sharedDashboardsByRepo;
+    this.state.sharedDashboardsByRepo = remainingDashboards;
+
     const { [repoId]: _syncState, ...remainingSyncState } = this.state.syncStateByRepo;
     this.state.syncStateByRepo = remainingSyncState;
 
@@ -409,6 +414,7 @@ export class SharedRepoManager {
     if (!repo) return;
 
     const queries: SharedQuery[] = [];
+    const dashboards: SharedDashboard[] = [];
 
     try {
       const projectsDir = await join(repo.path, SEAQUEL_DIR, "projects");
@@ -419,16 +425,27 @@ export class SharedRepoManager {
           if (!entry.isDirectory || entry.name.startsWith(".")) continue;
 
           const queriesDir = await join(projectsDir, entry.name, "queries");
-          if (!(await exists(queriesDir))) continue;
+          if (await exists(queriesDir)) {
+            const queriesRelBase = `${SEAQUEL_DIR}/projects/${entry.name}/queries`;
+            await this.scanDirectory(repo.path, queriesRelBase, repoId, queries, queriesRelBase);
+          }
 
-          const queriesRelBase = `${SEAQUEL_DIR}/projects/${entry.name}/queries`;
-          await this.scanDirectory(repo.path, queriesRelBase, repoId, queries, queriesRelBase);
+          const dashboardsDir = await join(projectsDir, entry.name, "dashboards");
+          if (await exists(dashboardsDir)) {
+            const dashboardsRelBase = `${SEAQUEL_DIR}/projects/${entry.name}/dashboards`;
+            await this.scanDashboardDirectory(repo.path, dashboardsRelBase, repoId, dashboards);
+          }
         }
       }
 
       this.state.sharedQueriesByRepo = {
         ...this.state.sharedQueriesByRepo,
         [repoId]: queries,
+      };
+
+      this.state.sharedDashboardsByRepo = {
+        ...this.state.sharedDashboardsByRepo,
+        [repoId]: dashboards,
       };
 
       // Also load shared configs from .seaquel/ directory
@@ -660,6 +677,50 @@ export class SharedRepoManager {
   }
 
   /**
+   * Recursively scan a directory for .json dashboard files.
+   */
+  private async scanDashboardDirectory(
+    basePath: string,
+    relativePath: string,
+    repoId: string,
+    dashboards: SharedDashboard[],
+  ): Promise<void> {
+    const fullPath = relativePath ? await join(basePath, relativePath) : basePath;
+
+    try {
+      const entries = await readDir(fullPath);
+
+      for (const entry of entries) {
+        if (entry.name.startsWith(".")) continue;
+
+        const entryRelativePath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+
+        if (entry.isDirectory) {
+          await this.scanDashboardDirectory(basePath, entryRelativePath, repoId, dashboards);
+        } else if (entry.name.toLowerCase().endsWith(".json")) {
+          const filePath = await join(basePath, entryRelativePath);
+          const content = await readTextFile(filePath);
+          const dashboard = parseDashboardFile(content, repoId, entryRelativePath);
+
+          if (dashboard) {
+            try {
+              const meta = await stat(filePath);
+              if (meta.mtime) {
+                dashboard.updatedAt = new Date(meta.mtime);
+              }
+            } catch {
+              // Ignore stat errors
+            }
+            dashboards.push(dashboard);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to scan dashboard directory ${fullPath}:`, error);
+    }
+  }
+
+  /**
    * Export a local project as a shared project to a Git repo.
    * Creates .seaquel/projects/<name>/ with project.yaml and connection YAML files.
    * Credentials are NEVER exported.
@@ -687,6 +748,7 @@ export class SharedRepoManager {
     const projectDir = await join(seaquelDir, "projects", dirName);
     const connectionsDir = await join(projectDir, "connections");
     const queriesDir = await join(projectDir, "queries");
+    const dashboardsDir = await join(projectDir, "dashboards");
 
     try {
       // Create directories
@@ -694,6 +756,7 @@ export class SharedRepoManager {
       await mkdir(projectDir, { recursive: true });
       await mkdir(connectionsDir, { recursive: true });
       await mkdir(queriesDir, { recursive: true });
+      await mkdir(dashboardsDir, { recursive: true });
 
       // Write project.yaml
       const sharedProject: SharedProject = {

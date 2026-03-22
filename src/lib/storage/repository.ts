@@ -365,6 +365,20 @@ export const projectStateRepo = {
       // Column doesn't exist yet (pre-migration)
     }
 
+    // Read starred_shared_dashboard_ids if the column exists
+    let starredSharedDashboardIds: string[] = [];
+    try {
+      const starredDashRow = await db.query<{ starred_shared_dashboard_ids: string }>(
+        "SELECT starred_shared_dashboard_ids FROM project_state WHERE project_id = ?",
+        [projectId],
+      );
+      if (starredDashRow.length > 0) {
+        starredSharedDashboardIds = JSON.parse(starredDashRow[0].starred_shared_dashboard_ids);
+      }
+    } catch {
+      // Column doesn't exist yet (pre-migration)
+    }
+
     return {
       projectId,
       queryTabs,
@@ -388,6 +402,7 @@ export const projectStateRepo = {
       dashboardTabs,
       activeDashboardTabId,
       starredSharedQueryIds,
+      starredSharedDashboardIds,
     };
   },
 
@@ -429,6 +444,16 @@ export const projectStateRepo = {
       await db.execute(
         `UPDATE project_state SET starred_shared_query_ids = ? WHERE project_id = ?`,
         [JSON.stringify(state.starredSharedQueryIds ?? []), state.projectId],
+      );
+    } catch {
+      // Column may not exist yet (pre-migration)
+    }
+
+    // Save starred shared dashboard IDs
+    try {
+      await db.execute(
+        `UPDATE project_state SET starred_shared_dashboard_ids = ? WHERE project_id = ?`,
+        [JSON.stringify(state.starredSharedDashboardIds ?? []), state.projectId],
       );
     } catch {
       // Column may not exist yet (pre-migration)
@@ -794,6 +819,7 @@ export interface PersistedDashboard {
   viewport: string; // JSON: { x, y, zoom }
   widgets: string; // JSON blob
   dateFilter?: string | null;
+  starred?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -807,6 +833,7 @@ export const dashboardsRepo = {
       viewport: string;
       widgets: string;
       date_filter: string | null;
+      starred: number | null;
       created_at: string;
       updated_at: string;
     }>("SELECT * FROM dashboards WHERE project_id = ?", [projectId]);
@@ -818,6 +845,7 @@ export const dashboardsRepo = {
       viewport: r.viewport,
       widgets: r.widgets,
       dateFilter: r.date_filter,
+      starred: (r.starred ?? 0) === 1,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));
@@ -825,13 +853,14 @@ export const dashboardsRepo = {
 
   async save(db: SqliteDatabase, dashboard: PersistedDashboard): Promise<void> {
     await db.execute(
-      `INSERT INTO dashboards (id, project_id, name, viewport, widgets, date_filter, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO dashboards (id, project_id, name, viewport, widgets, date_filter, starred, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          viewport = excluded.viewport,
          widgets = excluded.widgets,
          date_filter = excluded.date_filter,
+         starred = excluded.starred,
          updated_at = excluded.updated_at`,
       [
         dashboard.id,
@@ -840,6 +869,7 @@ export const dashboardsRepo = {
         dashboard.viewport,
         dashboard.widgets,
         dashboard.dateFilter ?? null,
+        dashboard.starred ? 1 : 0,
         dashboard.createdAt,
         dashboard.updatedAt,
       ],

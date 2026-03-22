@@ -687,6 +687,12 @@
   "sidebar_no_starred": "لا توجد استعلامات مميزة بنجمة",
   "sidebar_no_local": "لا توجد استعلامات محلية",
   "sidebar_no_shared": "لا توجد استعلامات مشتركة",
+  "sidebar_no_shared_dashboards": "لا توجد لوحات معلومات مشتركة",
+  "sidebar_share_queries": "مشاركة الاستعلامات",
+  "sidebar_share_dashboards": "مشاركة لوحات المعلومات",
+  "sidebar_search_dashboards": "البحث في لوحات المعلومات...",
+  "sidebar_no_starred_dashboards": "لا توجد لوحات معلومات مميزة بنجمة",
+  "sidebar_no_local_dashboards": "لا توجد لوحات معلومات محلية",
   "sidebar_star_query": "تمييز الاستعلام بنجمة",
   "sidebar_unstar_query": "إزالة النجمة من الاستعلام",
 

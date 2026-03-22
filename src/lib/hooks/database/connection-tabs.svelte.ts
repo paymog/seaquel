@@ -69,8 +69,13 @@ export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
       | "statistics"
       | "canvas"
       | "visualize"
-      | "connection",
+      | "connection"
+      | "dashboard",
   ) => void;
+
+  // Tracks the view that was active before the connection tab was opened,
+  // so we can restore it when the last connection tab is closed.
+  private previousView: Parameters<typeof this.setActiveView>[0] | null = null;
 
   constructor(
     state: DatabaseState,
@@ -85,7 +90,8 @@ export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
         | "statistics"
         | "canvas"
         | "visualize"
-        | "connection",
+        | "connection"
+        | "dashboard",
     ) => void,
   ) {
     super(state, tabOrdering, schedulePersistence);
@@ -161,6 +167,9 @@ export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
     };
 
     this.appendTab(newTab);
+    if (this.previousView === null) {
+      this.previousView = this.state.activeView;
+    }
     this.setActiveView("connection");
 
     // Load saved credentials asynchronously
@@ -194,6 +203,9 @@ export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
     };
 
     this.appendTab(newTab);
+    if (this.previousView === null) {
+      this.previousView = this.state.activeView;
+    }
     this.setActiveView("connection");
 
     return newTab.id;
@@ -301,10 +313,12 @@ export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
   override remove(id: string): void {
     super.remove(id);
 
-    // If no more connection tabs, switch back to query view
+    // If no more connection tabs, restore the view that was active before the connection tab was opened
     const remainingTabs = this.state.connectionTabsByProject[this.state.activeProjectId!] ?? [];
     if (remainingTabs.length === 0) {
-      this.setActiveView("query");
+      const restoreView = this.previousView ?? "query";
+      this.previousView = null;
+      this.setActiveView(restoreView);
     }
   }
 }

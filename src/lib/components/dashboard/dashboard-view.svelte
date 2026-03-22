@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { DashboardWidget } from '$lib/types';
 	import { useDatabase } from '$lib/hooks/database.svelte.js';
 	import DashboardToolbar from './dashboard-toolbar.svelte';
@@ -33,9 +34,14 @@
 	let contextMenuCanvasPosition = $state({ x: 0, y: 0 });
 
 	// Auto-create dashboard for new tabs without a dashboardId
+	let creatingDashboard = false;
 	$effect(() => {
-		if (tab && !tab.dashboardId) {
-			void createDashboardForTab();
+		if (tab && !tab.dashboardId && !creatingDashboard) {
+			creatingDashboard = true;
+			// untrack to avoid re-triggering the effect when dashboardsByProject updates
+			untrack(() => {
+				void createDashboardForTab().finally(() => { creatingDashboard = false; });
+			});
 		}
 	});
 
