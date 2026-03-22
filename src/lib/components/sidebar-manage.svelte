@@ -1100,15 +1100,15 @@
 										{#each filteredHistory as item (item.id)}
 											<Sidebar.MenuItem>
 												<Sidebar.MenuButton
-													class="h-auto py-2 flex-col items-start gap-1 group"
+													class="h-auto py-2 flex-col items-start gap-1 group pr-1"
 													onclick={() => db.queryTabs.loadFromHistory(item.id, () => db.ui.setActiveView("query"))}
 												>
 													<div class="flex items-center justify-between w-full gap-2">
 														<div class="flex items-center gap-2 flex-1 min-w-0">
 															<ClockIcon class="size-3 text-muted-foreground shrink-0" />
 															<span class="text-xs text-muted-foreground">{formatRelativeTime(item.timestamp)}</span>
-															<Badge variant="secondary" class="text-xs">{item.executionTime}ms</Badge>
 														</div>
+														<Badge variant="secondary" class="text-xs shrink-0 tabular-nums">{item.executionTime}ms</Badge>
 													</div>
 													<p class="text-xs font-mono line-clamp-2 text-muted-foreground w-full text-left">
 														{item.query}
