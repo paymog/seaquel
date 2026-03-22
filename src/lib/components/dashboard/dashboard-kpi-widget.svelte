@@ -21,9 +21,7 @@
 		const format = widget.kpiConfig.format ?? 'number';
 
 		let formatted: string;
-		if (format === 'currency') {
-			formatted = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(num);
-		} else if (format === 'percentage') {
+		if (format === 'percentage') {
 			formatted = new Intl.NumberFormat(undefined, { style: 'percent', minimumFractionDigits: 1 }).format(num / 100);
 		} else {
 			formatted = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(num);

@@ -11,7 +11,7 @@ import type { ChartConfig } from "./chart";
 export interface KpiConfig {
   label: string;
   valueColumn: string;
-  format?: "number" | "currency" | "percentage";
+  format?: "number" | "percentage";
   prefix?: string;
   suffix?: string;
 }

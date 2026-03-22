@@ -36,7 +36,7 @@
 	let chartConfig = $state<ChartConfig>({ type: 'bar', xAxis: null, yAxis: [], dataScope: 'all' });
 	let kpiLabel = $state('');
 	let kpiValueColumn = $state('');
-	let kpiFormat = $state<'number' | 'currency' | 'percentage'>('number');
+	let kpiFormat = $state<'number' | 'percentage'>('number');
 	let kpiPrefix = $state('');
 	let kpiSuffix = $state('');
 	let textContent = $state('');
@@ -397,7 +397,7 @@
 							<div class="space-y-1.5">
 								<Label class="text-xs">Format</Label>
 								<div class="flex gap-1">
-									{#each ['number', 'currency', 'percentage'] as fmt}
+									{#each ['number', 'percentage'] as fmt}
 										<Button
 											variant={kpiFormat === fmt ? 'default' : 'outline'}
 											size="sm"

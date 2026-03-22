@@ -21,7 +21,8 @@ const DEMO_WIDGETS: DashboardWidget[] = [
     kpiConfig: {
       label: "Total Revenue",
       valueColumn: "total_revenue",
-      format: "currency",
+      format: "number",
+      prefix: "$",
     },
   },
   {
@@ -69,7 +70,8 @@ const DEMO_WIDGETS: DashboardWidget[] = [
     kpiConfig: {
       label: "Avg Order Value",
       valueColumn: "avg_order_value",
-      format: "currency",
+      format: "number",
+      prefix: "$",
     },
   },
 
