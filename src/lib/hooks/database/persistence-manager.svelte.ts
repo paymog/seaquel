@@ -153,6 +153,7 @@ export class PersistenceManager {
       id: tab.id,
       tableName: tab.table.name,
       schemaName: tab.table.schema,
+      connectionId: tab.connectionId,
     }));
   }
 

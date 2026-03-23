@@ -868,6 +868,33 @@ export class ConnectionManager {
       }
 
       if (wasConnected) {
+        // Remove schema tabs belonging to the disconnected connection
+        const projectId = connection.projectId;
+        const schemaTabs = this.state.schemaTabsByProject[projectId] ?? [];
+        const removedTabIds = new Set(
+          schemaTabs.filter((t) => t.connectionId === id).map((t) => t.id),
+        );
+        const remainingTabs = schemaTabs.filter((t) => t.connectionId !== id);
+        // Remove from tab order
+        const tabOrder = this.state.tabOrderByProject[projectId] ?? [];
+        this.state.tabOrderByProject = {
+          ...this.state.tabOrderByProject,
+          [projectId]: tabOrder.filter((tabId) => !removedTabIds.has(tabId)),
+        };
+        this.state.schemaTabsByProject = {
+          ...this.state.schemaTabsByProject,
+          [projectId]: remainingTabs,
+        };
+        // Reset active schema tab if it was removed
+        const activeSchemaTabId = this.state.activeSchemaTabIdByProject[projectId];
+        if (activeSchemaTabId && removedTabIds.has(activeSchemaTabId)) {
+          this.state.activeSchemaTabIdByProject = {
+            ...this.state.activeSchemaTabIdByProject,
+            [projectId]: remainingTabs[0]?.id ?? null,
+          };
+        }
+        this.persistence.scheduleProject(projectId);
+
         // If disconnecting the active connection for its project, switch to another connected one
         if (this.state.activeConnectionIdByProject[connection.projectId] === id) {
           const nextConnection = this.state.connections.find(

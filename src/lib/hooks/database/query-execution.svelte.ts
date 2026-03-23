@@ -52,6 +52,16 @@ export class QueryExecutionManager {
   }
 
   /**
+   * Filter out utility results and re-index for display.
+   * Keeps utility results only if ALL results are utility (so the user sees something).
+   */
+  private filterAndIndexResults(allResults: StatementResult[]): StatementResult[] {
+    const displayResults = allResults.filter((r) => !r.isUtility);
+    const results = displayResults.length > 0 ? displayResults : allResults;
+    return results.map((r, idx) => ({ ...r, statementIndex: idx }));
+  }
+
+  /**
    * Get primary keys for a table.
    */
   getPrimaryKeysForTable(schema: string, tableName: string): string[] {
@@ -502,7 +512,7 @@ export class QueryExecutionManager {
 
     const allResults: StatementResult[] = [];
 
-    // Execute each statement
+    // Execute each statement, updating the UI incrementally
     for (let i = 0; i < statements.length; i++) {
       const stmt = statements[i];
       try {
@@ -530,15 +540,13 @@ export class QueryExecutionManager {
           isError: true,
         });
       }
+
+      // Update UI incrementally after each statement completes
+      this.updateQueryTabState(tabId, {
+        results: this.filterAndIndexResults(allResults),
+        activeResultIndex: 0,
+      });
     }
-
-    // Filter out utility results (SET, PRAGMA, etc.) — they executed but don't need result tabs.
-    // Keep them only if ALL statements are utility (so the user sees something).
-    const displayResults = allResults.filter((r) => !r.isUtility);
-    const results = displayResults.length > 0 ? displayResults : allResults;
-
-    // Re-index displayed results
-    const indexedResults = results.map((r, idx) => ({ ...r, statementIndex: idx }));
 
     // Log summary for all statements
     const totalTime = allResults.reduce((sum, r) => sum + (r.executionTime ?? 0), 0);
@@ -554,14 +562,13 @@ export class QueryExecutionManager {
       );
     }
 
-    // Update tab with filtered results
+    // Mark execution as complete
     this.updateQueryTabState(tabId, {
-      results: indexedResults,
-      activeResultIndex: 0,
       isExecuting: false,
     });
 
     // Add to history (only on first page to avoid duplicates, use first meaningful result)
+    const indexedResults = this.filterAndIndexResults(allResults);
     if (page === 1 && indexedResults.length > 0) {
       const historyResult = indexedResults.find((r) => !r.isUtility) ?? indexedResults[0];
       this.queryHistory.addToHistory(tab.query, historyResult);
@@ -619,7 +626,7 @@ export class QueryExecutionManager {
 
     const allResults: StatementResult[] = [];
 
-    // Execute each statement with parameter substitution
+    // Execute each statement with parameter substitution, updating the UI incrementally
     for (let i = 0; i < statements.length; i++) {
       const stmt = statements[i];
       try {
@@ -655,6 +662,12 @@ export class QueryExecutionManager {
           isError: true,
         });
       }
+
+      // Update UI incrementally after each statement completes
+      this.updateQueryTabState(tabId, {
+        results: this.filterAndIndexResults(allResults),
+        activeResultIndex: 0,
+      });
     }
 
     // Log summary for all statements
@@ -671,21 +684,13 @@ export class QueryExecutionManager {
       );
     }
 
-    // Filter out utility results (SET, PRAGMA, etc.)
-    const displayResults = allResults.filter((r) => !r.isUtility);
-    const results = displayResults.length > 0 ? displayResults : allResults;
-
-    // Re-index displayed results
-    const indexedResults = results.map((r, idx) => ({ ...r, statementIndex: idx }));
-
-    // Update tab with filtered results
+    // Mark execution as complete
     this.updateQueryTabState(tabId, {
-      results: indexedResults,
-      activeResultIndex: 0,
       isExecuting: false,
     });
 
     // Add to history (only on first page, use first meaningful result)
+    const indexedResults = this.filterAndIndexResults(allResults);
     if (page === 1 && indexedResults.length > 0) {
       const historyResult = indexedResults.find((r) => !r.isUtility) ?? indexedResults[0];
       this.queryHistory.addToHistory(tab.query, historyResult);

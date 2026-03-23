@@ -133,7 +133,7 @@
 	<!-- Single scroll container for both header and body -->
 	<div
 		bind:this={scrollContainerRef}
-		class={["h-full overflow-auto", compact && "nowheel"]}
+		class={["h-full overflow-auto isolate", compact && "nowheel"]}
 		onscroll={handleScroll}
 	>
 		<!-- Inner wrapper that can expand horizontally -->

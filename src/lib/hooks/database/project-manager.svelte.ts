@@ -616,16 +616,19 @@ export class ProjectManager {
 
     // Restore schema tabs (we'll need to look up the table info later)
     // For now, create placeholder tabs that will be populated when the connection loads
-    this.state.schemaTabsByProject[projectId] = persistedState.schemaTabs.map((t) => ({
-      id: t.id,
-      table: {
-        schema: t.schemaName,
-        name: t.tableName,
-        type: "table" as const, // Default to table, will be updated when metadata loads
-        columns: [],
-        indexes: [],
-      },
-    }));
+    this.state.schemaTabsByProject[projectId] = persistedState.schemaTabs
+      .filter((t) => t.connectionId)
+      .map((t) => ({
+        id: t.id,
+        connectionId: t.connectionId!,
+        table: {
+          schema: t.schemaName,
+          name: t.tableName,
+          type: "table" as const, // Default to table, will be updated when metadata loads
+          columns: [],
+          indexes: [],
+        },
+      }));
 
     // Restore explain tabs
     this.state.explainTabsByProject[projectId] = persistedState.explainTabs.map((t) => ({

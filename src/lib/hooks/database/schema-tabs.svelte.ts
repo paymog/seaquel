@@ -104,6 +104,7 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
 
     const newTab: SchemaTab = {
       id: `schema-tab-${crypto.randomUUID()}`,
+      connectionId,
       table: updatedTable,
     };
 
