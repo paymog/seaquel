@@ -20,7 +20,7 @@ export interface DeepLinkAction {
  * Build a seaquel:// deep link URL for a shared query.
  */
 export function buildDeepLinkUrl(repoUrl: string, filePath: string, branch?: string): string {
-  let url = `seaquel://shared-query?repo=${repoUrl}&path=${filePath}`;
+  let url = `seaquel://shared-query?repo=${repoUrl}&path=${encodeURIComponent(filePath)}`;
   if (branch && branch !== "main") {
     url += `&branch=${branch}`;
   }

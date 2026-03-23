@@ -236,7 +236,10 @@ class UseDatabase {
           providerConnectionId,
         );
       },
-      () => this.queryTabs.add(),
+      () => {
+        this.queryTabs.add();
+        this.ui.setActiveView("query");
+      },
     );
 
     // Set up cross-manager callbacks

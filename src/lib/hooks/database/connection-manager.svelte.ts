@@ -407,6 +407,13 @@ export class ConnectionManager {
     // Set this as the active connection (only after schema loading succeeds)
     this.setActiveForProject(connectionId, existingConnection.projectId);
 
+    // Create initial query tab if no tabs exist for the project
+    const projectId = existingConnection.projectId;
+    const tabs = this.state.queryTabsByProject[projectId] ?? [];
+    if (tabs.length === 0) {
+      this.onCreateInitialTab();
+    }
+
     // Persist the connection to store (password saved to keyring if enabled)
     await this.persistence.persistConnection(updatedConnection, {
       savePassword: connection.savePassword,
@@ -854,7 +861,6 @@ export class ConnectionManager {
    * Toggle connection state (disconnect if connected).
    */
   async toggle(id: string): Promise<void> {
-    void log.info(`Connection disconnected: ${id}`);
     const connection = this.state.connections.find((c) => c.id === id);
     if (connection) {
       const wasConnected = !!connection.providerConnectionId;
@@ -868,6 +874,7 @@ export class ConnectionManager {
       }
 
       if (wasConnected) {
+        void log.info(`Connection disconnected: ${id}`);
         // Remove schema tabs belonging to the disconnected connection
         const projectId = connection.projectId;
         const schemaTabs = this.state.schemaTabsByProject[projectId] ?? [];
