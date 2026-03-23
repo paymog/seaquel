@@ -417,9 +417,9 @@
     {:else if db.state.activeProjectId && db.state.projectConnections.length > 0}
         <!-- Regular tabs (project has connections) -->
         <div class="flex items-center gap-1 h-full min-w-0">
-            <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide">
+            <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide h-full">
                 <div
-                    class="flex items-center gap-2 w-max"
+                    class="flex items-end gap-2 w-max h-full"
                     use:dndzone={{
                         items: displayTabs,
                         flipDurationMs,
@@ -439,10 +439,10 @@
                                 <ContextMenu.Trigger>
                                     <div
                                         class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
                                             activeTabType === "query" && db.state.activeQueryTabId === id
-                                                ? "bg-muted shadow-sm"
-                                                : "hover:bg-muted/50",
+                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
                                         onclick={() => handleQueryTabClick(id)}
                                     >
@@ -498,10 +498,10 @@
                                 <ContextMenu.Trigger>
                                     <div
                                         class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
                                             activeTabType === "schema" && db.state.activeSchemaTabId === id
-                                                ? "bg-muted shadow-sm"
-                                                : "hover:bg-muted/50",
+                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
                                         onclick={() => handleSchemaTabClick(id)}
                                     >
@@ -537,10 +537,10 @@
                                 <ContextMenu.Trigger>
                                     <div
                                         class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
                                             activeTabType === "explain" && db.state.activeExplainTabId === id
-                                                ? "bg-muted shadow-sm"
-                                                : "hover:bg-muted/50",
+                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
                                         onclick={() => handleExplainTabClick(id)}
                                     >
@@ -576,10 +576,10 @@
                                 <ContextMenu.Trigger>
                                     <div
                                         class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
                                             activeTabType === "erd" && db.state.activeErdTabId === id
-                                                ? "bg-muted shadow-sm"
-                                                : "hover:bg-muted/50",
+                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
                                         onclick={() => handleErdTabClick(id)}
                                     >
@@ -615,10 +615,10 @@
                                 <ContextMenu.Trigger>
                                     <div
                                         class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
                                             activeTabType === "statistics" && db.state.activeStatisticsTabId === id
-                                                ? "bg-muted shadow-sm"
-                                                : "hover:bg-muted/50",
+                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
                                         onclick={() => handleStatisticsTabClick(id)}
                                     >
@@ -654,10 +654,10 @@
                                 <ContextMenu.Trigger>
                                     <div
                                         class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
                                             activeTabType === "workflow" && db.state.activeWorkflowTabId === id
-                                                ? "bg-muted shadow-sm"
-                                                : "hover:bg-muted/50",
+                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
                                         onclick={() => handleWorkflowTabClick(id)}
                                     >
@@ -693,10 +693,10 @@
                                 <ContextMenu.Trigger>
                                     <div
                                         class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
                                             activeTabType === "visualize" && db.state.activeVisualizeTabId === id
-                                                ? "bg-muted shadow-sm"
-                                                : "hover:bg-muted/50",
+                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
                                         onclick={() => handleVisualizeTabClick(id)}
                                     >
@@ -732,10 +732,10 @@
                                 <ContextMenu.Trigger>
                                     <div
                                         class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
                                             activeTabType === "connection" && db.state.activeConnectionTabId === id
-                                                ? "bg-muted shadow-sm"
-                                                : "hover:bg-muted/50",
+                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
                                         onclick={() => handleConnectionTabClick(id)}
                                     >
@@ -771,10 +771,10 @@
                                 <ContextMenu.Trigger>
                                     <div
                                         class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
                                             activeTabType === "dashboard" && db.state.activeDashboardTabId === id
-                                                ? "bg-muted shadow-sm"
-                                                : "hover:bg-muted/50",
+                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
                                         onclick={() => handleDashboardTabClick(id)}
                                     >
@@ -858,16 +858,16 @@
     {:else}
         <!-- New project with no connections - show starter tabs + any connection tabs -->
         <div class="flex items-center gap-1 h-full min-w-0">
-            <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide">
-                <div class="flex items-center gap-1 w-max">
+            <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide h-full">
+                <div class="flex items-end gap-1 w-max h-full">
                     {#each db.state.starterTabs as starterTab (starterTab.id)}
                         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                         <div
                             class={[
-                                "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors cursor-pointer",
+                                "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors cursor-pointer",
                                 db.state.activeView !== "connection" && db.state.activeStarterTabId === starterTab.id
-                                    ? "bg-muted shadow-sm"
-                                    : "hover:bg-muted/50",
+                                    ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                    : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                             ]}
                             onclick={() => {
                                 db.starterTabs.setActive(starterTab.id);
@@ -895,10 +895,10 @@
                         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                         <div
                             class={[
-                                "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors cursor-pointer",
+                                "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors cursor-pointer",
                                 db.state.activeView === "connection" && db.state.activeConnectionTabId === connectionTab.id
-                                    ? "bg-muted shadow-sm"
-                                    : "hover:bg-muted/50",
+                                    ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                    : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                             ]}
                             onclick={() => handleConnectionTabClick(connectionTab.id)}
                         >
