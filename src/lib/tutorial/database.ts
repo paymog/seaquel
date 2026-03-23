@@ -1,18 +1,10 @@
 // src/lib/tutorial/database.ts
 import type { SchemaTable } from "$lib/types";
-import { getDuckDBProvider, type DatabaseProvider } from "$lib/providers";
+import { getProvider, getDuckDBProvider, type DatabaseProvider } from "$lib/providers";
 import { isTauri } from "$lib/utils/environment";
 
 let tutorialProvider: DatabaseProvider | null = null;
 let tutorialConnectionId: string | null = null;
-
-// For Tauri mode, we use the Tauri SQL plugin directly for SQLite
-type TauriDatabase = {
-  execute: (sql: string, params?: unknown[]) => Promise<unknown>;
-  select: <T>(sql: string, params?: unknown[]) => Promise<T>;
-  close: () => Promise<boolean>;
-};
-let tauriDb: TauriDatabase | null = null;
 
 /**
  * Get the static schema for the tutorial database.
@@ -258,16 +250,18 @@ export function getTutorialSchema(): SchemaTable[] {
  * The database is created in-memory and seeded on first access.
  */
 async function initializeTutorialDatabase(): Promise<void> {
-  if (tutorialConnectionId || tauriDb) {
+  if (tutorialConnectionId) {
     return;
   }
 
   if (isTauri()) {
-    // In Tauri mode, use SQLite via the Tauri SQL plugin
-    const Database = (await import("@tauri-apps/plugin-sql")).default;
-    const db = await Database.load("sqlite::memory:");
-    tauriDb = db;
-    await seedDatabaseTauri(db);
+    // In Tauri mode, use SQLite via unified provider
+    tutorialProvider = await getProvider();
+    tutorialConnectionId = await tutorialProvider.connect({
+      type: "sqlite",
+      databaseName: ":memory:",
+      connectionString: "sqlite::memory:",
+    });
   } else {
     // In browser mode, use DuckDB-WASM
     tutorialProvider = await getDuckDBProvider();
@@ -275,25 +269,8 @@ async function initializeTutorialDatabase(): Promise<void> {
       type: "duckdb",
       databaseName: ":memory:",
     });
-    await seedDatabaseProvider(tutorialProvider, tutorialConnectionId);
   }
-}
-
-/**
- * Seed the database using Tauri SQL plugin (SQLite).
- */
-async function seedDatabaseTauri(db: TauriDatabase): Promise<void> {
-  await seedDatabaseWithExecutor((sql) => db.execute(sql));
-}
-
-/**
- * Seed the database using the provider system (DuckDB).
- */
-async function seedDatabaseProvider(
-  provider: DatabaseProvider,
-  connectionId: string,
-): Promise<void> {
-  await seedDatabaseWithExecutor((sql) => provider.execute(connectionId, sql));
+  await seedDatabaseWithExecutor((sql) => tutorialProvider!.execute(tutorialConnectionId!, sql));
 }
 
 /**
@@ -497,9 +474,7 @@ async function seedDatabaseWithExecutor(execute: (sql: string) => Promise<unknow
 export async function executeQuery(sql: string): Promise<Record<string, unknown>[]> {
   await initializeTutorialDatabase();
 
-  if (isTauri() && tauriDb) {
-    return tauriDb.select<Record<string, unknown>[]>(sql);
-  } else if (tutorialProvider && tutorialConnectionId) {
+  if (tutorialProvider && tutorialConnectionId) {
     return tutorialProvider.select<Record<string, unknown>>(tutorialConnectionId, sql);
   }
 
@@ -510,11 +485,6 @@ export async function executeQuery(sql: string): Promise<Record<string, unknown>
  * Close the tutorial database connection.
  */
 export async function closeTutorialDatabase(): Promise<void> {
-  if (tauriDb) {
-    await tauriDb.close();
-    tauriDb = null;
-  }
-
   if (tutorialProvider && tutorialConnectionId) {
     await tutorialProvider.disconnect(tutorialConnectionId);
     tutorialProvider = null;

@@ -19,8 +19,8 @@ export async function getProvider(): Promise<DatabaseProvider> {
   if (provider) return provider;
 
   if (isTauri()) {
-    const { TauriDatabaseProvider } = await import("./tauri-provider");
-    provider = new TauriDatabaseProvider();
+    const { UnifiedTauriProvider } = await import("./unified-tauri-provider");
+    provider = new UnifiedTauriProvider();
   } else {
     const { DuckDBProvider } = await import("./duckdb-provider");
     provider = new DuckDBProvider();
@@ -37,8 +37,9 @@ export async function getDuckDBProvider(): Promise<DatabaseProvider> {
   if (duckdbProvider) return duckdbProvider;
 
   if (isTauri()) {
-    const { DuckDBTauriProvider } = await import("./duckdb-tauri-provider");
-    duckdbProvider = new DuckDBTauriProvider();
+    // Same unified provider handles DuckDB too
+    const { UnifiedTauriProvider } = await import("./unified-tauri-provider");
+    duckdbProvider = new UnifiedTauriProvider();
   } else {
     const { DuckDBProvider } = await import("./duckdb-provider");
     duckdbProvider = new DuckDBProvider();

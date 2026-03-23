@@ -3,8 +3,6 @@
  * @module types/database
  */
 
-import type Database from "@tauri-apps/plugin-sql";
-
 /**
  * Supported database engine types.
  */
@@ -74,10 +72,6 @@ export interface DatabaseConnection {
   lastConnected?: Date;
   /** Provider connection ID for database operations */
   providerConnectionId?: string;
-  /** @deprecated Use providerConnectionId. Active database connection handle (tauri-plugin-sql) */
-  database?: Database;
-  /** Connection ID for MSSQL (uses custom Rust backend) */
-  mssqlConnectionId?: string;
   /** SSH tunnel configuration */
   sshTunnel?: SSHTunnelConfig;
   /** Local port for SSH tunnel forwarding */

@@ -12,7 +12,6 @@ import {
 import { splitSqlStatements, getStatementAtOffset } from "$lib/db/sql-parser";
 import { substituteParameters } from "$lib/db/query-params";
 import { m } from "$lib/paraglide/messages.js";
-import { mssqlQuery, mssqlExecute } from "$lib/services/mssql";
 import type { ProviderRegistry } from "$lib/providers";
 import { extractErrorMessage } from "$lib/errors";
 import { log } from "$lib/utils/logger";
@@ -116,22 +115,19 @@ export class QueryExecutionManager {
     const start = performance.now();
     const baseQuery = sql.replace(/;$/, "").trim();
     const queryType = detectQueryType(baseQuery);
-    const isMssql = connection.type === "mssql" && connection.mssqlConnectionId;
     const providerConnectionId = connection.providerConnectionId;
+    if (!providerConnectionId) {
+      throw new Error("No connection established");
+    }
+    const provider = await this.providers.getForType(connection.type);
+    const isMssql = connection.type === "mssql";
 
     // Handle utility/DDL statements (SET, PRAGMA, CREATE, ALTER, DROP, etc.)
     // These are not SELECT and not write queries — execute them without pagination.
     // Use select() (not execute()) so statements like SET properly modify connection state
     // in backends like DuckDB where conn.execute() may not apply settings.
     if (!isSelectQuery(baseQuery) && !isWriteQuery(baseQuery)) {
-      if (isMssql) {
-        await mssqlExecute(connection.mssqlConnectionId!, baseQuery);
-      } else if (providerConnectionId) {
-        const provider = await this.providers.getForType(connection.type);
-        await provider.select(providerConnectionId, baseQuery, bindValues);
-      } else {
-        throw new Error("No connection established");
-      }
+      await provider.select(providerConnectionId, baseQuery, bindValues);
 
       const totalMs = performance.now() - start;
       return {
@@ -153,18 +149,9 @@ export class QueryExecutionManager {
       let rowsAffected = 0;
       let lastInsertId: number | undefined;
 
-      if (isMssql) {
-        // MSSQL: bind values are already inlined via substituteParameters
-        const result = await mssqlExecute(connection.mssqlConnectionId!, baseQuery);
-        rowsAffected = result.rowsAffected;
-      } else if (providerConnectionId) {
-        const provider = await this.providers.getForType(connection.type);
-        const executeResult = await provider.execute(providerConnectionId, baseQuery, bindValues);
-        rowsAffected = executeResult?.rowsAffected ?? 0;
-        lastInsertId = executeResult?.lastInsertId;
-      } else {
-        throw new Error("No connection established");
-      }
+      const executeResult = await provider.execute(providerConnectionId, baseQuery, bindValues);
+      rowsAffected = executeResult?.rowsAffected ?? 0;
+      lastInsertId = executeResult?.lastInsertId;
 
       const totalMs = performance.now() - start;
 
@@ -197,22 +184,11 @@ export class QueryExecutionManager {
       // Get total count first by wrapping in a subquery
       const countQuery = `SELECT COUNT(*) as total FROM (${baseQuery}) AS count_query`;
       try {
-        let countResult: { total: string | number }[];
-        if (isMssql) {
-          // MSSQL: bind values are already inlined
-          const result = await mssqlQuery(connection.mssqlConnectionId!, countQuery);
-          countResult = result.rows as { total: string | number }[];
-        } else if (providerConnectionId) {
-          const provider = await this.providers.getForType(connection.type);
-          // Pass bind values since count query wraps the parameterized query
-          countResult = await provider.select<{ total: string | number }>(
-            providerConnectionId,
-            countQuery,
-            bindValues,
-          );
-        } else {
-          throw new Error("No connection established");
-        }
+        const countResult = await provider.select<{ total: string | number }>(
+          providerConnectionId,
+          countQuery,
+          bindValues,
+        );
         totalRows = parseInt(String(countResult[0]?.total ?? "0"), 10);
       } catch {
         // If count fails, just run the query without pagination
@@ -239,25 +215,12 @@ export class QueryExecutionManager {
       totalRows = -1;
     }
 
-    let dbResult: Record<string, unknown>[];
-    let resultColumns: string[] = [];
-    if (isMssql) {
-      // MSSQL: bind values are already inlined
-      const result = await mssqlQuery(connection.mssqlConnectionId!, paginatedQuery);
-      dbResult = result.rows as Record<string, unknown>[];
-      resultColumns = result.columns;
-    } else if (providerConnectionId) {
-      const provider = await this.providers.getForType(connection.type);
-      // Pass bind values for parameterized queries
-      dbResult = await provider.select<Record<string, unknown>>(
-        providerConnectionId,
-        paginatedQuery,
-        bindValues,
-      );
-      resultColumns = (dbResult?.length ?? 0) > 0 ? Object.keys(dbResult[0]) : [];
-    } else {
-      throw new Error("No connection established");
-    }
+    const dbResult = await provider.select<Record<string, unknown>>(
+      providerConnectionId,
+      paginatedQuery,
+      bindValues,
+    );
+    const resultColumns = (dbResult?.length ?? 0) > 0 ? Object.keys(dbResult[0]) : [];
     const totalMs = performance.now() - start;
 
     // If count failed or query had LIMIT, use result length as total
@@ -312,7 +275,7 @@ export class QueryExecutionManager {
     if (!this.state.activeProjectId) return;
 
     const connection = this.state.activeConnection;
-    const isConnected = connection?.providerConnectionId || connection?.mssqlConnectionId;
+    const isConnected = !!connection?.providerConnectionId;
     if (!connection || !isConnected) {
       errorToast("Not connected to database. Please reconnect.");
       return;
@@ -407,7 +370,7 @@ export class QueryExecutionManager {
     if (!this.state.activeProjectId) return;
 
     const connection = this.state.activeConnection;
-    const isConnected = connection?.providerConnectionId || connection?.mssqlConnectionId;
+    const isConnected = !!connection?.providerConnectionId;
     if (!connection || !isConnected) {
       errorToast("Not connected to database. Please reconnect.");
       return;
@@ -500,7 +463,7 @@ export class QueryExecutionManager {
     if (!this.state.activeProjectId) return;
 
     const connection = this.state.activeConnection;
-    const isConnected = connection?.providerConnectionId || connection?.mssqlConnectionId;
+    const isConnected = !!connection?.providerConnectionId;
     if (!connection || !isConnected) {
       errorToast("Not connected to database. Please reconnect.");
       return;
@@ -618,7 +581,7 @@ export class QueryExecutionManager {
     if (!this.state.activeProjectId) return;
 
     const connection = this.state.activeConnection;
-    const isConnected = connection?.providerConnectionId || connection?.mssqlConnectionId;
+    const isConnected = !!connection?.providerConnectionId;
     if (!connection || !isConnected) {
       errorToast("Not connected to database. Please reconnect.");
       return;
@@ -772,7 +735,7 @@ export class QueryExecutionManager {
     if (!this.state.activeProjectId) return;
 
     const connection = this.state.activeConnection;
-    const isConnected = connection?.providerConnectionId || connection?.mssqlConnectionId;
+    const isConnected = !!connection?.providerConnectionId;
     if (!connection || !isConnected) return;
 
     const tabs = this.state.queryTabsByProject[this.state.activeProjectId] ?? [];
@@ -849,11 +812,14 @@ export class QueryExecutionManager {
     }
 
     const connection = this.state.activeConnection;
-    const isMssql = connection?.type === "mssql" && connection?.mssqlConnectionId;
+    if (!connection?.providerConnectionId) {
+      return { success: false, error: "No connection established" };
+    }
 
     void log.debug(`Cell update on ${connection?.id}`);
     try {
-      if (isMssql) {
+      const provider = await this.providers.getForType(connection.type);
+      if (connection.type === "mssql") {
         // SQL Server: use square brackets for identifiers and inline values
         const whereConditions = sourceTable.primaryKeys.map((pk) => {
           const val = row[pk];
@@ -869,10 +835,9 @@ export class QueryExecutionManager {
               : // oxlint-disable-next-line typescript-eslint(no-base-to-string)
                 String(newValue);
         const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = ${escapedNewValue} WHERE ${whereConditions.join(" AND ")}`;
-        await mssqlExecute(connection.mssqlConnectionId!, query);
-      } else if (connection?.providerConnectionId) {
+        await provider.execute(connection.providerConnectionId, query);
+      } else {
         // PostgreSQL/SQLite/DuckDB: use double quotes and parameterized queries
-        const provider = await this.providers.getForType(connection.type);
         const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 2}`);
         // Look up column type for explicit CAST — sqlx binds strings as TEXT,
         // and PostgreSQL won't implicitly cast TEXT to timestamp, date, etc.
@@ -885,8 +850,6 @@ export class QueryExecutionManager {
         const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = ${valuePlaceholder} WHERE ${whereConditions.join(" AND ")}`;
         const bindValues = [newValue, ...sourceTable.primaryKeys.map((pk) => row[pk])];
         await provider.execute(connection.providerConnectionId, query, bindValues);
-      } else {
-        return { success: false, error: "No connection established" };
       }
       // Update the local row data
       row[column] = newValue;
@@ -909,11 +872,14 @@ export class QueryExecutionManager {
     }
 
     const connection = this.state.activeConnection;
-    const isMssql = connection?.type === "mssql" && connection?.mssqlConnectionId;
+    if (!connection?.providerConnectionId) {
+      return { success: false, error: "No connection established" };
+    }
 
     void log.debug(`Row insert on ${connection?.id}`);
     try {
-      if (isMssql) {
+      const provider = await this.providers.getForType(connection.type);
+      if (connection.type === "mssql") {
         // SQL Server: use square brackets for identifiers and inline values
         const columnNames = columns.map((c) => `[${c}]`).join(", ");
         // oxlint-disable-next-line typescript-eslint(no-base-to-string)
@@ -925,11 +891,10 @@ export class QueryExecutionManager {
           })
           .join(", ");
         const query = `INSERT INTO [${sourceTable.schema}].[${sourceTable.name}] (${columnNames}) VALUES (${valuesList})`;
-        await mssqlExecute(connection.mssqlConnectionId!, query);
+        await provider.execute(connection.providerConnectionId, query);
         return { success: true };
-      } else if (connection?.providerConnectionId) {
+      } else {
         // PostgreSQL/SQLite/DuckDB: use double quotes and parameterized queries
-        const provider = await this.providers.getForType(connection.type);
         const columnNames = columns.map((c) => `"${c}"`).join(", ");
         const placeholders = columns
           .map((col, i) =>
@@ -943,8 +908,6 @@ export class QueryExecutionManager {
           Object.values(values),
         );
         return { success: true, lastInsertId: result?.lastInsertId };
-      } else {
-        return { success: false, error: "No connection established" };
       }
     } catch (error) {
       return { success: false, error: extractErrorMessage(error) };
@@ -957,22 +920,13 @@ export class QueryExecutionManager {
    */
   async executeRaw(query: string): Promise<Record<string, unknown>[]> {
     const connection = this.state.activeConnection;
-    const isConnected = connection?.providerConnectionId || connection?.mssqlConnectionId;
+    const isConnected = !!connection?.providerConnectionId;
     if (!connection || !isConnected) {
       throw new Error("Not connected to database");
     }
 
-    const isMssql = connection.type === "mssql" && connection.mssqlConnectionId;
-
-    if (isMssql) {
-      const result = await mssqlQuery(connection.mssqlConnectionId!, query);
-      return result.rows as Record<string, unknown>[];
-    } else if (connection.providerConnectionId) {
-      const provider = await this.providers.getForType(connection.type);
-      return await provider.select<Record<string, unknown>>(connection.providerConnectionId, query);
-    } else {
-      throw new Error("No connection established");
-    }
+    const provider = await this.providers.getForType(connection.type);
+    return await provider.select<Record<string, unknown>>(connection.providerConnectionId!, query);
   }
 
   /**
@@ -987,11 +941,14 @@ export class QueryExecutionManager {
     }
 
     const connection = this.state.activeConnection;
-    const isMssql = connection?.type === "mssql" && connection?.mssqlConnectionId;
+    if (!connection?.providerConnectionId) {
+      return { success: false, error: "No connection established" };
+    }
 
     void log.debug(`Row delete on ${connection?.id}`);
     try {
-      if (isMssql) {
+      const provider = await this.providers.getForType(connection.type);
+      if (connection.type === "mssql") {
         // SQL Server: use square brackets for identifiers and inline values
         const whereConditions = sourceTable.primaryKeys.map((pk) => {
           const val = row[pk];
@@ -999,16 +956,13 @@ export class QueryExecutionManager {
           return `[${pk}] = ${escapedVal}`;
         });
         const query = `DELETE FROM [${sourceTable.schema}].[${sourceTable.name}] WHERE ${whereConditions.join(" AND ")}`;
-        await mssqlExecute(connection.mssqlConnectionId!, query);
-      } else if (connection?.providerConnectionId) {
+        await provider.execute(connection.providerConnectionId, query);
+      } else {
         // PostgreSQL/SQLite/DuckDB: use double quotes and parameterized queries
-        const provider = await this.providers.getForType(connection.type);
         const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 1}`);
         const query = `DELETE FROM "${sourceTable.schema}"."${sourceTable.name}" WHERE ${whereConditions.join(" AND ")}`;
         const bindValues = sourceTable.primaryKeys.map((pk) => row[pk]);
         await provider.execute(connection.providerConnectionId, query, bindValues);
-      } else {
-        return { success: false, error: "No connection established" };
       }
       return { success: true };
     } catch (error) {

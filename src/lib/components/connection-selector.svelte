@@ -17,7 +17,7 @@
 	};
 
 	const handleConnectionSelect = async (connection: typeof db.state.connections[0]) => {
-		if (connection.database || connection.mssqlConnectionId || connection.providerConnectionId) {
+		if (connection.providerConnectionId) {
 			db.connections.setActive(connection.id);
 		} else {
 			const autoReconnected = await db.connections.autoReconnect(connection.id);
@@ -43,7 +43,7 @@
 	};
 
 	const isConnected = (connection: typeof db.state.connections[0]) => {
-		return !!(connection.database || connection.mssqlConnectionId || connection.providerConnectionId);
+		return !!(connection.providerConnectionId);
 	};
 </script>
 

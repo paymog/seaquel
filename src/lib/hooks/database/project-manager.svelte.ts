@@ -685,11 +685,7 @@ export class ProjectManager {
     const restoredConnection = persistedState.activeConnectionId
       ? this.state.connections.find((c) => c.id === persistedState.activeConnectionId)
       : null;
-    const isConnected =
-      restoredConnection &&
-      (restoredConnection.database ||
-        restoredConnection.mssqlConnectionId ||
-        restoredConnection.providerConnectionId);
+    const isConnected = restoredConnection && !!restoredConnection.providerConnectionId;
     this.state.activeConnectionIdByProject[projectId] = isConnected
       ? persistedState.activeConnectionId
       : null;

@@ -1,14 +1,10 @@
-// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
-// SPDX-License-Identifier: Apache-2.0
-// SPDX-License-Identifier: MIT
-
 use serde_json::Value as JsonValue;
 use sqlx::{sqlite::SqliteValueRef, TypeInfo, Value, ValueRef};
 use time::{Date, PrimitiveDateTime, Time};
 
-use crate::Error;
+use crate::db::DbError;
 
-pub(crate) fn to_json(v: SqliteValueRef) -> Result<JsonValue, Error> {
+pub fn to_json(v: SqliteValueRef) -> Result<JsonValue, DbError> {
     if v.is_null() {
         return Ok(JsonValue::Null);
     }
@@ -71,7 +67,12 @@ pub(crate) fn to_json(v: SqliteValueRef) -> Result<JsonValue, Error> {
             }
         }
         "NULL" => JsonValue::Null,
-        _ => return Err(Error::UnsupportedDatatype(v.type_info().name().to_string())),
+        _ => {
+            return Err(DbError {
+                message: format!("Unsupported datatype: {}", v.type_info().name()),
+                code: "UNSUPPORTED_TYPE".to_string(),
+            })
+        }
     };
 
     Ok(res)

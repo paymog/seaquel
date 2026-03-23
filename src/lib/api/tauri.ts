@@ -8,46 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 // Re-export existing well-typed service modules
 export * as git from "$lib/services/git";
-export * as mssql from "$lib/services/mssql";
 export * as sshTunnel from "$lib/services/ssh-tunnel";
-
-// === DuckDB Commands ===
-
-export interface DuckDBConnectResult {
-  connection_id: string;
-}
-
-export interface DuckDBQueryResult {
-  columns: string[];
-  rows: unknown[][];
-}
-
-export interface DuckDBExecuteResult {
-  rows_affected: number;
-}
-
-export async function duckdbConnect(path: string): Promise<DuckDBConnectResult> {
-  return invoke<DuckDBConnectResult>("duckdb_connect", { path });
-}
-
-export async function duckdbDisconnect(connectionId: string): Promise<void> {
-  await invoke("duckdb_disconnect", { connectionId });
-}
-
-export async function duckdbQuery(connectionId: string, sql: string): Promise<DuckDBQueryResult> {
-  return invoke<DuckDBQueryResult>("duckdb_query", { connectionId, sql });
-}
-
-export async function duckdbExecute(
-  connectionId: string,
-  sql: string,
-): Promise<DuckDBExecuteResult> {
-  return invoke<DuckDBExecuteResult>("duckdb_execute", { connectionId, sql });
-}
-
-export async function duckdbTest(path: string): Promise<void> {
-  await invoke("duckdb_test", { path });
-}
 
 // === App Commands ===
 

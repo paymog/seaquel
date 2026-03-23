@@ -1,15 +1,11 @@
-// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
-// SPDX-License-Identifier: Apache-2.0
-// SPDX-License-Identifier: MIT
-
 use rust_decimal::prelude::ToPrimitive;
 use serde_json::Value as JsonValue;
 use sqlx::{postgres::PgValueRef, TypeInfo, Value, ValueRef};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
-use crate::Error;
+use crate::db::DbError;
 
-pub(crate) fn to_json(v: PgValueRef) -> Result<JsonValue, Error> {
+pub fn to_json(v: PgValueRef) -> Result<JsonValue, DbError> {
     if v.is_null() {
         return Ok(JsonValue::Null);
     }
@@ -102,7 +98,6 @@ pub(crate) fn to_json(v: PgValueRef) -> Result<JsonValue, Error> {
         }
         "NUMERIC" => {
             if let Ok(v) = ValueRef::to_owned(&v).try_decode::<rust_decimal::Decimal>() {
-                // Preserve as number if it fits in f64 without precision loss, otherwise string
                 if let Some(n) = v.to_f64().and_then(serde_json::Number::from_f64) {
                     JsonValue::Number(n)
                 } else {
@@ -118,7 +113,10 @@ pub(crate) fn to_json(v: PgValueRef) -> Result<JsonValue, Error> {
             if let Ok(v) = ValueRef::to_owned(&v).try_decode_unchecked::<String>() {
                 JsonValue::String(v)
             } else {
-                return Err(Error::UnsupportedDatatype(v.type_info().name().to_string()));
+                return Err(DbError {
+                    message: format!("Unsupported datatype: {}", v.type_info().name()),
+                    code: "UNSUPPORTED_TYPE".to_string(),
+                });
             }
         }
     };

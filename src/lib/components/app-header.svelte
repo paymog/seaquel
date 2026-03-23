@@ -206,7 +206,7 @@
                     </Badge>
                 </button>
             {/if}
-            {#if !isLearnPage && (db.state.activeConnection?.database || db.state.activeConnection?.mssqlConnectionId || db.state.activeConnection?.providerConnectionId)}
+            {#if !isLearnPage && (db.state.activeConnection?.providerConnectionId)}
                 <Button
                     size="icon"
                     variant="ghost"
