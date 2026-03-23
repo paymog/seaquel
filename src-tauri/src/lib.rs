@@ -8,14 +8,11 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
 use tauri_plugin_updater::UpdaterExt;
 
-mod duckdb_commands;
+mod db;
 mod git;
 mod license;
-mod mssql;
 mod ssh_tunnel;
 
-use duckdb_commands::DuckDBState;
-use mssql::MssqlConnectionManager;
 use ssh_tunnel::TunnelManager;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -386,13 +383,11 @@ pub fn run() {
         )
         .plugin(tauri_plugin_os::init())
         .manage(TunnelManager::new())
-        .manage(MssqlConnectionManager::new())
-        .manage(DuckDBState::default())
+        .manage(db::ConnectionManager::new())
         .manage(PendingUpdate { bytes: Mutex::new(None) })
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -412,15 +407,11 @@ pub fn run() {
             ssh_tunnel::close_ssh_tunnel,
             ssh_tunnel::check_tunnel_status,
             ssh_tunnel::list_active_tunnels,
-            mssql::mssql_connect,
-            mssql::mssql_disconnect,
-            mssql::mssql_query,
-            mssql::mssql_execute,
-            duckdb_commands::duckdb_connect,
-            duckdb_commands::duckdb_disconnect,
-            duckdb_commands::duckdb_query,
-            duckdb_commands::duckdb_execute,
-            duckdb_commands::duckdb_test,
+            db::commands::db_connect,
+            db::commands::db_query,
+            db::commands::db_execute,
+            db::commands::db_disconnect,
+            db::commands::db_test,
             git::git_clone_repo,
             git::git_init_repo,
             git::git_pull_repo,

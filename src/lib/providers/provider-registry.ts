@@ -17,12 +17,14 @@ export class ProviderRegistry {
    * Lazily initializes and caches provider instances.
    */
   async getForType(dbType: string): Promise<DatabaseProvider> {
-    if (dbType === "duckdb") {
-      return this.getOrCreateDuckDB();
-    }
+    // Browser-only providers for demo mode
     if (dbType === "sqlite" && !isTauri()) {
       return this.getOrCreateWebSqlite();
     }
+    if (dbType === "duckdb" && !isTauri()) {
+      return this.getOrCreateDuckDB();
+    }
+    // In Tauri, the unified provider handles all database types
     return this.getOrCreateDefault();
   }
 

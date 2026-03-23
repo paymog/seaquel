@@ -1,14 +1,10 @@
-// Copyright 2019-2023 Tauri Programme within The Commons Conservancy
-// SPDX-License-Identifier: Apache-2.0
-// SPDX-License-Identifier: MIT
-
 use serde_json::Value as JsonValue;
 use sqlx::{mysql::MySqlValueRef, TypeInfo, Value, ValueRef};
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time};
 
-use crate::Error;
+use crate::db::DbError;
 
-pub(crate) fn to_json(v: MySqlValueRef) -> Result<JsonValue, Error> {
+pub fn to_json(v: MySqlValueRef) -> Result<JsonValue, DbError> {
     if v.is_null() {
         return Ok(JsonValue::Null);
     }
@@ -101,14 +97,17 @@ pub(crate) fn to_json(v: MySqlValueRef) -> Result<JsonValue, Error> {
         }
         "JSON" => ValueRef::to_owned(&v).try_decode().unwrap_or_default(),
         "BINARY" | "VARBINARY" => {
-            // MySQL information_schema often returns text data as VARBINARY,
-            // so try decoding as UTF-8 string first, then fall back to byte array
             if let Ok(v) = ValueRef::to_owned(&v).try_decode::<Vec<u8>>() {
                 match String::from_utf8(v) {
                     Ok(s) => JsonValue::String(s),
                     Err(e) => {
                         let bytes = e.into_bytes();
-                        JsonValue::Array(bytes.into_iter().map(|n| JsonValue::Number(n.into())).collect())
+                        JsonValue::Array(
+                            bytes
+                                .into_iter()
+                                .map(|n| JsonValue::Number(n.into()))
+                                .collect(),
+                        )
                     }
                 }
             } else {
@@ -123,7 +122,12 @@ pub(crate) fn to_json(v: MySqlValueRef) -> Result<JsonValue, Error> {
             }
         }
         "NULL" => JsonValue::Null,
-        _ => return Err(Error::UnsupportedDatatype(v.type_info().name().to_string())),
+        _ => {
+            return Err(DbError {
+                message: format!("Unsupported datatype: {}", v.type_info().name()),
+                code: "UNSUPPORTED_TYPE".to_string(),
+            })
+        }
     };
 
     Ok(res)

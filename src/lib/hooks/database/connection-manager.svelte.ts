@@ -8,7 +8,6 @@ import type { StateRestorationManager } from "./state-restoration.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
 import { getAdapter, type DatabaseAdapter } from "$lib/db";
 import { createSshTunnel, closeSshTunnel } from "$lib/services/ssh-tunnel";
-import { mssqlConnect, mssqlDisconnect, mssqlQuery } from "$lib/services/mssql";
 import type { ProviderRegistry } from "$lib/providers";
 import { isTauri, isDemo } from "$lib/utils/environment";
 import { getKeyringService } from "$lib/services/keyring";
@@ -55,7 +54,6 @@ export class ConnectionManager {
       schemas: SchemaTable[],
       adapter: DatabaseAdapter,
       providerConnectionId?: string,
-      mssqlConnectionId?: string,
     ) => void,
     private onCreateInitialTab: () => void,
   ) {}
@@ -209,44 +207,18 @@ export class ConnectionManager {
       connectionId,
     );
 
-    // Connect to database - MSSQL and DuckDB use custom backends, others use provider
-    let providerConnectionId: string | undefined;
-    let mssqlConnectionId: string | undefined;
-
-    if (connection.type === "mssql") {
-      // MSSQL uses custom Tauri backend (only available in desktop)
-      if (!isTauri()) {
-        throw new Error("MSSQL connections are only available in the desktop app");
-      }
-      const host = tunnelLocalPort ? "127.0.0.1" : connection.host;
-      const port = tunnelLocalPort || connection.port;
-      const mssqlConn = await mssqlConnect({
-        host,
-        port,
-        database: connection.databaseName,
-        username: connection.username,
-        password: connection.password,
-        encrypt: connection.sslMode !== "disable",
-        trustCert: connection.sslMode !== "require",
-      });
-      mssqlConnectionId = mssqlConn.connectionId;
-    } else if (connection.type === "duckdb") {
-      // DuckDB uses dedicated provider (Tauri backend in desktop, WASM in browser)
-      const duckdbProvider = await this.providers.getOrCreateDuckDB();
-      providerConnectionId = await duckdbProvider.connect({
-        type: connection.type,
-        connectionString: effectiveConnectionString,
-        databaseName: connection.databaseName,
-      });
-    } else if (effectiveConnectionString) {
-      // Use appropriate provider for PostgreSQL, SQLite
-      const provider = await this.providers.getForType(connection.type);
-      providerConnectionId = await provider.connect({
-        type: connection.type,
-        connectionString: effectiveConnectionString,
-        databaseName: connection.databaseName,
-      });
-    }
+    // Connect to database via unified provider
+    const provider = await this.providers.getForType(connection.type);
+    const providerConnectionId = await provider.connect({
+      type: connection.type,
+      host: tunnelLocalPort ? "127.0.0.1" : connection.host,
+      port: tunnelLocalPort || connection.port,
+      databaseName: connection.databaseName,
+      username: connection.username,
+      password: connection.password,
+      sslMode: connection.sslMode,
+      connectionString: effectiveConnectionString,
+    });
 
     const projectId = connection.projectId || this.state.activeProjectId || DEFAULT_PROJECT_ID;
     const newConnection: DatabaseConnection = {
@@ -258,7 +230,6 @@ export class ConnectionManager {
       lastConnected: new Date(),
       tunnelLocalPort,
       providerConnectionId,
-      mssqlConnectionId,
     };
 
     if (!this.state.connections.find((c) => c.id === newConnection.id)) {
@@ -271,31 +242,18 @@ export class ConnectionManager {
     const adapter = getAdapter(newConnection.type);
     let schemasWithTables: SchemaTable[];
     try {
-      let schemasWithTablesDbResult: unknown[];
-      if (connection.type === "mssql" && mssqlConnectionId) {
-        const result = await mssqlQuery(mssqlConnectionId, adapter.getSchemaQuery());
-        schemasWithTablesDbResult = result.rows;
-      } else if (providerConnectionId) {
-        const provider = await this.providers.getForType(newConnection.type);
-        schemasWithTablesDbResult = await provider.select(
-          providerConnectionId,
-          adapter.getSchemaQuery(),
-        );
-      } else {
-        throw new Error("No connection established");
-      }
+      const schemaProvider = await this.providers.getForType(newConnection.type);
+      const schemasWithTablesDbResult = await schemaProvider.select(
+        providerConnectionId,
+        adapter.getSchemaQuery(),
+      );
       schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
     } catch (error) {
       // Cleanup: remove the connection we just added
       this.state.connections = this.state.connections.filter((c) => c.id !== newConnection.id);
       this.stateRestoration.cleanupConnectionMaps(newConnection.id);
-      if (mssqlConnectionId) {
-        await mssqlDisconnect(mssqlConnectionId).catch(() => {});
-      }
-      if (providerConnectionId) {
-        const provider = await this.providers.getForType(newConnection.type);
-        await provider.disconnect(providerConnectionId).catch(() => {});
-      }
+      const cleanupProvider = await this.providers.getForType(newConnection.type);
+      await cleanupProvider.disconnect(providerConnectionId).catch(() => {});
       throw new Error(`Failed to load database schema: ${String(error)}`);
     }
 
@@ -314,7 +272,6 @@ export class ConnectionManager {
       schemasWithTables,
       adapter,
       newConnection.providerConnectionId,
-      newConnection.mssqlConnectionId,
     );
 
     void log.info(`Schema loaded for ${newConnection.id}: ${schemasWithTables.length} tables`);
@@ -379,60 +336,29 @@ export class ConnectionManager {
       }
     }
 
-    // Close existing connections
-    if (existingConnection.mssqlConnectionId) {
-      await mssqlDisconnect(existingConnection.mssqlConnectionId).catch(() => {});
-    }
+    // Close existing connection
     if (existingConnection.providerConnectionId) {
-      // Use appropriate provider for disconnect based on type
-      const provider = await this.providers.getForType(existingConnection.type);
-      await provider.disconnect(existingConnection.providerConnectionId).catch(() => {});
+      const oldProvider = await this.providers.getForType(existingConnection.type);
+      await oldProvider.disconnect(existingConnection.providerConnectionId).catch(() => {});
     }
 
-    // Connect to database - MSSQL and DuckDB use custom backends, others use provider
-    let providerConnectionId: string | undefined;
-    let mssqlConnectionId: string | undefined;
-
-    if (connection.type === "mssql") {
-      // MSSQL uses custom Tauri backend (only available in desktop)
-      if (!isTauri()) {
-        throw new Error("MSSQL connections are only available in the desktop app");
-      }
-      const host = tunnelLocalPort ? "127.0.0.1" : connection.host;
-      const port = tunnelLocalPort || connection.port;
-      const mssqlConn = await mssqlConnect({
-        host,
-        port,
-        database: connection.databaseName,
-        username: connection.username,
-        password: connection.password,
-        encrypt: connection.sslMode !== "disable",
-        trustCert: connection.sslMode !== "require",
-      });
-      mssqlConnectionId = mssqlConn.connectionId;
-    } else if (connection.type === "duckdb") {
-      // DuckDB uses dedicated provider (Tauri backend in desktop, WASM in browser)
-      const duckdbProvider = await this.providers.getOrCreateDuckDB();
-      providerConnectionId = await duckdbProvider.connect({
-        type: connection.type,
-        connectionString: effectiveConnectionString,
-        databaseName: connection.databaseName,
-      });
-    } else if (effectiveConnectionString) {
-      // Use appropriate provider for PostgreSQL, SQLite
-      const provider = await this.providers.getForType(connection.type);
-      providerConnectionId = await provider.connect({
-        type: connection.type,
-        connectionString: effectiveConnectionString,
-        databaseName: connection.databaseName,
-      });
-    }
+    // Connect to database via unified provider
+    const provider = await this.providers.getForType(connection.type);
+    const providerConnectionId = await provider.connect({
+      type: connection.type,
+      host: tunnelLocalPort ? "127.0.0.1" : connection.host,
+      port: tunnelLocalPort || connection.port,
+      databaseName: connection.databaseName,
+      username: connection.username,
+      password: connection.password,
+      sslMode: connection.sslMode,
+      connectionString: effectiveConnectionString,
+    });
 
     // Create updated connection object to ensure Svelte reactivity sees the change
     const updatedConnection: DatabaseConnection = {
       ...existingConnection,
       providerConnectionId,
-      mssqlConnectionId,
       lastConnected: new Date(),
       password: connection.password,
       tunnelLocalPort,
@@ -453,34 +379,19 @@ export class ConnectionManager {
     const adapter = getAdapter(existingConnection.type);
     let schemasWithTables: SchemaTable[];
     try {
-      let schemasWithTablesDbResult: unknown[];
-      if (connection.type === "mssql" && mssqlConnectionId) {
-        const result = await mssqlQuery(mssqlConnectionId, adapter.getSchemaQuery());
-        schemasWithTablesDbResult = result.rows;
-      } else if (providerConnectionId) {
-        const provider = await this.providers.getForType(existingConnection.type);
-        schemasWithTablesDbResult = await provider.select(
-          providerConnectionId,
-          adapter.getSchemaQuery(),
-        );
-      } else {
-        throw new Error("No connection established");
-      }
+      const schemaProvider = await this.providers.getForType(existingConnection.type);
+      const schemasWithTablesDbResult = await schemaProvider.select(
+        providerConnectionId,
+        adapter.getSchemaQuery(),
+      );
       schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
     } catch (error) {
-      // Revert: set providerConnectionId/mssqlConnectionId back to undefined on the connection
+      // Revert: set providerConnectionId back to undefined on the connection
       this.state.connections = this.state.connections.map((c) =>
-        c.id === connectionId
-          ? { ...c, providerConnectionId: undefined, mssqlConnectionId: undefined }
-          : c,
+        c.id === connectionId ? { ...c, providerConnectionId: undefined } : c,
       );
-      if (mssqlConnectionId) {
-        await mssqlDisconnect(mssqlConnectionId).catch(() => {});
-      }
-      if (providerConnectionId) {
-        const provider = await this.providers.getForType(existingConnection.type);
-        await provider.disconnect(providerConnectionId).catch(() => {});
-      }
+      const cleanupProvider = await this.providers.getForType(existingConnection.type);
+      await cleanupProvider.disconnect(providerConnectionId).catch(() => {});
       throw new Error(`Failed to load database schema: ${String(error)}`);
     }
 
@@ -491,13 +402,7 @@ export class ConnectionManager {
     };
 
     // Load column metadata asynchronously in the background
-    this.onSchemaLoaded(
-      connectionId,
-      schemasWithTables,
-      adapter,
-      providerConnectionId,
-      mssqlConnectionId,
-    );
+    this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
 
     // Set this as the active connection (only after schema loading succeeds)
     this.setActiveForProject(connectionId, existingConnection.projectId);
@@ -603,45 +508,17 @@ export class ConnectionManager {
     }
 
     try {
-      // MSSQL and DuckDB use custom backends, others use provider
-      if (connection.type === "mssql") {
-        if (!isTauri()) {
-          throw new Error("MSSQL connections are only available in the desktop app");
-        }
-        const host = tunnelLocalPort ? "127.0.0.1" : connection.host;
-        const port = tunnelLocalPort || connection.port;
-        const mssqlConn = await mssqlConnect({
-          host,
-          port,
-          database: connection.databaseName,
-          username: connection.username,
-          password: connection.password,
-          encrypt: connection.sslMode !== "disable",
-          trustCert: connection.sslMode !== "require",
-        });
-        // Close the test connection immediately
-        await mssqlDisconnect(mssqlConn.connectionId);
-      } else if (connection.type === "duckdb") {
-        // DuckDB uses dedicated provider
-        const duckdbProvider = await this.providers.getOrCreateDuckDB();
-        const connId = await duckdbProvider.connect({
-          type: connection.type,
-          connectionString: effectiveConnectionString,
-          databaseName: connection.databaseName,
-        });
-        // Close the test connection immediately
-        await duckdbProvider.disconnect(connId);
-      } else if (effectiveConnectionString) {
-        // Use appropriate provider for PostgreSQL, SQLite
-        const provider = await this.providers.getForType(connection.type);
-        const connId = await provider.connect({
-          type: connection.type,
-          connectionString: effectiveConnectionString,
-          databaseName: connection.databaseName,
-        });
-        // Close the test connection immediately
-        await provider.disconnect(connId);
-      }
+      const provider = await this.providers.getForType(connection.type);
+      await provider.test({
+        type: connection.type,
+        host: tunnelLocalPort ? "127.0.0.1" : connection.host,
+        port: tunnelLocalPort || connection.port,
+        databaseName: connection.databaseName,
+        username: connection.username,
+        password: connection.password,
+        sslMode: connection.sslMode,
+        connectionString: effectiveConnectionString,
+      });
     } finally {
       // Clean up SSH tunnel if we created one
       if (tunnelId) {
@@ -668,15 +545,9 @@ export class ConnectionManager {
 
     // Close provider connection if exists
     if (connection?.providerConnectionId) {
-      // Use appropriate provider for disconnect based on type
       await this.providers.getForType(connection.type).then((provider) => {
         provider.disconnect(connection.providerConnectionId!).catch(console.error);
       });
-    }
-
-    // Close MSSQL connection if exists
-    if (connection?.mssqlConnectionId) {
-      mssqlDisconnect(connection.mssqlConnectionId).catch(console.error);
     }
 
     // Close SSH tunnel if exists
@@ -699,8 +570,7 @@ export class ConnectionManager {
     // If this was the active connection for its project, switch to another
     if (connection && this.state.activeConnectionIdByProject[connection.projectId] === id) {
       const nextConnection = this.state.connections.find(
-        (c) =>
-          c.projectId === connection.projectId && (c.providerConnectionId || c.mssqlConnectionId),
+        (c) => c.projectId === connection.projectId && !!c.providerConnectionId,
       );
       this.setActiveForProject(nextConnection?.id ?? null, connection.projectId);
     }
@@ -924,26 +794,16 @@ export class ConnectionManager {
       throw new Error("Connection not found");
     }
 
-    const { providerConnectionId, mssqlConnectionId } = connection;
-    if (!providerConnectionId && !mssqlConnectionId) {
+    if (!connection.providerConnectionId) {
       throw new Error("Connection is not active");
     }
 
     const adapter = getAdapter(connection.type);
-
-    let schemasWithTablesDbResult: unknown[];
-    if (connection.type === "mssql" && mssqlConnectionId) {
-      const result = await mssqlQuery(mssqlConnectionId, adapter.getSchemaQuery());
-      schemasWithTablesDbResult = result.rows;
-    } else if (providerConnectionId) {
-      const provider = await this.providers.getForType(connection.type);
-      schemasWithTablesDbResult = await provider.select(
-        providerConnectionId,
-        adapter.getSchemaQuery(),
-      );
-    } else {
-      throw new Error("No connection established");
-    }
+    const provider = await this.providers.getForType(connection.type);
+    const schemasWithTablesDbResult = await provider.select(
+      connection.providerConnectionId,
+      adapter.getSchemaQuery(),
+    );
 
     const schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
 
@@ -953,13 +813,7 @@ export class ConnectionManager {
     };
 
     // Reload column metadata in the background
-    this.onSchemaLoaded(
-      connectionId,
-      schemasWithTables,
-      adapter,
-      providerConnectionId,
-      mssqlConnectionId,
-    );
+    this.onSchemaLoaded(connectionId, schemasWithTables, adapter, connection.providerConnectionId);
   }
 
   /**
@@ -1003,31 +857,48 @@ export class ConnectionManager {
     void log.info(`Connection disconnected: ${id}`);
     const connection = this.state.connections.find((c) => c.id === id);
     if (connection) {
-      const wasConnected = !!connection.providerConnectionId || !!connection.mssqlConnectionId;
+      const wasConnected = !!connection.providerConnectionId;
 
       // Disconnect provider connection if connected
       if (connection.providerConnectionId) {
-        // Use appropriate provider for disconnect based on type
         await this.providers.getForType(connection.type).then((provider) => {
           provider.disconnect(connection.providerConnectionId!).catch(console.error);
         });
         connection.providerConnectionId = undefined;
       }
 
-      // Disconnect MSSQL if connected
-      if (connection.mssqlConnectionId) {
-        mssqlDisconnect(connection.mssqlConnectionId).catch(console.error);
-        connection.mssqlConnectionId = undefined;
-      }
-
       if (wasConnected) {
+        // Remove schema tabs belonging to the disconnected connection
+        const projectId = connection.projectId;
+        const schemaTabs = this.state.schemaTabsByProject[projectId] ?? [];
+        const removedTabIds = new Set(
+          schemaTabs.filter((t) => t.connectionId === id).map((t) => t.id),
+        );
+        const remainingTabs = schemaTabs.filter((t) => t.connectionId !== id);
+        // Remove from tab order
+        const tabOrder = this.state.tabOrderByProject[projectId] ?? [];
+        this.state.tabOrderByProject = {
+          ...this.state.tabOrderByProject,
+          [projectId]: tabOrder.filter((tabId) => !removedTabIds.has(tabId)),
+        };
+        this.state.schemaTabsByProject = {
+          ...this.state.schemaTabsByProject,
+          [projectId]: remainingTabs,
+        };
+        // Reset active schema tab if it was removed
+        const activeSchemaTabId = this.state.activeSchemaTabIdByProject[projectId];
+        if (activeSchemaTabId && removedTabIds.has(activeSchemaTabId)) {
+          this.state.activeSchemaTabIdByProject = {
+            ...this.state.activeSchemaTabIdByProject,
+            [projectId]: remainingTabs[0]?.id ?? null,
+          };
+        }
+        this.persistence.scheduleProject(projectId);
+
         // If disconnecting the active connection for its project, switch to another connected one
         if (this.state.activeConnectionIdByProject[connection.projectId] === id) {
           const nextConnection = this.state.connections.find(
-            (c) =>
-              c.projectId === connection.projectId &&
-              (c.providerConnectionId || c.mssqlConnectionId) &&
-              c.id !== id,
+            (c) => c.projectId === connection.projectId && !!c.providerConnectionId && c.id !== id,
           );
           this.setActiveForProject(nextConnection?.id ?? null, connection.projectId);
         }

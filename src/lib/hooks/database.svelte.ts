@@ -228,14 +228,12 @@ class UseDatabase {
         schemas: SchemaTable[],
         adapter: DatabaseAdapter,
         providerConnectionId?: string,
-        mssqlConnectionId?: string,
       ) => {
         void this.schemaTabs.loadTableMetadataInBackground(
           connectionId,
           schemas,
           adapter,
           providerConnectionId,
-          mssqlConnectionId,
         );
       },
       () => this.queryTabs.add(),

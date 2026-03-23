@@ -74,6 +74,8 @@ export interface SchemaTable {
 export interface SchemaTab {
   /** Unique tab identifier */
   id: string;
+  /** The connection this tab belongs to */
+  connectionId: string;
   /** The table being viewed */
   table: SchemaTable;
 }

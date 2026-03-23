@@ -3,7 +3,6 @@ import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
 import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelte.js";
 import { getAdapter, type DatabaseAdapter } from "$lib/db";
-import { mssqlQuery } from "$lib/services/mssql";
 import type { ProviderRegistry } from "$lib/providers";
 import { handleError, createError } from "$lib/errors";
 import { log } from "$lib/utils/logger";
@@ -48,56 +47,27 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
     const connectionId = this.state.activeConnectionId;
     const tabs = this.getProjectTabs();
     const adapter = getAdapter(this.state.activeConnection.type);
-    const isMssql =
-      this.state.activeConnection.type === "mssql" && this.state.activeConnection.mssqlConnectionId;
     const providerConnectionId = this.state.activeConnection.providerConnectionId;
+    if (!providerConnectionId) return null;
 
     // Fetch table metadata - query columns and indexes
-    let columnsResult: unknown[];
-    let indexesResult: unknown[];
+    const provider = await this.providers.getForType(this.state.activeConnection.type);
+    const columnsResult = await provider.select(
+      providerConnectionId,
+      adapter.getColumnsQuery(table.name, table.schema),
+    );
+
+    const indexesResult = await provider.select(
+      providerConnectionId,
+      adapter.getIndexesQuery(table.name, table.schema),
+    );
+
     let foreignKeysResult: unknown[] | undefined;
-
-    if (isMssql) {
-      const columnsQueryResult = await mssqlQuery(
-        this.state.activeConnection.mssqlConnectionId!,
-        adapter.getColumnsQuery(table.name, table.schema),
-      );
-      columnsResult = columnsQueryResult.rows;
-
-      const indexesQueryResult = await mssqlQuery(
-        this.state.activeConnection.mssqlConnectionId!,
-        adapter.getIndexesQuery(table.name, table.schema),
-      );
-      indexesResult = indexesQueryResult.rows;
-
-      if (adapter.getForeignKeysQuery) {
-        const fkQueryResult = await mssqlQuery(
-          this.state.activeConnection.mssqlConnectionId!,
-          adapter.getForeignKeysQuery(table.name, table.schema),
-        );
-        foreignKeysResult = fkQueryResult.rows;
-      }
-    } else if (providerConnectionId) {
-      const provider = await this.providers.getForType(this.state.activeConnection?.type ?? "");
-      columnsResult = await provider.select(
+    if (adapter.getForeignKeysQuery) {
+      foreignKeysResult = await provider.select(
         providerConnectionId,
-        adapter.getColumnsQuery(table.name, table.schema),
+        adapter.getForeignKeysQuery(table.name, table.schema),
       );
-
-      indexesResult = await provider.select(
-        providerConnectionId,
-        adapter.getIndexesQuery(table.name, table.schema),
-      );
-
-      // Fetch foreign keys if adapter supports it (needed for SQLite, DuckDB)
-      if (adapter.getForeignKeysQuery) {
-        foreignKeysResult = await provider.select(
-          providerConnectionId,
-          adapter.getForeignKeysQuery(table.name, table.schema),
-        );
-      }
-    } else {
-      return null;
     }
 
     // Update table with fetched columns and indexes
@@ -134,6 +104,7 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
 
     const newTab: SchemaTab = {
       id: `schema-tab-${crypto.randomUUID()}`,
+      connectionId,
       table: updatedTable,
     };
 
@@ -149,63 +120,33 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
     tables: SchemaTable[],
     adapter: DatabaseAdapter,
     providerConnectionId?: string,
-    mssqlConnectionId?: string,
   ): Promise<void> {
-    // Get provider once for all tables - look up connection type from state
+    if (!providerConnectionId) return;
+
+    // Get provider once for all tables
     const connectionType = this.state.connections.find((c) => c.id === connectionId)?.type;
-    const provider = providerConnectionId
-      ? await this.providers.getForType(connectionType ?? "")
-      : null;
+    const provider = await this.providers.getForType(connectionType ?? "");
 
     void log.debug(`Loading metadata for ${tables.length} tables on ${connectionId}`);
     // Process tables in parallel but update state as each completes
     const promises = tables.map(async (table, index) => {
       try {
-        let columnsResult: unknown[];
-        let indexesResult: unknown[];
+        const columnsResult = await provider.select(
+          providerConnectionId,
+          adapter.getColumnsQuery(table.name, table.schema),
+        );
+
+        const indexesResult = await provider.select(
+          providerConnectionId,
+          adapter.getIndexesQuery(table.name, table.schema),
+        );
+
         let foreignKeysResult: unknown[] | undefined;
-
-        if (mssqlConnectionId) {
-          const columnsQueryResult = await mssqlQuery(
-            mssqlConnectionId,
-            adapter.getColumnsQuery(table.name, table.schema),
-          );
-          columnsResult = columnsQueryResult.rows;
-
-          const indexesQueryResult = await mssqlQuery(
-            mssqlConnectionId,
-            adapter.getIndexesQuery(table.name, table.schema),
-          );
-          indexesResult = indexesQueryResult.rows;
-
-          if (adapter.getForeignKeysQuery) {
-            const fkQueryResult = await mssqlQuery(
-              mssqlConnectionId,
-              adapter.getForeignKeysQuery(table.name, table.schema),
-            );
-            foreignKeysResult = fkQueryResult.rows;
-          }
-        } else if (provider && providerConnectionId) {
-          columnsResult = await provider.select(
+        if (adapter.getForeignKeysQuery) {
+          foreignKeysResult = await provider.select(
             providerConnectionId,
-            adapter.getColumnsQuery(table.name, table.schema),
+            adapter.getForeignKeysQuery(table.name, table.schema),
           );
-
-          indexesResult = await provider.select(
-            providerConnectionId,
-            adapter.getIndexesQuery(table.name, table.schema),
-          );
-
-          // Fetch foreign keys if adapter supports it (needed for SQLite, DuckDB)
-          if (adapter.getForeignKeysQuery) {
-            foreignKeysResult = await provider.select(
-              providerConnectionId,
-              adapter.getForeignKeysQuery(table.name, table.schema),
-            );
-          }
-        } else {
-          // No valid connection, skip
-          return;
         }
 
         const updatedTable: SchemaTable = {

@@ -34,7 +34,7 @@
 	};
 
 	const handleConnectionClick = async (connection: typeof db.state.connections[0]) => {
-		if (connection.database || connection.mssqlConnectionId || connection.providerConnectionId) {
+		if (connection.providerConnectionId) {
 			db.connections.setActive(connection.id);
 		} else {
 			const autoReconnected = await db.connections.autoReconnect(connection.id);
@@ -108,7 +108,7 @@
 										<span
 											class={[
 												"size-2 rounded-full",
-												(connection.database || connection.mssqlConnectionId || connection.providerConnectionId) ? "bg-green-500" : "bg-gray-400"
+												(connection.providerConnectionId) ? "bg-green-500" : "bg-gray-400"
 											]}
 										></span>
 									{/if}

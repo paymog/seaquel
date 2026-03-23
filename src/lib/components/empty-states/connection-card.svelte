@@ -26,7 +26,7 @@
 	let showDeleteDialog = $state(false);
 
 	const handleClick = async () => {
-		if (connection.database || connection.providerConnectionId) {
+		if (connection.providerConnectionId) {
 			// Already connected, just activate
 			db.connections.setActive(connection.id);
 		} else {
@@ -106,7 +106,7 @@
 				<div class="flex items-center gap-2">
 					<span
 						class="flex size-2 items-center justify-center shrink-0"
-						title={connection.database || connection.providerConnectionId
+						title={connection.providerConnectionId
 							? m.empty_states_connection_card_connected()
 							: m.empty_states_connection_card_disconnected()}
 					>
@@ -116,7 +116,7 @@
 							<span
 								class={[
 									"size-2 rounded-full",
-									connection.database || connection.providerConnectionId
+									connection.providerConnectionId
 										? "bg-green-500"
 										: "bg-gray-400",
 								]}

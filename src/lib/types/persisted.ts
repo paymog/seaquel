@@ -34,6 +34,8 @@ export interface PersistedSchemaTab {
   tableName: string;
   /** Schema name of the table */
   schemaName: string;
+  /** Connection identifier */
+  connectionId?: string;
 }
 
 /**

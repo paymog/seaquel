@@ -35,7 +35,7 @@
 
 	const hasActiveConnection = $derived(
 		!!db.state.activeConnectionId && !!db.state.activeConnection &&
-		!!(db.state.activeConnection.database || db.state.activeConnection.mssqlConnectionId || db.state.activeConnection.providerConnectionId)
+		!!(db.state.activeConnection.providerConnectionId)
 	);
 
 	let sidebarTab = $state<"schema" | "queries" | "dashboards">(db.state.activeConnectionId ? "schema" : "queries");
@@ -239,7 +239,7 @@
 
 	const handleConnectionClick = async (connection: typeof db.state.connections[0]) => {
 		// If connection has a database instance, just activate it
-		if (connection.database || connection.mssqlConnectionId || connection.providerConnectionId) {
+		if (connection.providerConnectionId) {
 			db.connections.setActive(connection.id);
 		} else {
 			// Try auto-reconnect first if password is saved
@@ -435,7 +435,7 @@
 													<span
 														class={[
 															"size-2 rounded-full",
-															(connection.database || connection.mssqlConnectionId || connection.providerConnectionId) ? "bg-green-500" : "bg-gray-400"
+															(connection.providerConnectionId) ? "bg-green-500" : "bg-gray-400"
 														]}
 													></span>
 												{/if}
@@ -489,7 +489,7 @@
 									</Sidebar.MenuItem>
 								</ContextMenu.Trigger>
 								<ContextMenu.Content class="w-48">
-									{#if connection.database || connection.mssqlConnectionId || connection.providerConnectionId}
+									{#if connection.providerConnectionId}
 										<ContextMenu.Item onclick={() => db.connections.toggle(connection.id)}>
 											<UnplugIcon class="size-4 me-2" />
 											{m.sidebar_connection_disconnect()}
@@ -623,7 +623,7 @@
 
 <!-- Content -->
 <Sidebar.Content>
-	{#if db.state.activeConnectionId && db.state.activeConnection && (db.state.activeConnection.database || db.state.activeConnection.mssqlConnectionId || db.state.activeConnection.providerConnectionId)}
+	{#if db.state.activeConnectionId && db.state.activeConnection && (db.state.activeConnection.providerConnectionId)}
 		<!-- Schema Tab Panel (requires active connection) -->
 		<div
 			class={["flex flex-col", sidebarTab !== "schema" && "hidden"]}
