@@ -15,7 +15,7 @@ export class DashboardTabManager extends BaseTabManager<DashboardTab> {
       | "explain"
       | "erd"
       | "statistics"
-      | "canvas"
+      | "workflow"
       | "visualize"
       | "connection"
       | "dashboard",
@@ -32,7 +32,7 @@ export class DashboardTabManager extends BaseTabManager<DashboardTab> {
         | "explain"
         | "erd"
         | "statistics"
-        | "canvas"
+        | "workflow"
         | "visualize"
         | "connection"
         | "dashboard",

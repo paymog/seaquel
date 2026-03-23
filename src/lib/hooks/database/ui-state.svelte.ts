@@ -46,7 +46,7 @@ export class UIStateManager {
       | "explain"
       | "erd"
       | "statistics"
-      | "canvas"
+      | "workflow"
       | "visualize"
       | "connection"
       | "dashboard",

@@ -49,8 +49,8 @@ export type { ConnectionTab, ConnectionTabMode, ConnectionFormData } from "./con
 // Chart types
 export type { ChartType, ChartConfig, ResultViewMode } from "./chart";
 
-// Canvas types
-export type { CanvasTab } from "./canvas";
+// Workflow types
+export type { WorkflowTab } from "./workflow";
 
 // Visualize types
 export type {
@@ -86,7 +86,7 @@ export type {
   PersistedExplainTab,
   PersistedErdTab,
   PersistedStatisticsTab,
-  PersistedCanvasTab,
+  PersistedWorkflowTab,
   PersistedStarterTab,
   PersistedQueryParameter,
   PersistedSavedQuery,

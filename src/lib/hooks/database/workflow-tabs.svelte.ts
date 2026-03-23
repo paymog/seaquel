@@ -1,38 +1,40 @@
-import type { CanvasTab } from "$lib/types";
+import type { WorkflowTab } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
 import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelte.js";
 
 /**
- * Manages canvas workspace tabs.
+ * Manages workflow tabs.
  * Tabs are organized per-project.
  */
-export class CanvasTabManager extends BaseTabManager<CanvasTab> {
+export class WorkflowTabManager extends BaseTabManager<WorkflowTab> {
   private setActiveView: (
-    view: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas",
+    view: "query" | "schema" | "explain" | "erd" | "statistics" | "workflow",
   ) => void;
 
   constructor(
     state: DatabaseState,
     tabOrdering: TabOrderingManager,
     schedulePersistence: (projectId: string | null) => void,
-    setActiveView: (view: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas") => void,
+    setActiveView: (
+      view: "query" | "schema" | "explain" | "erd" | "statistics" | "workflow",
+    ) => void,
   ) {
     super(state, tabOrdering, schedulePersistence);
     this.setActiveView = setActiveView;
   }
 
-  protected get accessors(): TabStateAccessors<CanvasTab> {
+  protected get accessors(): TabStateAccessors<WorkflowTab> {
     return {
-      getTabs: () => this.state.canvasTabsByProject,
-      setTabs: (r) => (this.state.canvasTabsByProject = r),
-      getActiveId: () => this.state.activeCanvasTabIdByProject,
-      setActiveId: (r) => (this.state.activeCanvasTabIdByProject = r),
+      getTabs: () => this.state.workflowTabsByProject,
+      setTabs: (r) => (this.state.workflowTabsByProject = r),
+      getActiveId: () => this.state.activeWorkflowTabIdByProject,
+      setActiveId: (r) => (this.state.activeWorkflowTabIdByProject = r),
     };
   }
 
   /**
-   * Add a canvas tab for the current connection.
+   * Add a workflow tab for the current connection.
    * Returns the tab ID or null if no active project/connection.
    */
   add(): string | null {
@@ -45,35 +47,35 @@ export class CanvasTabManager extends BaseTabManager<CanvasTab> {
 
     const tabs = this.getProjectTabs();
 
-    // Check if a canvas tab already exists for this connection
+    // Check if a workflow tab already exists for this connection
     const existingTab = tabs.find((t) => t.connectionId === this.state.activeConnectionId);
     if (existingTab) {
       // Just switch to the existing tab
       this.setActiveTabId(existingTab.id);
-      this.setActiveView("canvas");
+      this.setActiveView("workflow");
       return existingTab.id;
     }
 
-    const newCanvasTab: CanvasTab = {
-      id: `canvas-${crypto.randomUUID()}`,
-      name: `Canvas: ${this.state.activeConnection.name}`,
+    const newWorkflowTab: WorkflowTab = {
+      id: `workflow-${crypto.randomUUID()}`,
+      name: `Workflows: ${this.state.activeConnection.name}`,
       connectionId: this.state.activeConnectionId,
     };
 
-    this.appendTab(newCanvasTab);
-    this.setActiveView("canvas");
+    this.appendTab(newWorkflowTab);
+    this.setActiveView("workflow");
 
-    return newCanvasTab.id;
+    return newWorkflowTab.id;
   }
 
   /**
-   * Remove a canvas tab by ID.
+   * Remove a workflow tab by ID.
    */
   override remove(id: string): void {
     super.remove(id);
 
-    // If no more canvas tabs, switch back to query view
-    const remainingTabs = this.state.canvasTabsByProject[this.state.activeProjectId!] ?? [];
+    // If no more workflow tabs, switch back to query view
+    const remainingTabs = this.state.workflowTabsByProject[this.state.activeProjectId!] ?? [];
     if (remainingTabs.length === 0) {
       this.setActiveView("query");
     }

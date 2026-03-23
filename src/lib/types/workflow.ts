@@ -2,10 +2,10 @@ import type { Node, XYPosition, Viewport } from "@xyflow/svelte";
 import type { ForeignKeyRef, ChartConfig } from "$lib/types";
 
 // Node type identifiers
-export type CanvasNodeType = "table" | "query" | "result" | "chart";
+export type WorkflowNodeType = "table" | "query" | "result" | "chart";
 
 // Table node data - displays table metadata (columns, indexes, etc.)
-export interface CanvasTableNodeData extends Record<string, unknown> {
+export interface WorkflowTableNodeData extends Record<string, unknown> {
   type: "table";
   tableName: string;
   schemaName: string;
@@ -30,7 +30,7 @@ export interface CanvasTableNodeData extends Record<string, unknown> {
 }
 
 // Query node data - SQL editor for executing queries
-export interface CanvasQueryNodeData extends Record<string, unknown> {
+export interface WorkflowQueryNodeData extends Record<string, unknown> {
   type: "query";
   name: string;
   query: string;
@@ -41,7 +41,7 @@ export interface CanvasQueryNodeData extends Record<string, unknown> {
 }
 
 // Result node data - displays query results
-export interface CanvasResultNodeData extends Record<string, unknown> {
+export interface WorkflowResultNodeData extends Record<string, unknown> {
   type: "result";
   sourceQueryNodeId: string;
   columns: string[];
@@ -52,7 +52,7 @@ export interface CanvasResultNodeData extends Record<string, unknown> {
 }
 
 // Chart node data - visualizes data as a chart
-export interface CanvasChartNodeData extends Record<string, unknown> {
+export interface WorkflowChartNodeData extends Record<string, unknown> {
   type: "chart";
   sourceNodeId: string;
   columns: string[];
@@ -61,27 +61,27 @@ export interface CanvasChartNodeData extends Record<string, unknown> {
 }
 
 // Union type for all node data
-export type CanvasNodeData =
-  | CanvasTableNodeData
-  | CanvasQueryNodeData
-  | CanvasResultNodeData
-  | CanvasChartNodeData;
+export type WorkflowNodeData =
+  | WorkflowTableNodeData
+  | WorkflowQueryNodeData
+  | WorkflowResultNodeData
+  | WorkflowChartNodeData;
 
-// Type alias for canvas nodes (using generic Node with our data types)
-export type CanvasNode = Node<CanvasNodeData>;
+// Type alias for workflow nodes (using generic Node with our data types)
+export type WorkflowNode = Node<WorkflowNodeData>;
 
 // Serialized node for persistence
-export interface SerializedCanvasNode {
+export interface SerializedWorkflowNode {
   id: string;
   type: string;
   position: XYPosition;
-  data: CanvasNodeData;
+  data: WorkflowNodeData;
   width?: number;
   height?: number;
 }
 
 // Serialized edge for persistence
-export interface SerializedCanvasEdge {
+export interface SerializedWorkflowEdge {
   id: string;
   source: string;
   target: string;
@@ -89,36 +89,36 @@ export interface SerializedCanvasEdge {
   targetHandle?: string | null;
 }
 
-// Saved canvas - a complete canvas state
-export interface SavedCanvas {
+// Saved workflow - a complete workflow state
+export interface SavedWorkflow {
   id: string;
   name: string;
   projectId: string;
-  nodes: SerializedCanvasNode[];
-  edges: SerializedCanvasEdge[];
+  nodes: SerializedWorkflowNode[];
+  edges: SerializedWorkflowEdge[];
   viewport: Viewport;
   createdAt: string;
   updatedAt: string;
 }
 
 // Timeline entry for activity log
-export interface CanvasTimelineEntry {
+export interface WorkflowTimelineEntry {
   id: string;
-  type: "query" | "table-open" | "canvas-save" | "canvas-load";
+  type: "query" | "table-open" | "workflow-save" | "workflow-load";
   description: string;
   timestamp: string;
   nodeId?: string;
 }
 
-// Canvas viewport state
-export interface CanvasViewport {
+// Workflow viewport state
+export interface WorkflowViewport {
   x: number;
   y: number;
   zoom: number;
 }
 
-// Canvas tab - represents an open canvas workspace
-export interface CanvasTab {
+// Workflow tab - represents an open workflow workspace
+export interface WorkflowTab {
   id: string;
   name: string;
   connectionId: string;

@@ -73,14 +73,14 @@ export interface PersistedStatisticsTab {
 }
 
 /**
- * Persisted canvas tab state.
+ * Persisted workflow tab state.
  */
-export interface PersistedCanvasTab {
+export interface PersistedWorkflowTab {
   /** Tab identifier */
   id: string;
   /** Tab display name */
   name: string;
-  /** Connection ID this canvas tab belongs to */
+  /** Connection ID this workflow tab belongs to */
   connectionId: string;
 }
 
@@ -204,7 +204,7 @@ export type ActiveViewType =
   | "explain"
   | "erd"
   | "statistics"
-  | "canvas"
+  | "workflow"
   | "visualize"
   | "connection"
   | "dashboard";
@@ -226,8 +226,8 @@ export interface PersistedConnectionState {
   erdTabs: PersistedErdTab[];
   /** Statistics dashboard tabs */
   statisticsTabs: PersistedStatisticsTab[];
-  /** Canvas workspace tabs */
-  canvasTabs: PersistedCanvasTab[];
+  /** Workflow tabs */
+  workflowTabs: PersistedWorkflowTab[];
   /** Query visualizer tabs */
   visualizeTabs: PersistedVisualizeTab[];
   /** Ordered list of all tab IDs for drag-drop ordering */
@@ -242,8 +242,8 @@ export interface PersistedConnectionState {
   activeErdTabId: string | null;
   /** Currently active statistics tab */
   activeStatisticsTabId: string | null;
-  /** Currently active canvas tab */
-  activeCanvasTabId: string | null;
+  /** Currently active workflow tab */
+  activeWorkflowTabId: string | null;
   /** Currently active visualize tab */
   activeVisualizeTabId: string | null;
   /** Which view type is currently active */

@@ -1,32 +1,32 @@
 import type { Node, Edge, Viewport } from "@xyflow/svelte";
-import type { CanvasTimelineEntry, CanvasNodeData } from "$lib/types/canvas";
+import type { WorkflowTimelineEntry, WorkflowNodeData } from "$lib/types/workflow";
 
 /**
- * Canvas state - manages the state of the canvas view
+ * Workflow state - manages the state of the workflow view
  * Follows the Svelte 5 runes pattern used by DatabaseState
  */
-export class CanvasState {
-  // Current canvas nodes and edges
-  nodes = $state<Node<CanvasNodeData>[]>([]);
+export class WorkflowState {
+  // Current workflow nodes and edges
+  nodes = $state<Node<WorkflowNodeData>[]>([]);
   edges = $state<Edge[]>([]);
 
   // Timeline entries for current session
-  timeline = $state<CanvasTimelineEntry[]>([]);
+  timeline = $state<WorkflowTimelineEntry[]>([]);
 
-  // Active canvas ID (null = unsaved canvas)
-  activeCanvasId = $state<string | null>(null);
+  // Active workflow ID (null = unsaved workflow)
+  activeWorkflowId = $state<string | null>(null);
 
   // Viewport state
   viewport = $state<Viewport>({ x: 0, y: 0, zoom: 1 });
 
-  // Track which connection is active for the canvas
+  // Track which connection is active for the workflow
   activeConnectionId = $state<string | null>(null);
 
   // Check if there are unsaved changes
   hasUnsavedChanges = $derived(this.nodes.length > 0 || this.edges.length > 0);
 
   // Get node by ID
-  getNode(nodeId: string): Node<CanvasNodeData> | undefined {
+  getNode(nodeId: string): Node<WorkflowNodeData> | undefined {
     return this.nodes.find((n) => n.id === nodeId);
   }
 

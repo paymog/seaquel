@@ -37,7 +37,7 @@
 
 	// Check if this handle is connected to any edge
 	const isConnected = $derived.by(() => {
-		return db.canvasState.edges.some((edge) => {
+		return db.workflowState.edges.some((edge) => {
 			if (type === "source") {
 				return edge.source === nodeId && edge.sourceHandle === id;
 			} else {

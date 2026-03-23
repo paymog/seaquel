@@ -3,9 +3,9 @@
 	import { SvelteFlow, Background, Controls, MiniMap, type ColorMode, type Node, type Connection } from "@xyflow/svelte";
 	import "@xyflow/svelte/dist/style.css";
 	import { mode } from "mode-watcher";
-	import { canvasNodeTypes } from "./nodes";
+	import { workflowNodeTypes } from "./nodes";
 	import { DatabaseIcon, MousePointerIcon } from "@lucide/svelte";
-	import type { CanvasNodeData } from "$lib/types/canvas";
+	import type { WorkflowNodeData } from "$lib/types/workflow";
 	import { m } from "$lib/paraglide/messages.js";
 
 	const db = useDatabase();
@@ -17,10 +17,10 @@
 	const isConnected = $derived(!!db.state.activeConnectionId);
 
 	// Handle node drag stop to sync position back to state
-	function handleNodeDragStop({ targetNode, nodes }: { targetNode: Node<CanvasNodeData> | null; nodes: Node<CanvasNodeData>[]; event: MouseEvent | TouchEvent }) {
+	function handleNodeDragStop({ targetNode, nodes }: { targetNode: Node<WorkflowNodeData> | null; nodes: Node<WorkflowNodeData>[]; event: MouseEvent | TouchEvent }) {
 		if (targetNode) {
 			// Update the node position in our state
-			db.canvasState.nodes = db.canvasState.nodes.map((n) =>
+			db.workflowState.nodes = db.workflowState.nodes.map((n) =>
 				n.id === targetNode.id ? { ...n, position: targetNode.position } : n
 			);
 		}
@@ -29,7 +29,7 @@
 	// Handle new connections
 	function handleConnect(connection: Connection) {
 		if (connection.source && connection.target) {
-			db.canvas.connect(
+			db.workflow.connect(
 				connection.source,
 				connection.target,
 				connection.sourceHandle ?? undefined,
@@ -42,9 +42,9 @@
 <div class="flex-1 min-h-0 w-full relative">
 	{#if isConnected}
 		<SvelteFlow
-			nodes={db.canvasState.nodes}
-			edges={db.canvasState.edges}
-			nodeTypes={canvasNodeTypes}
+			nodes={db.workflowState.nodes}
+			edges={db.workflowState.edges}
+			nodeTypes={workflowNodeTypes}
 			{colorMode}
 			fitView
 			minZoom={0.1}
@@ -66,12 +66,12 @@
 		</SvelteFlow>
 
 		<!-- Empty state overlay -->
-		{#if db.canvasState.nodes.length === 0}
+		{#if db.workflowState.nodes.length === 0}
 			<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
 				<div class="text-center text-muted-foreground">
 					<MousePointerIcon class="size-12 mx-auto mb-3 opacity-20" />
-					<p class="text-sm">{m.canvas_add_table_hint()}</p>
-					<p class="text-xs mt-1 opacity-70">{m.canvas_add_query_hint()}</p>
+					<p class="text-sm">{m.workflow_add_table_hint()}</p>
+					<p class="text-xs mt-1 opacity-70">{m.workflow_add_query_hint()}</p>
 				</div>
 			</div>
 		{/if}
@@ -79,8 +79,8 @@
 		<div class="h-full flex items-center justify-center text-muted-foreground">
 			<div class="text-center">
 				<DatabaseIcon class="size-12 mx-auto mb-3 opacity-20" />
-				<p class="text-sm">{m.canvas_connect_hint()}</p>
-				<p class="text-xs mt-1 opacity-70">{m.canvas_select_connection_hint()}</p>
+				<p class="text-sm">{m.workflow_connect_hint()}</p>
+				<p class="text-xs mt-1 opacity-70">{m.workflow_select_connection_hint()}</p>
 			</div>
 		</div>
 	{/if}

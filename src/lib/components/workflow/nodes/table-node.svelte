@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Position, NodeResizer } from "@xyflow/svelte";
-	import type { CanvasTableNodeData } from "$lib/types/canvas";
-	import { useCanvasNode } from "./use-canvas-node.svelte.js";
+	import type { WorkflowTableNodeData } from "$lib/types/workflow";
+	import { useWorkflowNode } from "./use-workflow-node.svelte.js";
 	import SuggestiveHandle from "../suggestive-handle.svelte";
 	import TableIcon from "@lucide/svelte/icons/table";
 	import Trash2Icon from "@lucide/svelte/icons/trash-2";
@@ -15,14 +15,14 @@
 
 	interface Props {
 		id: string;
-		data: CanvasTableNodeData;
+		data: WorkflowTableNodeData;
 		isConnectable?: boolean;
 		selected?: boolean;
 	}
 
 	let { id, data, isConnectable = true, selected = false }: Props = $props();
 
-	const { db, handleRemove, handleResizeEnd } = useCanvasNode(() => id);
+	const { db, handleRemove, handleResizeEnd } = useWorkflowNode(() => id);
 
 	const maxVisibleColumns = 12;
 	const visibleColumns = $derived(data.columns.slice(0, maxVisibleColumns));
@@ -40,9 +40,9 @@
 			query = `SELECT * FROM "${data.schemaName}"."${data.tableName}" LIMIT 100`;
 		}
 
-		const queryNodeId = db.canvas.addQueryNode(query);
+		const queryNodeId = db.workflow.addQueryNode(query);
 		// Connect table node to query node
-		db.canvas.connect(id, queryNodeId, "output", "input");
+		db.workflow.connect(id, queryNodeId, "output", "input");
 	}
 
 	// Suggestions for the output handle

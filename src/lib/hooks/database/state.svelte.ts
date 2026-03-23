@@ -9,7 +9,7 @@ import type {
   ExplainTab,
   ErdTab,
   StatisticsTab,
-  CanvasTab,
+  WorkflowTab,
   VisualizeTab,
   ConnectionTab,
   Project,
@@ -25,7 +25,7 @@ import type {
   SharedDashboard,
 } from "$lib/types";
 import type { ConnectionLabel } from "$lib/types/project";
-import type { SavedCanvas } from "$lib/types/canvas";
+import type { SavedWorkflow } from "$lib/types/workflow";
 
 /**
  * Central state container for the database module.
@@ -72,8 +72,8 @@ export class DatabaseState {
   statisticsTabsByProject = $state<Record<string, StatisticsTab[]>>({});
   activeStatisticsTabIdByProject = $state<Record<string, string | null>>({});
 
-  canvasTabsByProject = $state<Record<string, CanvasTab[]>>({});
-  activeCanvasTabIdByProject = $state<Record<string, string | null>>({});
+  workflowTabsByProject = $state<Record<string, WorkflowTab[]>>({});
+  activeWorkflowTabIdByProject = $state<Record<string, string | null>>({});
 
   visualizeTabsByProject = $state<Record<string, VisualizeTab[]>>({});
   activeVisualizeTabIdByProject = $state<Record<string, string | null>>({});
@@ -81,8 +81,8 @@ export class DatabaseState {
   connectionTabsByProject = $state<Record<string, ConnectionTab[]>>({});
   activeConnectionTabIdByProject = $state<Record<string, string | null>>({});
 
-  // Saved canvases per project
-  savedCanvasesByProject = $state<Record<string, SavedCanvas[]>>({});
+  // Saved workflows per project
+  savedWorkflowsByProject = $state<Record<string, SavedWorkflow[]>>({});
 
   // === DASHBOARD TABS STATE (per-project) ===
   dashboardTabsByProject = $state<Record<string, DashboardTab[]>>({});
@@ -140,7 +140,7 @@ export class DatabaseState {
     | "explain"
     | "erd"
     | "statistics"
-    | "canvas"
+    | "workflow"
     | "visualize"
     | "connection"
     | "dashboard"
@@ -261,24 +261,26 @@ export class DatabaseState {
     this.statisticsTabs.find((t) => t.id === this.activeStatisticsTabId) || null,
   );
 
-  // === CANVAS TAB DERIVED VALUES ===
+  // === WORKFLOW TAB DERIVED VALUES ===
 
-  // Derived: canvas tabs for active project
-  canvasTabs = $derived(
-    this.activeProjectId ? (this.canvasTabsByProject[this.activeProjectId] ?? []) : [],
+  // Derived: workflow tabs for active project
+  workflowTabs = $derived(
+    this.activeProjectId ? (this.workflowTabsByProject[this.activeProjectId] ?? []) : [],
   );
 
-  // Derived: active canvas tab ID for active project
-  activeCanvasTabId = $derived(
-    this.activeProjectId ? (this.activeCanvasTabIdByProject[this.activeProjectId] ?? null) : null,
+  // Derived: active workflow tab ID for active project
+  activeWorkflowTabId = $derived(
+    this.activeProjectId ? (this.activeWorkflowTabIdByProject[this.activeProjectId] ?? null) : null,
   );
 
-  // Derived: active canvas tab object
-  activeCanvasTab = $derived(this.canvasTabs.find((t) => t.id === this.activeCanvasTabId) || null);
+  // Derived: active workflow tab object
+  activeWorkflowTab = $derived(
+    this.workflowTabs.find((t) => t.id === this.activeWorkflowTabId) || null,
+  );
 
-  // Derived: saved canvases for active project
-  savedCanvases = $derived(
-    this.activeProjectId ? (this.savedCanvasesByProject[this.activeProjectId] ?? []) : [],
+  // Derived: saved workflows for active project
+  savedWorkflows = $derived(
+    this.activeProjectId ? (this.savedWorkflowsByProject[this.activeProjectId] ?? []) : [],
   );
 
   // === VISUALIZE TAB DERIVED VALUES ===

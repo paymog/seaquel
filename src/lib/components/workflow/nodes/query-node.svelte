@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Handle, Position, NodeResizer } from "@xyflow/svelte";
-	import type { CanvasQueryNodeData } from "$lib/types/canvas";
-	import { useCanvasNode } from "./use-canvas-node.svelte.js";
+	import type { WorkflowQueryNodeData } from "$lib/types/workflow";
+	import { useWorkflowNode } from "./use-workflow-node.svelte.js";
 	import SuggestiveHandle from "../suggestive-handle.svelte";
 	import CodeIcon from "@lucide/svelte/icons/code";
 	import PlayIcon from "@lucide/svelte/icons/play";
@@ -17,39 +17,32 @@
 
 	interface Props {
 		id: string;
-		data: CanvasQueryNodeData;
+		data: WorkflowQueryNodeData;
 		isConnectable?: boolean;
 		selected?: boolean;
 	}
 
 	let { id, data, isConnectable = true, selected = false }: Props = $props();
 
-	const { db, handleRemove, handleResizeEnd } = useCanvasNode(() => id);
+	const { db, handleRemove, handleResizeEnd } = useWorkflowNode(() => id);
 
-	let localQuery = $state('');
+	// svelte-ignore state_referenced_locally
+	let localQuery = $state(data.query);
 	let editorOpen = $state(false);
 
-	// Sync from external changes (runs before render)
-	$effect.pre(() => {
-		if (data.query !== localQuery) {
-			localQuery = data.query;
-		}
-	});
-
-	// Sync local query back to node data when it changes
-	$effect(() => {
-		if (localQuery !== data.query) {
-			db.canvas.updateNodeData(id, { query: localQuery });
-		}
-	});
+	// Sync local query back to node data via onChange (avoids reactive loops)
+	function handleQueryChange(newValue: string) {
+		localQuery = newValue;
+		db.workflow.updateNodeData(id, { query: newValue });
+	}
 
 	async function handleExecute() {
-		await db.canvas.executeQueryNode(id);
+		await db.workflow.executeQueryNode(id);
 	}
 
 	async function handleExecuteAndClose() {
 		editorOpen = false;
-		await db.canvas.executeQueryNode(id);
+		await db.workflow.executeQueryNode(id);
 	}
 
 	// Get preview lines for display
@@ -114,7 +107,7 @@
 			<input
 				type="text"
 				value={data.name}
-				onchange={(e) => db.canvas.updateNodeData(id, { name: e.currentTarget.value })}
+				onchange={(e) => db.workflow.updateNodeData(id, { name: e.currentTarget.value })}
 				class="font-medium text-sm bg-transparent border-none outline-none focus:ring-1 focus:ring-primary rounded px-1 min-w-0"
 			/>
 		</div>
@@ -173,7 +166,7 @@
 				{/if}
 			</div>
 		</Popover.Trigger>
-		<Popover.Content class="w-[550px] p-0" side="bottom" align="start" sideOffset={8}>
+		<Popover.Content class="w-[550px] p-0" side="bottom" align="start" sideOffset={8} onkeydown={(e) => e.stopPropagation()}>
 			<div class="flex flex-col">
 				<!-- Popover Header -->
 				<div class="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
@@ -195,9 +188,10 @@
 				<!-- Monaco Editor -->
 				<div class="h-[300px]">
 					<MonacoEditor
-						bind:value={localQuery}
+						value={localQuery}
 						schema={db.state.activeSchema ?? []}
 						onExecute={handleExecuteAndClose}
+						onChange={handleQueryChange}
 					/>
 				</div>
 			</div>

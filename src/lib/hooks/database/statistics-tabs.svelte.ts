@@ -16,7 +16,7 @@ export class StatisticsTabManager extends BaseTabManager<StatisticsTab> {
       | "explain"
       | "erd"
       | "statistics"
-      | "canvas"
+      | "workflow"
       | "visualize"
       | "connection"
       | "dashboard",
@@ -34,7 +34,7 @@ export class StatisticsTabManager extends BaseTabManager<StatisticsTab> {
         | "explain"
         | "erd"
         | "statistics"
-        | "canvas"
+        | "workflow"
         | "visualize"
         | "connection"
         | "dashboard",

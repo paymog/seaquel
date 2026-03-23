@@ -71,7 +71,7 @@ const DDL_STATEMENTS = [
     active_explain_tab_id TEXT,
     active_erd_tab_id TEXT,
     active_statistics_tab_id TEXT,
-    active_canvas_tab_id TEXT,
+    active_workflow_tab_id TEXT,
     active_visualize_tab_id TEXT,
     active_starter_tab_id TEXT,
     active_dashboard_tab_id TEXT,
@@ -330,6 +330,22 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
     await db.execute("DROP INDEX IF EXISTS idx_dashboards_connection");
     await db.execute("ALTER TABLE dashboards DROP COLUMN connection_id");
   }
+
+  // Rename active_canvas_tab_id → active_workflow_tab_id
+  const psCols = await db.query<{ name: string }>("PRAGMA table_info(project_state)");
+  if (
+    psCols.some((c) => c.name === "active_canvas_tab_id") &&
+    !psCols.some((c) => c.name === "active_workflow_tab_id")
+  ) {
+    await db.execute(
+      "ALTER TABLE project_state RENAME COLUMN active_canvas_tab_id TO active_workflow_tab_id",
+    );
+  }
+
+  // Migrate active_view value "canvas" → "workflow"
+  await db.execute(
+    "UPDATE project_state SET active_view = 'workflow' WHERE active_view = 'canvas'",
+  );
 
   // === DDL statements (creates new tables/indexes, safe to run repeatedly) ===
   for (const sql of DDL_STATEMENTS) {

@@ -4,7 +4,7 @@ import type {
   ExplainTab,
   ErdTab,
   StatisticsTab,
-  CanvasTab,
+  WorkflowTab,
   VisualizeTab,
   ConnectionTab,
   DashboardTab,
@@ -116,7 +116,7 @@ export class TabOrderingManager {
       | "explain"
       | "erd"
       | "statistics"
-      | "canvas"
+      | "workflow"
       | "visualize"
       | "connection"
       | "dashboard";
@@ -126,7 +126,7 @@ export class TabOrderingManager {
       | ExplainTab
       | ErdTab
       | StatisticsTab
-      | CanvasTab
+      | WorkflowTab
       | VisualizeTab
       | ConnectionTab
       | DashboardTab;
@@ -139,7 +139,7 @@ export class TabOrderingManager {
     const explainTabs = this.state.explainTabs || [];
     const erdTabs = this.state.erdTabs || [];
     const statisticsTabs = this.state.statisticsTabs || [];
-    const canvasTabs = this.state.canvasTabs || [];
+    const workflowTabs = this.state.workflowTabs || [];
     const visualizeTabs = this.state.visualizeTabs || [];
 
     const connectionTabs = this.state.connectionTabs || [];
@@ -154,7 +154,7 @@ export class TabOrderingManager {
         | "explain"
         | "erd"
         | "statistics"
-        | "canvas"
+        | "workflow"
         | "visualize"
         | "connection"
         | "dashboard";
@@ -164,7 +164,7 @@ export class TabOrderingManager {
         | ExplainTab
         | ErdTab
         | StatisticsTab
-        | CanvasTab
+        | WorkflowTab
         | VisualizeTab
         | ConnectionTab
         | DashboardTab;
@@ -185,8 +185,8 @@ export class TabOrderingManager {
     for (const t of statisticsTabs) {
       allTabsUnordered.push({ id: t.id, type: "statistics", tab: t });
     }
-    for (const t of canvasTabs) {
-      allTabsUnordered.push({ id: t.id, type: "canvas", tab: t });
+    for (const t of workflowTabs) {
+      allTabsUnordered.push({ id: t.id, type: "workflow", tab: t });
     }
     for (const t of visualizeTabs) {
       allTabsUnordered.push({ id: t.id, type: "visualize", tab: t });

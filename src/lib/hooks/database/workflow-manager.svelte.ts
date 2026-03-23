@@ -1,30 +1,30 @@
 import type { Node, Edge, XYPosition, Connection } from "@xyflow/svelte";
 import type { NodeChange, EdgeChange } from "@xyflow/system";
 import type { DatabaseState } from "./state.svelte.js";
-import type { CanvasState } from "./canvas-state.svelte.js";
+import type { WorkflowState } from "./workflow-state.svelte.js";
 import type {
-  CanvasNodeData,
-  CanvasTableNodeData,
-  CanvasQueryNodeData,
-  CanvasResultNodeData,
-  CanvasChartNodeData,
-  SavedCanvas,
-  CanvasTimelineEntry,
-  SerializedCanvasNode,
-  SerializedCanvasEdge,
-} from "$lib/types/canvas";
+  WorkflowNodeData,
+  WorkflowTableNodeData,
+  WorkflowQueryNodeData,
+  WorkflowResultNodeData,
+  WorkflowChartNodeData,
+  SavedWorkflow,
+  WorkflowTimelineEntry,
+  SerializedWorkflowNode,
+  SerializedWorkflowEdge,
+} from "$lib/types/workflow";
 import type { SchemaTable, ChartConfig } from "$lib/types";
 import { createDefaultChartConfig } from "$lib/components/charts/chart-utils";
 
 const DEFAULT_NODE_WIDTH = 320;
 
 /**
- * Canvas manager - handles all canvas operations
+ * Workflow manager - handles all workflow operations
  */
-export class CanvasManager {
+export class WorkflowManager {
   constructor(
     private state: DatabaseState,
-    private canvasState: CanvasState,
+    private workflowState: WorkflowState,
     private schedulePersistence: (projectId: string | null) => void,
     private executeQuery: (query: string) => Promise<Record<string, unknown>[]>,
   ) {}
@@ -32,10 +32,10 @@ export class CanvasManager {
   // === NODE MANAGEMENT ===
 
   /**
-   * Add a table node to the canvas
+   * Add a table node to the workflow
    */
   addTableNode(table: SchemaTable, position?: XYPosition): string {
-    const id = `canvas-node-${crypto.randomUUID()}`;
+    const id = `workflow-node-${crypto.randomUUID()}`;
     const connectionId = this.state.activeConnectionId;
     if (!connectionId) {
       throw new Error("No active connection");
@@ -43,7 +43,7 @@ export class CanvasManager {
 
     const nodePosition = position ?? this.getNextNodePosition();
 
-    const data: CanvasTableNodeData = {
+    const data: WorkflowTableNodeData = {
       type: "table",
       tableName: table.name,
       schemaName: table.schema,
@@ -67,7 +67,7 @@ export class CanvasManager {
       })),
     };
 
-    const node: Node<CanvasTableNodeData> = {
+    const node: Node<WorkflowTableNodeData> = {
       id,
       type: "tableNode",
       position: nodePosition,
@@ -76,7 +76,7 @@ export class CanvasManager {
       height: 300,
     };
 
-    this.canvasState.nodes = [...this.canvasState.nodes, node];
+    this.workflowState.nodes = [...this.workflowState.nodes, node];
 
     // Add timeline entry
     this.addTimelineEntry({
@@ -89,10 +89,10 @@ export class CanvasManager {
   }
 
   /**
-   * Add a query node to the canvas
+   * Add a query node to the workflow
    */
   addQueryNode(query?: string, position?: XYPosition): string {
-    const id = `canvas-node-${crypto.randomUUID()}`;
+    const id = `workflow-node-${crypto.randomUUID()}`;
     const connectionId = this.state.activeConnectionId;
     if (!connectionId) {
       throw new Error("No active connection");
@@ -100,7 +100,7 @@ export class CanvasManager {
 
     const nodePosition = position ?? this.getNextNodePosition();
 
-    const data: CanvasQueryNodeData = {
+    const data: WorkflowQueryNodeData = {
       type: "query",
       name: "Query",
       query: query ?? "",
@@ -108,7 +108,7 @@ export class CanvasManager {
       isExecuting: false,
     };
 
-    const node: Node<CanvasQueryNodeData> = {
+    const node: Node<WorkflowQueryNodeData> = {
       id,
       type: "queryNode",
       position: nodePosition,
@@ -117,13 +117,13 @@ export class CanvasManager {
       height: 150,
     };
 
-    this.canvasState.nodes = [...this.canvasState.nodes, node];
+    this.workflowState.nodes = [...this.workflowState.nodes, node];
 
     return id;
   }
 
   /**
-   * Add a result node to the canvas
+   * Add a result node to the workflow
    */
   addResultNode(
     queryNodeId: string,
@@ -133,16 +133,16 @@ export class CanvasManager {
     executionTime?: number,
     position?: XYPosition,
   ): string {
-    const id = `canvas-node-${crypto.randomUUID()}`;
+    const id = `workflow-node-${crypto.randomUUID()}`;
 
     // Position to the right of the query node
-    const queryNode = this.canvasState.getNode(queryNodeId);
+    const queryNode = this.workflowState.getNode(queryNodeId);
     const nodePosition = position ?? {
       x: (queryNode?.position.x ?? 0) + DEFAULT_NODE_WIDTH + 50,
       y: queryNode?.position.y ?? 0,
     };
 
-    const data: CanvasResultNodeData = {
+    const data: WorkflowResultNodeData = {
       type: "result",
       sourceQueryNodeId: queryNodeId,
       columns,
@@ -151,7 +151,7 @@ export class CanvasManager {
       executionTime,
     };
 
-    const node: Node<CanvasResultNodeData> = {
+    const node: Node<WorkflowResultNodeData> = {
       id,
       type: "resultNode",
       position: nodePosition,
@@ -160,7 +160,7 @@ export class CanvasManager {
       height: 350,
     };
 
-    this.canvasState.nodes = [...this.canvasState.nodes, node];
+    this.workflowState.nodes = [...this.workflowState.nodes, node];
 
     // Auto-connect query to result
     this.connect(queryNodeId, id, "output", "input");
@@ -169,7 +169,7 @@ export class CanvasManager {
   }
 
   /**
-   * Add a chart node to the canvas
+   * Add a chart node to the workflow
    */
   addChartNode(
     sourceNodeId: string,
@@ -178,10 +178,10 @@ export class CanvasManager {
     chartConfig?: ChartConfig,
     position?: XYPosition,
   ): string {
-    const id = `canvas-node-${crypto.randomUUID()}`;
+    const id = `workflow-node-${crypto.randomUUID()}`;
 
     // Position to the right of the source node
-    const sourceNode = this.canvasState.getNode(sourceNodeId);
+    const sourceNode = this.workflowState.getNode(sourceNodeId);
     const nodePosition = position ?? {
       x: (sourceNode?.position.x ?? 0) + DEFAULT_NODE_WIDTH + 50,
       y: sourceNode?.position.y ?? 0,
@@ -189,7 +189,7 @@ export class CanvasManager {
 
     const config = chartConfig ?? createDefaultChartConfig(columns, rows);
 
-    const data: CanvasChartNodeData = {
+    const data: WorkflowChartNodeData = {
       type: "chart",
       sourceNodeId,
       columns,
@@ -197,7 +197,7 @@ export class CanvasManager {
       chartConfig: config,
     };
 
-    const node: Node<CanvasChartNodeData> = {
+    const node: Node<WorkflowChartNodeData> = {
       id,
       type: "chartNode",
       position: nodePosition,
@@ -206,7 +206,7 @@ export class CanvasManager {
       height: 350,
     };
 
-    this.canvasState.nodes = [...this.canvasState.nodes, node];
+    this.workflowState.nodes = [...this.workflowState.nodes, node];
 
     // Auto-connect source to chart
     this.connect(sourceNodeId, id, "output", "input");
@@ -219,24 +219,24 @@ export class CanvasManager {
    */
   removeNode(nodeId: string): void {
     // Remove connected edges first
-    const connectedEdges = this.canvasState.getConnectedEdges(nodeId);
+    const connectedEdges = this.workflowState.getConnectedEdges(nodeId);
     for (const edge of connectedEdges) {
       this.disconnect(edge.id);
     }
 
     // Remove the node
-    this.canvasState.nodes = this.canvasState.nodes.filter((n) => n.id !== nodeId);
+    this.workflowState.nodes = this.workflowState.nodes.filter((n) => n.id !== nodeId);
   }
 
   /**
    * Update node data
    */
-  updateNodeData<T extends CanvasNodeData>(nodeId: string, updates: Partial<T>): void {
-    this.canvasState.nodes = this.canvasState.nodes.map((node) => {
+  updateNodeData<T extends WorkflowNodeData>(nodeId: string, updates: Partial<T>): void {
+    this.workflowState.nodes = this.workflowState.nodes.map((node) => {
       if (node.id === nodeId) {
         return {
           ...node,
-          data: { ...node.data, ...updates } as CanvasNodeData,
+          data: { ...node.data, ...updates } as WorkflowNodeData,
         };
       }
       return node;
@@ -247,7 +247,7 @@ export class CanvasManager {
    * Update node dimensions after resize
    */
   updateNodeDimensions(nodeId: string, width: number, height: number): void {
-    this.canvasState.nodes = this.canvasState.nodes.map((node) => {
+    this.workflowState.nodes = this.workflowState.nodes.map((node) => {
       if (node.id === nodeId) {
         return {
           ...node,
@@ -280,7 +280,7 @@ export class CanvasManager {
       targetHandle: targetHandle ?? null,
     };
 
-    this.canvasState.edges = [...this.canvasState.edges, edge];
+    this.workflowState.edges = [...this.workflowState.edges, edge];
 
     return id;
   }
@@ -289,7 +289,7 @@ export class CanvasManager {
    * Disconnect an edge
    */
   disconnect(edgeId: string): void {
-    this.canvasState.edges = this.canvasState.edges.filter((e) => e.id !== edgeId);
+    this.workflowState.edges = this.workflowState.edges.filter((e) => e.id !== edgeId);
   }
 
   // === XYFLOW CALLBACKS ===
@@ -298,7 +298,7 @@ export class CanvasManager {
    * Handle node changes from xyflow
    */
   onNodesChange = (changes: NodeChange[]): void => {
-    let nodes = [...this.canvasState.nodes];
+    let nodes = [...this.workflowState.nodes];
 
     for (const change of changes) {
       switch (change.type) {
@@ -325,14 +325,14 @@ export class CanvasManager {
       }
     }
 
-    this.canvasState.nodes = nodes;
+    this.workflowState.nodes = nodes;
   };
 
   /**
    * Handle edge changes from xyflow
    */
   onEdgesChange = (changes: EdgeChange[]): void => {
-    let edges = [...this.canvasState.edges];
+    let edges = [...this.workflowState.edges];
 
     for (const change of changes) {
       switch (change.type) {
@@ -345,7 +345,7 @@ export class CanvasManager {
       }
     }
 
-    this.canvasState.edges = edges;
+    this.workflowState.edges = edges;
   };
 
   /**
@@ -368,15 +368,15 @@ export class CanvasManager {
    * Execute a query node and create/update result node
    */
   async executeQueryNode(nodeId: string): Promise<void> {
-    const node = this.canvasState.getNode(nodeId);
+    const node = this.workflowState.getNode(nodeId);
     if (!node || node.data.type !== "query") {
       throw new Error("Invalid query node");
     }
 
-    const queryData = node.data as CanvasQueryNodeData;
+    const queryData = node.data as WorkflowQueryNodeData;
 
     // Mark as executing
-    this.updateNodeData<CanvasQueryNodeData>(nodeId, {
+    this.updateNodeData<WorkflowQueryNodeData>(nodeId, {
       isExecuting: true,
       error: undefined,
     });
@@ -389,16 +389,17 @@ export class CanvasManager {
       const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
 
       // Update query node
-      this.updateNodeData<CanvasQueryNodeData>(nodeId, {
+      this.updateNodeData<WorkflowQueryNodeData>(nodeId, {
         isExecuting: false,
         executionTime,
         error: undefined,
       });
 
       // Find existing result node or create new one
-      const existingResultNode = this.canvasState.nodes.find(
+      const existingResultNode = this.workflowState.nodes.find(
         (n) =>
-          n.data.type === "result" && (n.data as CanvasResultNodeData).sourceQueryNodeId === nodeId,
+          n.data.type === "result" &&
+          (n.data as WorkflowResultNodeData).sourceQueryNodeId === nodeId,
       );
 
       let resultNodeId: string;
@@ -406,7 +407,7 @@ export class CanvasManager {
       if (existingResultNode) {
         resultNodeId = existingResultNode.id;
         // Update existing result node
-        this.updateNodeData<CanvasResultNodeData>(existingResultNode.id, {
+        this.updateNodeData<WorkflowResultNodeData>(existingResultNode.id, {
           columns,
           rows,
           totalRows: rows.length,
@@ -429,19 +430,20 @@ export class CanvasManager {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.updateNodeData<CanvasQueryNodeData>(nodeId, {
+      this.updateNodeData<WorkflowQueryNodeData>(nodeId, {
         isExecuting: false,
         error: errorMessage,
       });
 
       // Update result node with error if it exists
-      const existingResultNode = this.canvasState.nodes.find(
+      const existingResultNode = this.workflowState.nodes.find(
         (n) =>
-          n.data.type === "result" && (n.data as CanvasResultNodeData).sourceQueryNodeId === nodeId,
+          n.data.type === "result" &&
+          (n.data as WorkflowResultNodeData).sourceQueryNodeId === nodeId,
       );
 
       if (existingResultNode) {
-        this.updateNodeData<CanvasResultNodeData>(existingResultNode.id, {
+        this.updateNodeData<WorkflowResultNodeData>(existingResultNode.id, {
           error: errorMessage,
           columns: [],
           rows: [],
@@ -462,19 +464,19 @@ export class CanvasManager {
     columns: string[],
     rows: Record<string, unknown>[],
   ): void {
-    const chartNodes = this.canvasState.nodes.filter(
+    const chartNodes = this.workflowState.nodes.filter(
       (n) =>
-        n.data.type === "chart" && (n.data as CanvasChartNodeData).sourceNodeId === sourceNodeId,
+        n.data.type === "chart" && (n.data as WorkflowChartNodeData).sourceNodeId === sourceNodeId,
     );
 
     for (const chartNode of chartNodes) {
-      const chartData = chartNode.data as CanvasChartNodeData;
+      const chartData = chartNode.data as WorkflowChartNodeData;
       // Recalculate chart config if columns changed significantly
       const newConfig = this.shouldRecalculateChartConfig(chartData, columns)
         ? createDefaultChartConfig(columns, rows)
         : chartData.chartConfig;
 
-      this.updateNodeData<CanvasChartNodeData>(chartNode.id, {
+      this.updateNodeData<WorkflowChartNodeData>(chartNode.id, {
         columns,
         rows,
         chartConfig: newConfig,
@@ -486,7 +488,7 @@ export class CanvasManager {
    * Check if chart config should be recalculated based on column changes
    */
   private shouldRecalculateChartConfig(
-    chartData: CanvasChartNodeData,
+    chartData: WorkflowChartNodeData,
     newColumns: string[],
   ): boolean {
     // Recalculate if the configured axes are no longer valid
@@ -503,31 +505,31 @@ export class CanvasManager {
     return false;
   }
 
-  // === CANVAS MANAGEMENT ===
+  // === WORKFLOW MANAGEMENT ===
 
   /**
-   * Clear the current canvas
+   * Clear the current workflow
    */
-  clearCanvas(): void {
-    this.canvasState.nodes = [];
-    this.canvasState.edges = [];
-    this.canvasState.activeCanvasId = null;
+  clearWorkflow(): void {
+    this.workflowState.nodes = [];
+    this.workflowState.edges = [];
+    this.workflowState.activeWorkflowId = null;
   }
 
   /**
-   * Save the current canvas
+   * Save the current workflow
    */
-  saveCanvas(name: string): SavedCanvas {
+  saveWorkflow(name: string): SavedWorkflow {
     const projectId = this.state.activeProjectId;
     if (!projectId) {
       throw new Error("No active project");
     }
 
     const now = new Date().toISOString();
-    const existingId = this.canvasState.activeCanvasId;
+    const existingId = this.workflowState.activeWorkflowId;
 
     // Serialize nodes and edges
-    const serializedNodes: SerializedCanvasNode[] = this.canvasState.nodes.map((node) => ({
+    const serializedNodes: SerializedWorkflowNode[] = this.workflowState.nodes.map((node) => ({
       id: node.id,
       type: node.type ?? "unknown",
       position: node.position,
@@ -536,7 +538,7 @@ export class CanvasManager {
       height: node.measured?.height ?? node.height,
     }));
 
-    const serializedEdges: SerializedCanvasEdge[] = this.canvasState.edges.map((edge) => ({
+    const serializedEdges: SerializedWorkflowEdge[] = this.workflowState.edges.map((edge) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
@@ -545,32 +547,32 @@ export class CanvasManager {
     }));
 
     if (existingId) {
-      // Update existing canvas
-      const savedCanvases = this.state.savedCanvasesByProject[projectId] ?? [];
-      const index = savedCanvases.findIndex((c) => c.id === existingId);
+      // Update existing workflow
+      const savedWorkflows = this.state.savedWorkflowsByProject[projectId] ?? [];
+      const index = savedWorkflows.findIndex((c) => c.id === existingId);
 
       if (index !== -1) {
-        const updated: SavedCanvas = {
-          ...savedCanvases[index],
+        const updated: SavedWorkflow = {
+          ...savedWorkflows[index],
           name,
           nodes: serializedNodes,
           edges: serializedEdges,
-          viewport: this.canvasState.viewport,
+          viewport: this.workflowState.viewport,
           updatedAt: now,
         };
 
-        this.state.savedCanvasesByProject = {
-          ...this.state.savedCanvasesByProject,
+        this.state.savedWorkflowsByProject = {
+          ...this.state.savedWorkflowsByProject,
           [projectId]: [
-            ...savedCanvases.slice(0, index),
+            ...savedWorkflows.slice(0, index),
             updated,
-            ...savedCanvases.slice(index + 1),
+            ...savedWorkflows.slice(index + 1),
           ],
         };
 
         this.addTimelineEntry({
-          type: "canvas-save",
-          description: `Saved canvas "${name}"`,
+          type: "workflow-save",
+          description: `Saved workflow "${name}"`,
         });
 
         this.schedulePersistence(projectId);
@@ -578,52 +580,52 @@ export class CanvasManager {
       }
     }
 
-    // Create new canvas
-    const newCanvas: SavedCanvas = {
-      id: `canvas-${crypto.randomUUID()}`,
+    // Create new workflow
+    const newWorkflow: SavedWorkflow = {
+      id: `workflow-${crypto.randomUUID()}`,
       name,
       projectId,
       nodes: serializedNodes,
       edges: serializedEdges,
-      viewport: this.canvasState.viewport,
+      viewport: this.workflowState.viewport,
       createdAt: now,
       updatedAt: now,
     };
 
-    const savedCanvases = this.state.savedCanvasesByProject[projectId] ?? [];
-    this.state.savedCanvasesByProject = {
-      ...this.state.savedCanvasesByProject,
-      [projectId]: [...savedCanvases, newCanvas],
+    const savedWorkflows = this.state.savedWorkflowsByProject[projectId] ?? [];
+    this.state.savedWorkflowsByProject = {
+      ...this.state.savedWorkflowsByProject,
+      [projectId]: [...savedWorkflows, newWorkflow],
     };
-    this.canvasState.activeCanvasId = newCanvas.id;
+    this.workflowState.activeWorkflowId = newWorkflow.id;
 
     this.addTimelineEntry({
-      type: "canvas-save",
-      description: `Saved canvas "${name}"`,
+      type: "workflow-save",
+      description: `Saved workflow "${name}"`,
     });
 
     this.schedulePersistence(projectId);
-    return newCanvas;
+    return newWorkflow;
   }
 
   /**
-   * Load a saved canvas
+   * Load a saved workflow
    */
-  loadCanvas(canvasId: string): void {
+  loadWorkflow(workflowId: string): void {
     const projectId = this.state.activeProjectId;
     if (!projectId) {
       throw new Error("No active project");
     }
 
-    const savedCanvases = this.state.savedCanvasesByProject[projectId] ?? [];
-    const canvas = savedCanvases.find((c) => c.id === canvasId);
+    const savedWorkflows = this.state.savedWorkflowsByProject[projectId] ?? [];
+    const workflow = savedWorkflows.find((c) => c.id === workflowId);
 
-    if (!canvas) {
-      throw new Error("Canvas not found");
+    if (!workflow) {
+      throw new Error("Workflow not found");
     }
 
     // Restore nodes
-    this.canvasState.nodes = canvas.nodes.map((serialized) => ({
+    this.workflowState.nodes = workflow.nodes.map((serialized) => ({
       id: serialized.id,
       type: serialized.type,
       position: serialized.position,
@@ -633,7 +635,7 @@ export class CanvasManager {
     }));
 
     // Restore edges
-    this.canvasState.edges = canvas.edges.map((serialized) => ({
+    this.workflowState.edges = workflow.edges.map((serialized) => ({
       id: serialized.id,
       source: serialized.source,
       target: serialized.target,
@@ -642,48 +644,48 @@ export class CanvasManager {
     }));
 
     // Restore viewport
-    this.canvasState.viewport = canvas.viewport;
-    this.canvasState.activeCanvasId = canvasId;
+    this.workflowState.viewport = workflow.viewport;
+    this.workflowState.activeWorkflowId = workflowId;
 
     this.addTimelineEntry({
-      type: "canvas-load",
-      description: `Loaded canvas "${canvas.name}"`,
+      type: "workflow-load",
+      description: `Loaded workflow "${workflow.name}"`,
     });
   }
 
   /**
-   * Delete a saved canvas
+   * Delete a saved workflow
    */
-  deleteCanvas(canvasId: string): void {
+  deleteWorkflow(workflowId: string): void {
     const projectId = this.state.activeProjectId;
     if (!projectId) return;
 
-    const savedCanvases = this.state.savedCanvasesByProject[projectId] ?? [];
-    this.state.savedCanvasesByProject = {
-      ...this.state.savedCanvasesByProject,
-      [projectId]: savedCanvases.filter((c) => c.id !== canvasId),
+    const savedWorkflows = this.state.savedWorkflowsByProject[projectId] ?? [];
+    this.state.savedWorkflowsByProject = {
+      ...this.state.savedWorkflowsByProject,
+      [projectId]: savedWorkflows.filter((c) => c.id !== workflowId),
     };
 
-    // Clear canvas if it was the active one
-    if (this.canvasState.activeCanvasId === canvasId) {
-      this.clearCanvas();
+    // Clear workflow if it was the active one
+    if (this.workflowState.activeWorkflowId === workflowId) {
+      this.clearWorkflow();
     }
 
     this.schedulePersistence(projectId);
   }
 
   /**
-   * Rename a saved canvas
+   * Rename a saved workflow
    */
-  renameCanvas(canvasId: string, newName: string): void {
+  renameWorkflow(workflowId: string, newName: string): void {
     const projectId = this.state.activeProjectId;
     if (!projectId) return;
 
-    const savedCanvases = this.state.savedCanvasesByProject[projectId] ?? [];
-    this.state.savedCanvasesByProject = {
-      ...this.state.savedCanvasesByProject,
-      [projectId]: savedCanvases.map((c) =>
-        c.id === canvasId ? { ...c, name: newName, updatedAt: new Date().toISOString() } : c,
+    const savedWorkflows = this.state.savedWorkflowsByProject[projectId] ?? [];
+    this.state.savedWorkflowsByProject = {
+      ...this.state.savedWorkflowsByProject,
+      [projectId]: savedWorkflows.map((c) =>
+        c.id === workflowId ? { ...c, name: newName, updatedAt: new Date().toISOString() } : c,
       ),
     };
 
@@ -695,22 +697,22 @@ export class CanvasManager {
   /**
    * Add a timeline entry
    */
-  addTimelineEntry(entry: Omit<CanvasTimelineEntry, "id" | "timestamp">): void {
-    const newEntry: CanvasTimelineEntry = {
+  addTimelineEntry(entry: Omit<WorkflowTimelineEntry, "id" | "timestamp">): void {
+    const newEntry: WorkflowTimelineEntry = {
       id: `timeline-${crypto.randomUUID()}`,
       timestamp: new Date().toISOString(),
       ...entry,
     };
 
     // Keep last 100 entries
-    this.canvasState.timeline = [newEntry, ...this.canvasState.timeline].slice(0, 100);
+    this.workflowState.timeline = [newEntry, ...this.workflowState.timeline].slice(0, 100);
   }
 
   /**
    * Clear timeline
    */
   clearTimeline(): void {
-    this.canvasState.timeline = [];
+    this.workflowState.timeline = [];
   }
 
   // === HELPERS ===
@@ -719,14 +721,14 @@ export class CanvasManager {
    * Get the next available position for a new node
    */
   private getNextNodePosition(): XYPosition {
-    if (this.canvasState.nodes.length === 0) {
+    if (this.workflowState.nodes.length === 0) {
       return { x: 100, y: 100 };
     }
 
     // Find the rightmost node and place new node to its right
-    const rightmostNode = this.canvasState.nodes.reduce((rightmost, node) => {
+    const rightmostNode = this.workflowState.nodes.reduce((rightmost, node) => {
       return node.position.x > rightmost.position.x ? node : rightmost;
-    }, this.canvasState.nodes[0]);
+    }, this.workflowState.nodes[0]);
 
     return {
       x: rightmostNode.position.x + DEFAULT_NODE_WIDTH + 50,

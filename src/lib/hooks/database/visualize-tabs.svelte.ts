@@ -24,7 +24,7 @@ export type SetVisualizeResultCallback = (
 export class VisualizeTabManager extends BaseTabManager<VisualizeTab> {
   private setVisualizeResult?: SetVisualizeResultCallback;
   private setActiveView: (
-    view: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize",
+    view: "query" | "schema" | "explain" | "erd" | "statistics" | "workflow" | "visualize",
   ) => void;
 
   constructor(
@@ -32,7 +32,7 @@ export class VisualizeTabManager extends BaseTabManager<VisualizeTab> {
     tabOrdering: TabOrderingManager,
     schedulePersistence: (projectId: string | null) => void,
     setActiveView: (
-      view: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize",
+      view: "query" | "schema" | "explain" | "erd" | "statistics" | "workflow" | "visualize",
     ) => void,
   ) {
     super(state, tabOrdering, schedulePersistence);

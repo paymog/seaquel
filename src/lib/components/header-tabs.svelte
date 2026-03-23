@@ -7,7 +7,7 @@
     import { isTauri } from "$lib/utils/environment";
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
-    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, LayoutGridIcon, GitBranchIcon, CableIcon, LayoutDashboardIcon } from "@lucide/svelte";
+    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, WorkflowIcon, GitBranchIcon, CableIcon, LayoutDashboardIcon } from "@lucide/svelte";
     import { RocketIcon } from "@lucide/svelte";
     import { useDatabase } from "$lib/hooks/database.svelte.js";
     import { useShortcuts, findShortcut } from "$lib/shortcuts/index.js";
@@ -17,7 +17,7 @@
     import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
     import BatchUnsavedDialog from "$lib/components/batch-unsaved-dialog.svelte";
     import SaveQueryDialog from "$lib/components/save-query-dialog.svelte";
-    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, CanvasTab, VisualizeTab, ConnectionTab, DashboardTab } from "$lib/types";
+    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, WorkflowTab, VisualizeTab, ConnectionTab, DashboardTab } from "$lib/types";
 
     const db = useDatabase();
     const shortcuts = useShortcuts();
@@ -119,13 +119,13 @@
         db.ui.setActiveView("statistics");
     };
 
-    const handleCanvasTabClick = (tabId: string) => {
-        const canvasTab = db.state.canvasTabs.find(t => t.id === tabId);
-        if (canvasTab?.connectionId) {
-            db.connections.setActive(canvasTab.connectionId);
+    const handleWorkflowTabClick = (tabId: string) => {
+        const workflowTab = db.state.workflowTabs.find(t => t.id === tabId);
+        if (workflowTab?.connectionId) {
+            db.connections.setActive(workflowTab.connectionId);
         }
-        db.canvasTabs.setActive(tabId);
-        db.ui.setActiveView("canvas");
+        db.workflowTabs.setActive(tabId);
+        db.ui.setActiveView("workflow");
     };
 
     const handleVisualizeTabClick = (tabId: string) => {
@@ -151,8 +151,8 @@
 
     // Drag and drop configuration
     const flipDurationMs = 150;
-    type TabType = 'query' | 'schema' | 'explain' | 'erd' | 'statistics' | 'canvas' | 'visualize' | 'connection' | 'dashboard';
-    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | CanvasTab | VisualizeTab | import('$lib/types').ConnectionTab | DashboardTab };
+    type TabType = 'query' | 'schema' | 'explain' | 'erd' | 'statistics' | 'workflow' | 'visualize' | 'connection' | 'dashboard';
+    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | WorkflowTab | VisualizeTab | import('$lib/types').ConnectionTab | DashboardTab };
 
     // State for dragging
     let draggedItems = $state<DndItem[]>([]);
@@ -188,8 +188,8 @@
         if (db.state.activeView === 'statistics' && db.state.activeStatisticsTabId) {
             return allTabs.findIndex(t => t.type === 'statistics' && t.id === db.state.activeStatisticsTabId);
         }
-        if (db.state.activeView === 'canvas' && db.state.activeCanvasTabId) {
-            return allTabs.findIndex(t => t.type === 'canvas' && t.id === db.state.activeCanvasTabId);
+        if (db.state.activeView === 'workflow' && db.state.activeWorkflowTabId) {
+            return allTabs.findIndex(t => t.type === 'workflow' && t.id === db.state.activeWorkflowTabId);
         }
         if (db.state.activeView === 'visualize' && db.state.activeVisualizeTabId) {
             return allTabs.findIndex(t => t.type === 'visualize' && t.id === db.state.activeVisualizeTabId);
@@ -216,8 +216,8 @@
             handleErdTabClick(tab.id);
         } else if (tab.type === 'statistics') {
             handleStatisticsTabClick(tab.id);
-        } else if (tab.type === 'canvas') {
-            handleCanvasTabClick(tab.id);
+        } else if (tab.type === 'workflow') {
+            handleWorkflowTabClick(tab.id);
         } else if (tab.type === 'visualize') {
             handleVisualizeTabClick(tab.id);
         } else if (tab.type === 'connection') {
@@ -244,7 +244,7 @@
         else if (type === 'explain') db.explainTabs.remove(id);
         else if (type === 'erd') db.erdTabs.remove(id);
         else if (type === 'statistics') db.statisticsTabs.remove(id);
-        else if (type === 'canvas') db.canvasTabs.remove(id);
+        else if (type === 'workflow') db.workflowTabs.remove(id);
         else if (type === 'visualize') db.visualizeTabs.remove(id);
         else if (type === 'connection') db.connectionTabs.remove(id);
         else if (type === 'dashboard') db.dashboardTabs.remove(id);
@@ -318,8 +318,8 @@
             db.erdTabs.remove(db.state.activeErdTabId);
         } else if (db.state.activeView === 'statistics' && db.state.activeStatisticsTabId) {
             db.statisticsTabs.remove(db.state.activeStatisticsTabId);
-        } else if (db.state.activeView === 'canvas' && db.state.activeCanvasTabId) {
-            db.canvasTabs.remove(db.state.activeCanvasTabId);
+        } else if (db.state.activeView === 'workflow' && db.state.activeWorkflowTabId) {
+            db.workflowTabs.remove(db.state.activeWorkflowTabId);
         } else if (db.state.activeView === 'visualize' && db.state.activeVisualizeTabId) {
             db.visualizeTabs.remove(db.state.activeVisualizeTabId);
         } else if (db.state.activeView === 'connection' && db.state.activeConnectionTabId) {
@@ -335,7 +335,7 @@
         else if (type === 'explain') db.explainTabs.remove(id);
         else if (type === 'erd') db.erdTabs.remove(id);
         else if (type === 'statistics') db.statisticsTabs.remove(id);
-        else if (type === 'canvas') db.canvasTabs.remove(id);
+        else if (type === 'workflow') db.workflowTabs.remove(id);
         else if (type === 'visualize') db.visualizeTabs.remove(id);
         else if (type === 'connection') db.connectionTabs.remove(id);
         else if (type === 'dashboard') db.dashboardTabs.remove(id);
@@ -648,28 +648,28 @@
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
-                        {:else if type === 'canvas'}
-                            {@const canvasTab = tab as import('$lib/types').CanvasTab}
+                        {:else if type === 'workflow'}
+                            {@const workflowTab = tab as import('$lib/types').WorkflowTab}
                             <ContextMenu.Root>
                                 <ContextMenu.Trigger>
                                     <div
                                         class={[
                                             "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs rounded-md transition-colors",
-                                            activeTabType === "canvas" && db.state.activeCanvasTabId === id
+                                            activeTabType === "workflow" && db.state.activeWorkflowTabId === id
                                                 ? "bg-muted shadow-sm"
                                                 : "hover:bg-muted/50",
                                         ]}
-                                        onclick={() => handleCanvasTabClick(id)}
+                                        onclick={() => handleWorkflowTabClick(id)}
                                     >
-                                        <LayoutGridIcon class="size-3 text-muted-foreground" />
-                                        <span class="pr-4">{canvasTab.name}</span>
+                                        <WorkflowIcon class="size-3 text-muted-foreground" />
+                                        <span class="pr-4">{workflowTab.name}</span>
                                         <Button
                                             size="icon"
                                             variant="ghost"
                                             class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
                                             onclick={(e) => {
                                                 e.stopPropagation();
-                                                db.canvasTabs.remove(id);
+                                                db.workflowTabs.remove(id);
                                             }}
                                         >
                                             <XIcon />

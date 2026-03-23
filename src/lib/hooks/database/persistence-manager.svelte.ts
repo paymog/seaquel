@@ -5,7 +5,7 @@ import type {
   PersistedExplainTab,
   PersistedErdTab,
   PersistedStatisticsTab,
-  PersistedCanvasTab,
+  PersistedWorkflowTab,
   PersistedStarterTab,
   PersistedDashboardTab,
   PersistedSavedQuery,
@@ -16,7 +16,7 @@ import type {
   PersistedSharedQueryRepo,
 } from "$lib/types";
 import { serializeRepo } from "$lib/types";
-import type { SavedCanvas } from "$lib/types/canvas";
+import type { SavedWorkflow } from "$lib/types/workflow";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistedConnection } from "./types.js";
 import type { ConnectionOverride } from "$lib/types";
@@ -183,8 +183,8 @@ export class PersistenceManager {
     }));
   }
 
-  serializeCanvasTabs(projectId: string): PersistedCanvasTab[] {
-    const tabs = this.state.canvasTabsByProject[projectId] ?? [];
+  serializeWorkflowTabs(projectId: string): PersistedWorkflowTab[] {
+    const tabs = this.state.workflowTabsByProject[projectId] ?? [];
     return tabs.map((tab) => ({
       id: tab.id,
       name: tab.name,
@@ -216,8 +216,8 @@ export class PersistenceManager {
     }));
   }
 
-  serializeSavedCanvases(projectId: string): SavedCanvas[] {
-    return this.state.savedCanvasesByProject[projectId] ?? [];
+  serializeSavedWorkflows(projectId: string): SavedWorkflow[] {
+    return this.state.savedWorkflowsByProject[projectId] ?? [];
   }
 
   serializeSavedQueries(projectId: string): PersistedSavedQuery[] {
@@ -316,19 +316,19 @@ export class PersistenceManager {
         explainTabs: this.serializeExplainTabs(projectId),
         erdTabs: this.serializeErdTabs(projectId),
         statisticsTabs: this.serializeStatisticsTabs(projectId),
-        canvasTabs: this.serializeCanvasTabs(projectId),
+        workflowTabs: this.serializeWorkflowTabs(projectId),
         tabOrder: this.state.tabOrderByProject[projectId] ?? [],
         activeQueryTabId: this.state.activeQueryTabIdByProject[projectId] ?? null,
         activeSchemaTabId: this.state.activeSchemaTabIdByProject[projectId] ?? null,
         activeExplainTabId: this.state.activeExplainTabIdByProject[projectId] ?? null,
         activeErdTabId: this.state.activeErdTabIdByProject[projectId] ?? null,
         activeStatisticsTabId: this.state.activeStatisticsTabIdByProject[projectId] ?? null,
-        activeCanvasTabId: this.state.activeCanvasTabIdByProject[projectId] ?? null,
+        activeWorkflowTabId: this.state.activeWorkflowTabIdByProject[projectId] ?? null,
         activeView: this.state.activeView,
         activeConnectionId: this.state.activeConnectionIdByProject[projectId] ?? null,
         starterTabs: this.serializeStarterTabs(projectId),
         activeStarterTabId: this.state.activeStarterTabIdByProject[projectId] ?? null,
-        savedCanvases: this.serializeSavedCanvases(projectId),
+        savedWorkflows: this.serializeSavedWorkflows(projectId),
         connectionTabs: [],
         activeConnectionTabId: null,
         dashboardTabs: this.serializeDashboardTabs(projectId),

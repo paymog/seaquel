@@ -15,7 +15,7 @@
     import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
     import { settingsDialogStore } from "$lib/stores/settings-dialog.svelte.js";
     import { StatisticsDashboard } from "$lib/components/statistics";
-    import CanvasView from "$lib/components/canvas/canvas-view.svelte";
+    import WorkflowView from "$lib/components/workflow/workflow-view.svelte";
     import QueryVisualViewer from "$lib/components/query-visual-viewer.svelte";
     import ConnectionTabView from "$lib/components/connection-tab-view.svelte";
     import { DashboardView } from "$lib/components/dashboard";
@@ -109,9 +109,9 @@
                 {#if db.state.activeStatisticsTab}
                     <StatisticsDashboard tab={db.state.activeStatisticsTab} />
                 {/if}
-            {:else if activeTabType === "canvas"}
-                {#if db.state.activeCanvasTab}
-                    <CanvasView />
+            {:else if activeTabType === "workflow"}
+                {#if db.state.activeWorkflowTab}
+                    <WorkflowView />
                 {/if}
             {:else if activeTabType === "visualize"}
                 <QueryVisualViewer />

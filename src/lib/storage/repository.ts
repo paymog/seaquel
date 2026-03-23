@@ -7,7 +7,7 @@ import type {
   PersistedSharedQueryRepo,
 } from "$lib/types";
 import type { PersistedConnection } from "$lib/hooks/database/types";
-import type { SavedCanvas } from "$lib/types/canvas";
+import type { SavedWorkflow } from "$lib/types/workflow";
 
 // === Projects ===
 
@@ -238,7 +238,7 @@ export const projectStateRepo = {
       active_explain_tab_id: string | null;
       active_erd_tab_id: string | null;
       active_statistics_tab_id: string | null;
-      active_canvas_tab_id: string | null;
+      active_workflow_tab_id: string | null;
       active_visualize_tab_id: string | null;
       active_starter_tab_id: string | null;
       tab_order: string;
@@ -305,7 +305,7 @@ export const projectStateRepo = {
         connectionId: t.connection_id ?? "",
       }));
 
-    const canvasTabs = tabs
+    const workflowTabs = tabs
       .filter((t) => t.tab_type === "canvas")
       .map((t) => ({
         id: t.id,
@@ -322,7 +322,7 @@ export const projectStateRepo = {
         closable: t.closable === 1,
       }));
 
-    // Load saved canvases
+    // Load saved workflows
     const dashboardTabs = tabs
       .filter((t) => t.tab_type === "dashboard")
       .map((t) => ({
@@ -331,11 +331,11 @@ export const projectStateRepo = {
         dashboardId: t.source_query ?? "",
       }));
 
-    const canvasRows = await db.query<{ id: string; data: string }>(
+    const workflowRows = await db.query<{ id: string; data: string }>(
       "SELECT id, data FROM saved_canvases WHERE project_id = ?",
       [projectId],
     );
-    const savedCanvases: SavedCanvas[] = canvasRows.map((r) => JSON.parse(r.data));
+    const savedWorkflows: SavedWorkflow[] = workflowRows.map((r) => JSON.parse(r.data));
 
     // Read active_dashboard_tab_id if the column exists
     let activeDashboardTabId: string | null = null;
@@ -386,19 +386,19 @@ export const projectStateRepo = {
       explainTabs,
       erdTabs,
       statisticsTabs,
-      canvasTabs,
+      workflowTabs,
       tabOrder: JSON.parse(state.tab_order),
       activeQueryTabId: state.active_query_tab_id,
       activeSchemaTabId: state.active_schema_tab_id,
       activeExplainTabId: state.active_explain_tab_id,
       activeErdTabId: state.active_erd_tab_id,
       activeStatisticsTabId: state.active_statistics_tab_id,
-      activeCanvasTabId: state.active_canvas_tab_id,
+      activeWorkflowTabId: state.active_workflow_tab_id,
       activeView: state.active_view as PersistedProjectState["activeView"],
       activeConnectionId: state.active_connection_id,
       starterTabs,
       activeStarterTabId: state.active_starter_tab_id,
-      savedCanvases,
+      savedWorkflows,
       dashboardTabs,
       activeDashboardTabId,
       starredSharedQueryIds,
@@ -410,7 +410,7 @@ export const projectStateRepo = {
     await db.execute(
       `INSERT OR REPLACE INTO project_state
        (project_id, active_view, active_connection_id, active_query_tab_id, active_schema_tab_id,
-        active_explain_tab_id, active_erd_tab_id, active_statistics_tab_id, active_canvas_tab_id,
+        active_explain_tab_id, active_erd_tab_id, active_statistics_tab_id, active_workflow_tab_id,
         active_visualize_tab_id, active_starter_tab_id, tab_order)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -422,7 +422,7 @@ export const projectStateRepo = {
         state.activeExplainTabId,
         state.activeErdTabId,
         state.activeStatisticsTabId ?? null,
-        state.activeCanvasTabId ?? null,
+        state.activeWorkflowTabId ?? null,
         null, // activeVisualizeTabId
         state.activeStarterTabId ?? null,
         JSON.stringify(state.tabOrder),
@@ -509,7 +509,7 @@ export const projectStateRepo = {
       );
     }
 
-    for (const tab of state.canvasTabs ?? []) {
+    for (const tab of state.workflowTabs ?? []) {
       await db.execute(
         `INSERT INTO tabs (id, project_id, tab_type, name, connection_id)
          VALUES (?, ?, 'canvas', ?, ?)`,
@@ -533,13 +533,13 @@ export const projectStateRepo = {
       );
     }
 
-    // Replace saved canvases
+    // Replace saved workflows
     await db.execute("DELETE FROM saved_canvases WHERE project_id = ?", [state.projectId]);
-    for (const canvas of state.savedCanvases ?? []) {
+    for (const workflow of state.savedWorkflows ?? []) {
       await db.execute("INSERT INTO saved_canvases (id, project_id, data) VALUES (?, ?, ?)", [
-        (canvas as { id?: string }).id ?? `canvas-${crypto.randomUUID()}`,
+        (workflow as { id?: string }).id ?? `workflow-${crypto.randomUUID()}`,
         state.projectId,
-        JSON.stringify(canvas),
+        JSON.stringify(workflow),
       ]);
     }
   },

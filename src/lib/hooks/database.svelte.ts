@@ -16,7 +16,7 @@ import { SchemaTabManager } from "./database/schema-tabs.svelte.js";
 import { ExplainTabManager } from "./database/explain-tabs.svelte.js";
 import { ErdTabManager } from "./database/erd-tabs.svelte.js";
 import { StatisticsTabManager } from "./database/statistics-tabs.svelte.js";
-import { CanvasTabManager } from "./database/canvas-tabs.svelte.js";
+import { WorkflowTabManager } from "./database/workflow-tabs.svelte.js";
 import { VisualizeTabManager } from "./database/visualize-tabs.svelte.js";
 import { ConnectionTabManager } from "./database/connection-tabs.svelte.js";
 import { ProjectManager } from "./database/project-manager.svelte.js";
@@ -24,8 +24,8 @@ import { LabelManager } from "./database/label-manager.svelte.js";
 import { StarterTabManager } from "./database/starter-tabs.svelte.js";
 import { DashboardTabManager } from "./database/dashboard-tabs.svelte.js";
 import { DashboardManager } from "./database/dashboard-manager.svelte.js";
-import { CanvasState } from "./database/canvas-state.svelte.js";
-import { CanvasManager } from "./database/canvas-manager.svelte.js";
+import { WorkflowState } from "./database/workflow-state.svelte.js";
+import { WorkflowManager } from "./database/workflow-manager.svelte.js";
 import { SharedRepoManager } from "./database/shared-repo-manager.svelte.js";
 import { SharedQueryManager } from "./database/shared-query-manager.svelte.js";
 import { SharedDashboardManager } from "./database/shared-dashboard-manager.svelte.js";
@@ -59,13 +59,13 @@ class UseDatabase {
   readonly explainTabs: ExplainTabManager;
   readonly erdTabs: ErdTabManager;
   readonly statisticsTabs: StatisticsTabManager;
-  readonly canvasTabs: CanvasTabManager;
+  readonly workflowTabs: WorkflowTabManager;
   readonly visualizeTabs: VisualizeTabManager;
   readonly starterTabs: StarterTabManager;
   readonly dashboardTabs: DashboardTabManager;
   readonly dashboards: DashboardManager;
-  readonly canvasState: CanvasState;
-  readonly canvas: CanvasManager;
+  readonly workflowState: WorkflowState;
+  readonly workflow: WorkflowManager;
   readonly sharedRepos: SharedRepoManager;
   readonly connectionTabs: ConnectionTabManager;
   readonly sharedQueries: SharedQueryManager;
@@ -96,7 +96,7 @@ class UseDatabase {
         | "explain"
         | "erd"
         | "statistics"
-        | "canvas"
+        | "workflow"
         | "visualize"
         | "connection"
         | "dashboard",
@@ -151,7 +151,7 @@ class UseDatabase {
         return result;
       },
     );
-    this.canvasTabs = new CanvasTabManager(
+    this.workflowTabs = new WorkflowTabManager(
       this.state,
       this.tabs,
       scheduleProjectPersistence,
@@ -186,11 +186,11 @@ class UseDatabase {
       scheduleProjectPersistence,
     );
 
-    // Canvas
-    this.canvasState = new CanvasState();
-    this.canvas = new CanvasManager(
+    // Workflow
+    this.workflowState = new WorkflowState();
+    this.workflow = new WorkflowManager(
       this.state,
-      this.canvasState,
+      this.workflowState,
       scheduleProjectPersistence,
       async (query: string) => {
         return await this.queries.executeRaw(query);

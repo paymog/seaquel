@@ -67,7 +67,7 @@ export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
       | "explain"
       | "erd"
       | "statistics"
-      | "canvas"
+      | "workflow"
       | "visualize"
       | "connection"
       | "dashboard",
@@ -88,7 +88,7 @@ export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
         | "explain"
         | "erd"
         | "statistics"
-        | "canvas"
+        | "workflow"
         | "visualize"
         | "connection"
         | "dashboard",

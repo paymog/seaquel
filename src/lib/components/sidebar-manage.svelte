@@ -7,7 +7,7 @@
 	import { Button } from "$lib/components/ui/button";
 	import { Input } from "$lib/components/ui/input";
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
-	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon } from "@lucide/svelte";
+	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, WorkflowIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon } from "@lucide/svelte";
 	import type { SharedQuery, SharedDashboard, Dashboard } from "$lib/types";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
@@ -511,10 +511,10 @@
 										</ContextMenu.Item>
 										<ContextMenu.Item onclick={() => {
 											db.connections.setActive(connection.id);
-											db.canvasTabs.add();
+											db.workflowTabs.add();
 										}}>
-											<LayoutGridIcon class="size-4 me-2" />
-											{m.sidebar_canvas_workspace()}
+											<WorkflowIcon class="size-4 me-2" />
+											{m.sidebar_workflows()}
 										</ContextMenu.Item>
 										<ContextMenu.Item onclick={async () => {
 											db.connections.setActive(connection.id);
@@ -687,21 +687,21 @@
 															{/snippet}
 														</DropdownMenu.Trigger>
 														<DropdownMenu.Content align="end">
-															{#if db.state.activeView === 'canvas' && db.state.activeCanvasTabId}
-																<DropdownMenu.Item onclick={() => db.canvas.addTableNode(table)}>
+															{#if db.state.activeView === 'workflow' && db.state.activeWorkflowTabId}
+																<DropdownMenu.Item onclick={() => db.workflow.addTableNode(table)}>
 																	<LayoutGridIcon class="size-4 me-2" />
-																	{m.sidebar_add_to_canvas()}
+																	{m.sidebar_add_to_workflow()}
 																</DropdownMenu.Item>
 															{:else}
 																<Tooltip.Root>
 																	<Tooltip.Trigger class="w-full">
 																		<DropdownMenu.Item disabled class="w-full">
 																			<LayoutGridIcon class="size-4 me-2" />
-																			{m.sidebar_add_to_canvas()}
+																			{m.sidebar_add_to_workflow()}
 																		</DropdownMenu.Item>
 																	</Tooltip.Trigger>
 																	<Tooltip.Content side="right">
-																		{m.sidebar_open_canvas_hint()}
+																		{m.sidebar_open_workflow_hint()}
 																	</Tooltip.Content>
 																</Tooltip.Root>
 															{/if}

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { Handle, Position, NodeResizer } from "@xyflow/svelte";
-	import type { CanvasChartNodeData } from "$lib/types/canvas";
+	import type { WorkflowChartNodeData } from "$lib/types/workflow";
 	import type { ChartType } from "$lib/types";
-	import { useCanvasNode } from "./use-canvas-node.svelte.js";
+	import { useWorkflowNode } from "./use-workflow-node.svelte.js";
 	import {
 		BarChart, LineChart, PieChart, ScatterChart,
 		LinearGradient, Area, Bars, Spline
@@ -18,17 +18,17 @@
 
 	interface Props {
 		id: string;
-		data: CanvasChartNodeData;
+		data: WorkflowChartNodeData;
 		isConnectable?: boolean;
 		selected?: boolean;
 	}
 
 	let { id, data, isConnectable = true, selected = false }: Props = $props();
 
-	const { db, handleRemove, handleResizeEnd } = useCanvasNode(() => id);
+	const { db, handleRemove, handleResizeEnd } = useWorkflowNode(() => id);
 
 	function handleChartTypeChange(newType: ChartType) {
-		db.canvas.updateNodeData(id, {
+		db.workflow.updateNodeData(id, {
 			chartConfig: { ...data.chartConfig, type: newType },
 		});
 	}

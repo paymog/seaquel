@@ -584,8 +584,8 @@ export class ProjectManager {
       this.state.explainTabsByProject[projectId] = [];
       this.state.erdTabsByProject[projectId] = [];
       this.state.statisticsTabsByProject[projectId] = [];
-      this.state.canvasTabsByProject[projectId] = [];
-      this.state.savedCanvasesByProject[projectId] = [];
+      this.state.workflowTabsByProject[projectId] = [];
+      this.state.savedWorkflowsByProject[projectId] = [];
       this.state.dashboardTabsByProject[projectId] = [];
       this.state.tabOrderByProject[projectId] = [];
       this.state.activeQueryTabIdByProject[projectId] = null;
@@ -593,7 +593,7 @@ export class ProjectManager {
       this.state.activeExplainTabIdByProject[projectId] = null;
       this.state.activeErdTabIdByProject[projectId] = null;
       this.state.activeStatisticsTabIdByProject[projectId] = null;
-      this.state.activeCanvasTabIdByProject[projectId] = null;
+      this.state.activeWorkflowTabIdByProject[projectId] = null;
       this.state.activeDashboardTabIdByProject[projectId] = null;
       this.state.activeConnectionIdByProject[projectId] = null;
       this.state.connectionTabsByProject[projectId] = [];
@@ -654,17 +654,22 @@ export class ProjectManager {
         isLoading: false,
       }));
 
-    // Restore canvas tabs
-    this.state.canvasTabsByProject[projectId] = (persistedState.canvasTabs ?? [])
-      .filter((t) => t.connectionId)
-      .map((t) => ({
+    // Restore workflow tabs
+    this.state.workflowTabsByProject[projectId] = (
+      persistedState.workflowTabs ??
+      (persistedState as any).canvasTabs ??
+      []
+    )
+      .filter((t: any) => t.connectionId)
+      .map((t: any) => ({
         id: t.id,
         name: t.name,
         connectionId: t.connectionId,
       }));
 
-    // Restore saved canvases
-    this.state.savedCanvasesByProject[projectId] = persistedState.savedCanvases ?? [];
+    // Restore saved workflows
+    this.state.savedWorkflowsByProject[projectId] =
+      persistedState.savedWorkflows ?? (persistedState as any).savedCanvases ?? [];
 
     // Restore tab order and active IDs
     this.state.tabOrderByProject[projectId] = persistedState.tabOrder;
@@ -674,7 +679,8 @@ export class ProjectManager {
     this.state.activeErdTabIdByProject[projectId] = persistedState.activeErdTabId;
     this.state.activeStatisticsTabIdByProject[projectId] =
       persistedState.activeStatisticsTabId ?? null;
-    this.state.activeCanvasTabIdByProject[projectId] = persistedState.activeCanvasTabId ?? null;
+    this.state.activeWorkflowTabIdByProject[projectId] =
+      persistedState.activeWorkflowTabId ?? (persistedState as any).activeCanvasTabId ?? null;
     // Only restore active connection if the connection is actually connected
     const restoredConnection = persistedState.activeConnectionId
       ? this.state.connections.find((c) => c.id === persistedState.activeConnectionId)

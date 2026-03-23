@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Handle, Position, NodeResizer } from "@xyflow/svelte";
-	import type { CanvasResultNodeData } from "$lib/types/canvas";
-	import { useCanvasNode } from "./use-canvas-node.svelte.js";
+	import type { WorkflowResultNodeData } from "$lib/types/workflow";
+	import { useWorkflowNode } from "./use-workflow-node.svelte.js";
 	import SuggestiveHandle from "../suggestive-handle.svelte";
 	import VirtualResultsTable from "$lib/components/virtual-results-table.svelte";
 	import TableIcon from "@lucide/svelte/icons/table-2";
@@ -18,14 +18,14 @@
 
 	interface Props {
 		id: string;
-		data: CanvasResultNodeData;
+		data: WorkflowResultNodeData;
 		isConnectable?: boolean;
 		selected?: boolean;
 	}
 
 	let { id, data, isConnectable = true, selected = false }: Props = $props();
 
-	const { db, handleRemove, handleResizeEnd } = useCanvasNode(() => id);
+	const { db, handleRemove, handleResizeEnd } = useWorkflowNode(() => id);
 
 	// Pagination state
 	const pageSize = 50;
@@ -58,7 +58,7 @@
 	};
 
 	function handleViewAsChart() {
-		db.canvas.addChartNode(id, data.columns, data.rows);
+		db.workflow.addChartNode(id, data.columns, data.rows);
 	}
 
 	function goToPage(page: number) {

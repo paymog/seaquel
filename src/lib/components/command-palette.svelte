@@ -89,7 +89,7 @@
 		runAndClose(() => db.ui.toggleAI());
 	}
 
-	function goToTab(tabId: string, type: "query" | "schema" | "explain" | "erd" | "statistics" | "canvas" | "visualize" | "connection" | "dashboard") {
+	function goToTab(tabId: string, type: "query" | "schema" | "explain" | "erd" | "statistics" | "workflow" | "visualize" | "connection" | "dashboard") {
 		runAndClose(() => {
 			switch (type) {
 				case "query":
@@ -112,9 +112,9 @@
 					db.statisticsTabs.setActive(tabId);
 					db.ui.setActiveView("statistics");
 					break;
-				case "canvas":
-					db.canvasTabs.setActive(tabId);
-					db.ui.setActiveView("canvas");
+				case "workflow":
+					db.workflowTabs.setActive(tabId);
+					db.ui.setActiveView("workflow");
 					break;
 				case "visualize":
 					db.visualizeTabs.setActive(tabId);
@@ -164,8 +164,8 @@
 		runAndClose(() => db.erdTabs.add());
 	}
 
-	function viewCanvas() {
-		runAndClose(() => db.canvasTabs.add());
+	function viewWorkflow() {
+		runAndClose(() => db.workflowTabs.add());
 	}
 
 	async function newDashboard() {
@@ -321,7 +321,7 @@
 				return GitBranch;
 			case "statistics":
 				return BarChart3;
-			case "canvas":
+			case "workflow":
 				return LayoutGrid;
 			case "visualize":
 				return GitBranch;
@@ -423,9 +423,9 @@
 					<GitBranch class="size-4" />
 					<span>{m.command_view_erd()}</span>
 				</Command.Item>
-				<Command.Item value="view-canvas" onSelect={viewCanvas}>
+				<Command.Item value="view-workflow" onSelect={viewWorkflow}>
 					<LayoutGrid class="size-4" />
-					<span>{m.command_open_canvas()}</span>
+					<span>{m.command_open_workflow()}</span>
 				</Command.Item>
 			{/if}
 		</Command.Group>
