@@ -29,6 +29,7 @@
 	import { Link } from "@lucide/svelte";
 	import { handleDeepLink } from "$lib/services/deep-link";
 	import { toast } from "svelte-sonner";
+	import { onboardingStore } from "$lib/stores/onboarding.svelte";
 
 	const db = useDatabase();
 	const shortcuts = useShortcuts();
@@ -431,24 +432,26 @@
 		</Command.Group>
 
 		<!-- Learning -->
-		<Command.Group heading={m.command_group_learning()}>
-			<Command.Item value="learn-sandbox" onSelect={() => goToLearn('/learn/sandbox')}>
-				<BookOpen class="size-4" />
-				<span>{m.command_learn_sandbox()}</span>
-			</Command.Item>
-			{#each LESSON_SECTIONS as section}
-				{#each section.lessons as lessonId}
-					{@const lesson = LESSONS[lessonId]}
-					{#if lesson}
-						<Command.Item value="learn-{lessonId}" onSelect={() => goToLearn(`/learn/${lessonId}`)}>
-							<GraduationCap class="size-4" />
-							<span>{lesson.title}</span>
-							<span class="text-muted-foreground ms-auto text-xs">{section.title}</span>
-						</Command.Item>
-					{/if}
+		{#if onboardingStore.learnEnabled}
+			<Command.Group heading={m.command_group_learning()}>
+				<Command.Item value="learn-sandbox" onSelect={() => goToLearn('/learn/sandbox')}>
+					<BookOpen class="size-4" />
+					<span>{m.command_learn_sandbox()}</span>
+				</Command.Item>
+				{#each LESSON_SECTIONS as section}
+					{#each section.lessons as lessonId}
+						{@const lesson = LESSONS[lessonId]}
+						{#if lesson}
+							<Command.Item value="learn-{lessonId}" onSelect={() => goToLearn(`/learn/${lessonId}`)}>
+								<GraduationCap class="size-4" />
+								<span>{lesson.title}</span>
+								<span class="text-muted-foreground ms-auto text-xs">{section.title}</span>
+							</Command.Item>
+						{/if}
+					{/each}
 				{/each}
-			{/each}
-		</Command.Group>
+			</Command.Group>
+		{/if}
 
 		<!-- Tables -->
 		{#if isConnected && tables.length > 0}
