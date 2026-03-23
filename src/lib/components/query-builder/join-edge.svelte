@@ -2,6 +2,7 @@
     import {
         BaseEdge,
         EdgeLabel,
+        EdgeReconnectAnchor,
         getBezierPath,
         type Position,
     } from "@xyflow/svelte";
@@ -141,6 +142,10 @@
         : "fill-background stroke-muted-foreground"}
     stroke-width="2"
 />
+
+<!-- Invisible drag anchors for reconnecting -->
+<EdgeReconnectAnchor type="source" position={{ x: sourceX, y: sourceY }} size={20} />
+<EdgeReconnectAnchor type="target" position={{ x: targetX, y: targetY }} size={20} />
 
 <EdgeLabel x={labelX} y={labelY} class="nodrag nopan pointer-events-auto !bg-transparent">
     <Tooltip.Root open={dropdownOpen ? false : undefined}>

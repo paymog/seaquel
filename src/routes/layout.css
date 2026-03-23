@@ -380,10 +380,10 @@
 
 /* Query builder handles - subtle by default, visible on hover */
 .svelte-flow .svelte-flow__handle {
-  width: 8px !important;
-  height: 8px !important;
-  min-width: 8px !important;
-  min-height: 8px !important;
+  width: 12px !important;
+  height: 12px !important;
+  min-width: 12px !important;
+  min-height: 12px !important;
   background-color: var(--muted-foreground) !important;
   border: 2px solid var(--card) !important;
   border-radius: 50% !important;
@@ -393,24 +393,31 @@
   pointer-events: auto !important;
   transition:
     opacity 0.15s ease,
-    transform 0.15s ease !important;
+    transform 0.15s ease,
+    background-color 0.15s ease !important;
 }
 
 /* Show handles on node hover */
 .svelte-flow .svelte-flow__node:hover .svelte-flow__handle {
-  opacity: 1 !important;
+  opacity: 0.6 !important;
 }
 
-/* Active handle (when connecting) */
+/* Active handle (when hovering a row or the handle itself) */
 .svelte-flow .svelte-flow__handle:hover,
 .svelte-flow .svelte-flow__handle.connecting,
 .svelte-flow .svelte-flow__handle.valid {
-  width: 10px !important;
-  height: 10px !important;
-  min-width: 10px !important;
-  min-height: 10px !important;
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px !important;
+  min-height: 14px !important;
   background-color: #3b82f6 !important;
   opacity: 1 !important;
+}
+
+/* Highlight handles when hovering their parent row */
+.svelte-flow .qb-column-row:hover .svelte-flow__handle {
+  opacity: 1 !important;
+  background-color: #3b82f6 !important;
 }
 
 /* Always show handles when a connection is in progress */

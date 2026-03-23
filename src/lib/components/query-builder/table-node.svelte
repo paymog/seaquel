@@ -234,7 +234,7 @@
 					{@const isSelected = data.selectedColumns.has(column.name)}
 					{@const isForeignKey = Boolean(column.foreignKey)}
 					{@const columnAgg = data.columnAggregates.get(column.name)}
-					<div class="px-3 py-1.5 flex items-center gap-2 hover:bg-muted/30 relative">
+					<div class="qb-column-row px-3 py-1.5 flex items-center gap-2 hover:bg-muted/30 relative">
 						<!-- Left Handle (target) for receiving connections -->
 						<Handle
 							type="target"

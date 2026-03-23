@@ -385,6 +385,19 @@ export class QueryBuilderState {
     this.customSql = null; // Clear custom SQL so editor syncs with visual state
   }
 
+  updateJoinColumns(
+    joinId: string,
+    sourceTable: string,
+    sourceColumn: string,
+    targetTable: string,
+    targetColumn: string,
+  ): void {
+    this.joins = this.joins.map((j) =>
+      j.id === joinId ? { ...j, sourceTable, sourceColumn, targetTable, targetColumn } : j,
+    );
+    this.customSql = null;
+  }
+
   /**
    * Remove a join.
    * @param joinId - ID of the join to remove

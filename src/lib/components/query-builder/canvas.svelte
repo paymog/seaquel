@@ -9,7 +9,8 @@
 		type Edge,
 		type Connection,
 		type OnDelete,
-		type OnSelectionChange
+		type OnSelectionChange,
+		type OnReconnect
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -616,6 +617,50 @@
 		qb.addJoin(sourceNode.tableName, sourceColumn, targetNode.tableName, targetColumn, 'INNER');
 	}
 
+	const handleReconnect: OnReconnect = (oldEdge, newConnection) => {
+		const { source, sourceHandle, target, targetHandle } = newConnection;
+		if (!source || !target || !sourceHandle || !targetHandle) return;
+
+		const edgeData = oldEdge.data as { joinId?: string; subqueryId?: string; cteId?: string } | undefined;
+		if (!edgeData?.joinId) return;
+
+		const sourceNode = findTableNode(source);
+		const targetNode = findTableNode(target);
+		if (!sourceNode || !targetNode) return;
+
+		const sourceColumn = sourceHandle.replace('-source', '');
+		const targetColumn = targetHandle.replace('-target', '');
+
+		// Find and update the join in the appropriate context
+		if (edgeData.cteId) {
+			const cte = findCteById(edgeData.cteId);
+			if (cte) {
+				const join = cte.innerQuery.joins.find(j => j.id === edgeData.joinId);
+				if (join) {
+					join.sourceTable = sourceNode.tableName;
+					join.sourceColumn = sourceColumn;
+					join.targetTable = targetNode.tableName;
+					join.targetColumn = targetColumn;
+					qb.ctes = [...qb.ctes];
+				}
+			}
+		} else if (edgeData.subqueryId) {
+			const subquery = findSubqueryById(edgeData.subqueryId);
+			if (subquery) {
+				const join = subquery.innerQuery.joins.find(j => j.id === edgeData.joinId);
+				if (join) {
+					join.sourceTable = sourceNode.tableName;
+					join.sourceColumn = sourceColumn;
+					join.targetTable = targetNode.tableName;
+					join.targetColumn = targetColumn;
+					qb.subqueries = [...qb.subqueries];
+				}
+			}
+		} else {
+			qb.updateJoinColumns(edgeData.joinId, sourceNode.tableName, sourceColumn, targetNode.tableName, targetColumn);
+		}
+	};
+
 	function handleDragOver(event: DragEvent) {
 		event.preventDefault();
 		if (event.dataTransfer) {
@@ -1008,6 +1053,7 @@
 		ondrop={handleDrop}
 		ondragover={handleDragOver}
 		onconnect={handleConnect}
+		onreconnect={handleReconnect}
 		ondelete={handleDelete}
 		onselectionchange={handleSelectionChange}
 		deleteKey={['Delete', 'Backspace']}
