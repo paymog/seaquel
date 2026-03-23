@@ -41,7 +41,7 @@
 	<!-- Icon Sidebar (first sidebar) - only shown when Learn is enabled -->
 	{#if onboardingStore.learnEnabled}
 		<Sidebar.Root collapsible="none" class="!w-[calc(var(--sidebar-width-icon)_+_1px)] border-e">
-			<Sidebar.Content class="pt-2">
+			<Sidebar.Content>
 				<Sidebar.Group>
 					<Sidebar.GroupContent class="px-1.5 md:px-0">
 						<Sidebar.Menu>
