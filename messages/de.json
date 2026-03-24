@@ -111,6 +111,7 @@
   "ai_role_ai": "KI",
   "ai_close": "KI-Assistent schließen",
   "ai_send": "Nachricht senden",
+  "ai_stop": "Generierung stoppen",
   "ai_new_chat": "Neuer Chat",
   "ai_delete_chat": "Chat löschen",
   "ai_jump_to_message": "Zur Nachricht springen",

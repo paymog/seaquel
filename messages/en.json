@@ -111,6 +111,7 @@
   "ai_role_ai": "AI",
   "ai_close": "Close AI Assistant",
   "ai_send": "Send message",
+  "ai_stop": "Stop generating",
   "ai_new_chat": "New chat",
   "ai_delete_chat": "Delete chat",
   "ai_jump_to_message": "Jump to message",

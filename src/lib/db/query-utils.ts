@@ -1,10 +1,32 @@
 export type QueryType = "select" | "insert" | "update" | "delete" | "other";
 
 /**
+ * Strips leading SQL comments (block and line) from a string.
+ */
+function stripLeadingComments(sql: string): string {
+  let s = sql;
+  while (true) {
+    s = s.trimStart();
+    if (s.startsWith("/*")) {
+      const end = s.indexOf("*/");
+      if (end === -1) break;
+      s = s.slice(end + 2);
+    } else if (s.startsWith("--")) {
+      const end = s.indexOf("\n");
+      if (end === -1) break;
+      s = s.slice(end + 1);
+    } else {
+      break;
+    }
+  }
+  return s;
+}
+
+/**
  * Detects the type of SQL query based on its first keyword.
  */
 export function detectQueryType(query: string): QueryType {
-  const trimmed = query.trim().toUpperCase();
+  const trimmed = stripLeadingComments(query).toUpperCase();
   if (trimmed.startsWith("SELECT")) return "select";
   if (trimmed.startsWith("INSERT")) return "insert";
   if (trimmed.startsWith("UPDATE")) return "update";

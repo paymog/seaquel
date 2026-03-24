@@ -111,6 +111,7 @@
   "ai_role_ai": "AI",
   "ai_close": "AI 어시스턴트 닫기",
   "ai_send": "메시지 보내기",
+  "ai_stop": "생성 중지",
   "ai_new_chat": "새 채팅",
   "ai_delete_chat": "채팅 삭제",
   "ai_jump_to_message": "메시지로 이동",

@@ -561,13 +561,19 @@ import { errorToast } from "$lib/utils/toast";
 			const activeModel = activeConn?.activeAIModel ?? null;
 
 			if (!activeProviderId || !activeModel) {
-				aiInlinePromptError = {
-					message: "No AI provider configured.",
-					action: {
-						label: "Configure",
-						fn: () => { settingsDialogStore.open("ai-provider"); closeAIInlinePrompt(); },
-					},
-				};
+				if (aiSettingsStore.settings.providers.length === 0) {
+					aiInlinePromptError = {
+						message: "No AI provider configured.",
+						action: {
+							label: "Configure",
+							fn: () => { settingsDialogStore.open("ai-provider"); closeAIInlinePrompt(); },
+						},
+					};
+				} else {
+					aiInlinePromptError = {
+						message: "No model selected. Pick one from the model switcher to the right.",
+					};
+				}
 				aiInlinePromptLoading = false;
 				return;
 			}
@@ -737,6 +743,19 @@ import { errorToast } from "$lib/utils/toast";
 											>{aiInlinePromptError.action.label}</button>
 										{/if}
 									</span>
+									{#if !aiInlinePromptError.action && aiSettingsStore.settings.providers.length > 0}
+										<AiModelSwitcher
+											providerId={db.state.activeConnection?.activeAIProviderId ?? null}
+											model={db.state.activeConnection?.activeAIModel ?? null}
+											onSelect={async (pid, mod) => {
+												const conn = db.state.activeConnection;
+												if (!conn) return;
+												await db.setConnectionAIModel(conn.id, pid, mod);
+												aiInlinePromptError = null;
+												submitAIInlinePrompt();
+											}}
+										/>
+									{/if}
 									<button
 										class="shrink-0 text-xs text-muted-foreground hover:text-foreground"
 										onclick={closeAIInlinePrompt}

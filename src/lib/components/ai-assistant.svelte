@@ -2,7 +2,7 @@
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
 	import { Button } from "$lib/components/ui/button";
 	import { Textarea } from "$lib/components/ui/textarea";
-	import { ChevronRightIcon, SendIcon, SparklesIcon, PlusIcon, ChevronDownIcon, Trash2Icon, ListIcon } from "@lucide/svelte";
+	import { ChevronRightIcon, SendIcon, SparklesIcon, PlusIcon, ChevronDownIcon, Trash2Icon, ListIcon, SquareIcon } from "@lucide/svelte";
 	import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
 	import { marked } from "marked";
 
@@ -203,7 +203,7 @@
 			</div>
 		</div>
 		<div class="flex items-center gap-0.5">
-			<Button size="icon" variant="ghost" class="size-6 [&_svg:not([class*='size-'])]:size-4" aria-label={m.ai_new_chat()} onclick={() => db.aiChats.createChat()} disabled={db.state.isAIStreaming}>
+			<Button size="icon" variant="ghost" class="size-6 [&_svg:not([class*='size-'])]:size-4" aria-label={m.ai_new_chat()} onclick={() => { if (db.state.isAIStreaming) db.ui.cancelAIStream(); db.aiChats.createChat(); }}>
 				<PlusIcon />
 			</Button>
 			<Button size="icon" variant="ghost" class="size-6 [&_svg:not([class*='size-'])]:size-4" aria-label={m.ai_close()} onclick={() => db.ui.toggleAI()}>
@@ -215,14 +215,14 @@
 		<div class="mt-2 flex items-center gap-1">
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
-					<Button variant="outline" size="sm" class="flex-1 justify-between h-7 text-xs" disabled={db.state.isAIStreaming}>
+					<Button variant="outline" size="sm" class="flex-1 justify-between h-7 text-xs">
 						<span class="truncate">{activeChat?.title ?? m.ai_new_chat()}</span>
 						<ChevronDownIcon class="size-3 shrink-0 opacity-50" />
 					</Button>
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Portal>
 					<DropdownMenu.Content class="w-[var(--bits-dropdown-menu-trigger-width)] max-h-64 overflow-y-auto" align="start">
-						<DropdownMenu.RadioGroup value={activeChatId ?? undefined} onValueChange={(id) => { if (id) db.aiChats.switchChat(id); }}>
+						<DropdownMenu.RadioGroup value={activeChatId ?? undefined} onValueChange={(id) => { if (id) { if (db.state.isAIStreaming) db.ui.cancelAIStream(); db.aiChats.switchChat(id); } }}>
 							{#each chats as chat (chat.id)}
 								<DropdownMenu.RadioItem value={chat.id} class="text-xs group pr-1">
 									<span class="truncate flex-1">{chat.title}</span>
@@ -426,9 +426,15 @@
 					oninput={handleInput}
 				/>
 			</div>
-			<Button size="icon" class="shrink-0" aria-label={m.ai_send()} onclick={handleSend} disabled={!messageInput.trim() || db.state.isAIStreaming}>
-				<SendIcon class="size-4" />
-			</Button>
+			{#if db.state.isAIStreaming}
+				<Button size="icon" variant="destructive" class="shrink-0" aria-label={m.ai_stop()} onclick={() => db.ui.cancelAIStream()}>
+					<SquareIcon class="size-4" />
+				</Button>
+			{:else}
+				<Button size="icon" class="shrink-0" aria-label={m.ai_send()} onclick={handleSend} disabled={!messageInput.trim()}>
+					<SendIcon class="size-4" />
+				</Button>
+			{/if}
 		</div>
 		<div class="flex items-center gap-2">
 			<span class="text-xs text-muted-foreground">{m.settings_ai_model_switcher_label()}:</span>

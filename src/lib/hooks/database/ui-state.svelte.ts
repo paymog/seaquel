@@ -12,6 +12,7 @@ import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
  */
 export class UIStateManager {
   aiAllowAllQueries = $state(false);
+  private aiAbortController: AbortController | null = null;
 
   constructor(
     private state: DatabaseState,
@@ -29,6 +30,14 @@ export class UIStateManager {
 
   resetAISessionState() {
     this.aiAllowAllQueries = false;
+  }
+
+  cancelAIStream() {
+    if (this.aiAbortController) {
+      this.aiAbortController.abort();
+      this.aiAbortController = null;
+    }
+    this.state.isAIStreaming = false;
   }
 
   toggleAI() {
@@ -134,6 +143,10 @@ export class UIStateManager {
     this._setMessages(chatId, [...this._getMessages(chatId), assistantMessage]);
     this.state.isAIStreaming = true;
 
+    if (this.aiAbortController) this.aiAbortController.abort();
+    this.aiAbortController = new AbortController();
+    const { signal } = this.aiAbortController;
+
     const rawMessages = this._getMessages(chatId).filter(
       (m) => m.id !== assistantMessageId && !m.pendingModelSelection,
     );
@@ -157,6 +170,7 @@ export class UIStateManager {
       databaseType: activeConn?.type,
       executeQuery: this.executeRawQuery,
       aiAllowAllQueries: this.aiAllowAllQueries,
+      signal,
       onApprovalRequired: (query, connName, approve, deny) => {
         this._updateMessage(chatId, assistantMessageId, (m) => ({
           ...m,
