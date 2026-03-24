@@ -14,6 +14,9 @@
 	import XCircleIcon from "@lucide/svelte/icons/x-circle";
 	import { m } from "$lib/paraglide/messages.js";
 	import AiModelSwitcher from "$lib/components/ai-model-switcher.svelte";
+	import AiMentionPopover from "$lib/components/ai-mention-popover.svelte";
+	import { buildMentionItems, type MentionItem } from "$lib/services/ai-mentions";
+	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 
@@ -24,6 +27,27 @@
 	let scrollRef = $state<HTMLElement | null>(null);
 	let userScrolledUp = $state(false);
 	let lastScrollTop = 0;
+	let textareaRef = $state<HTMLTextAreaElement | null>(null);
+	let mentionActive = $state(false);
+	let mentionFilter = $state("");
+	let mentionStartIndex = $state(0);
+	let mentionPopoverRef = $state<ReturnType<typeof AiMentionPopover> | null>(null);
+
+	const schemaSharing = $derived.by(() => {
+		const conn = db.state.activeConnection;
+		const settings = aiSettingsStore.settings;
+		return conn?.aiShareSchema !== undefined ? conn.aiShareSchema : settings.shareSchemaGlobally;
+	});
+
+	const mentionItems = $derived(
+		schemaSharing
+			? buildMentionItems(
+					db.state.activeSchema,
+					db.state.projectSavedQueries,
+					db.state.projectDashboards,
+				)
+			: [],
+	);
 
 	function handleScroll() {
 		if (!scrollRef) return;
@@ -63,11 +87,64 @@
 	};
 
 	const handleKeydown = (e: KeyboardEvent) => {
+		if (mentionActive && mentionPopoverRef) {
+			if (mentionPopoverRef.handleKeydown(e)) return;
+		}
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
 			handleSend();
 		}
 	};
+
+	function handleInput() {
+		if (!textareaRef || mentionItems.length === 0) {
+			mentionActive = false;
+			return;
+		}
+		const val = textareaRef.value;
+		const cursor = textareaRef.selectionStart;
+
+		// Find the last @ before cursor
+		const before = val.slice(0, cursor);
+		const atIndex = before.lastIndexOf("@");
+		if (atIndex === -1 || (atIndex > 0 && before[atIndex - 1] !== " " && before[atIndex - 1] !== "\n" && atIndex !== 0)) {
+			mentionActive = false;
+			return;
+		}
+
+		const fragment = before.slice(atIndex + 1);
+		// Close if there's a space and we're not in a quoted mention
+		if (fragment.includes(" ") && !fragment.startsWith('"')) {
+			mentionActive = false;
+			return;
+		}
+
+		mentionActive = true;
+		mentionFilter = fragment;
+		mentionStartIndex = atIndex;
+	}
+
+	function selectMention(item: MentionItem) {
+		const needsQuotes = item.token.includes(" ");
+		const insertText = needsQuotes ? `@"${item.token}" ` : `@${item.token} `;
+		const before = messageInput.slice(0, mentionStartIndex);
+		const after = messageInput.slice(mentionStartIndex + 1 + mentionFilter.length);
+		messageInput = before + insertText + after;
+		mentionActive = false;
+
+		requestAnimationFrame(() => {
+			if (textareaRef) {
+				textareaRef.focus();
+				const pos = before.length + insertText.length;
+				textareaRef.selectionStart = pos;
+				textareaRef.selectionEnd = pos;
+			}
+		});
+	}
+
+	function closeMention() {
+		mentionActive = false;
+	}
 
 	function renderMarkdown(text: string): string {
 		return marked.parse(text, { async: false }) as string;
@@ -330,7 +407,25 @@
 <Sidebar.Footer class="border-t p-3">
 	<div class="flex flex-col gap-2 w-full">
 		<div class="flex gap-2">
-			<Textarea bind:value={messageInput} placeholder={m.ai_placeholder()} class="min-h-[60px] max-h-[120px] resize-none text-sm" onkeydown={handleKeydown} />
+			<div class="relative flex-1">
+				{#if mentionActive}
+					<AiMentionPopover
+						bind:this={mentionPopoverRef}
+						items={mentionItems}
+						filter={mentionFilter}
+						onSelect={selectMention}
+						onClose={closeMention}
+					/>
+				{/if}
+				<Textarea
+					bind:ref={textareaRef}
+					bind:value={messageInput}
+					placeholder={m.ai_placeholder()}
+					class="min-h-[60px] max-h-[120px] resize-none text-sm"
+					onkeydown={handleKeydown}
+					oninput={handleInput}
+				/>
+			</div>
 			<Button size="icon" class="shrink-0" aria-label={m.ai_send()} onclick={handleSend} disabled={!messageInput.trim() || db.state.isAIStreaming}>
 				<SendIcon class="size-4" />
 			</Button>

@@ -2,6 +2,7 @@ import type { AIMessage } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { AIChatManager } from "./ai-chat-manager.svelte.js";
 import { sendAIMessage as sendAIMessageService } from "$lib/services/ai";
+import { resolveMentions } from "$lib/services/ai-mentions";
 import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 
 /**
@@ -50,7 +51,14 @@ export class UIStateManager {
       this.aiChatManager.updateChatTitle(chatId, content);
     }
 
-    this._dispatchToAI(content, chatId);
+    const enrichedContent = resolveMentions(
+      content,
+      this.state.activeSchema,
+      this.state.savedQueriesByProject[this.state.activeProjectId ?? ""] ?? [],
+      this.state.dashboardsByProject[this.state.activeProjectId ?? ""] ?? [],
+    );
+
+    this._dispatchToAI(enrichedContent, chatId, enrichedContent);
   }
 
   retryPendingMessage(messageId: string) {
@@ -85,7 +93,7 @@ export class UIStateManager {
     );
   }
 
-  private _dispatchToAI(content: string, chatId: string) {
+  private _dispatchToAI(content: string, chatId: string, enrichedContent?: string) {
     const settings = aiSettingsStore.settings;
     const activeConn = this.state.activeConnection;
     const shareSchema =
@@ -122,10 +130,20 @@ export class UIStateManager {
     this._setMessages(chatId, [...this._getMessages(chatId), assistantMessage]);
     this.state.isAIStreaming = true;
 
+    const rawMessages = this._getMessages(chatId).filter(
+      (m) => m.id !== assistantMessageId && !m.pendingModelSelection,
+    );
+    const messagesForApi = enrichedContent
+      ? rawMessages.map((msg, i) => {
+          if (i === rawMessages.length - 1 && msg.role === "user") {
+            return { ...msg, content: enrichedContent };
+          }
+          return msg;
+        })
+      : rawMessages;
+
     void sendAIMessageService({
-      messages: this._getMessages(chatId).filter(
-        (m) => m.id !== assistantMessageId && !m.pendingModelSelection,
-      ),
+      messages: messagesForApi,
       schema: this.state.activeSchema,
       shareSchema,
       shareData,
