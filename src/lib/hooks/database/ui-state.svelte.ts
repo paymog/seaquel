@@ -62,7 +62,7 @@ export class UIStateManager {
       this.state.dashboardsByProject[this.state.activeProjectId ?? ""] ?? [],
     );
 
-    this._dispatchToAI(enrichedContent, chatId, enrichedContent);
+    this._dispatchToAI(content, chatId, enrichedContent);
   }
 
   retryPendingMessage(messageId: string) {

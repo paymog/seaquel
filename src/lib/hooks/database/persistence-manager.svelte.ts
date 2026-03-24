@@ -134,6 +134,10 @@ export class PersistenceManager {
     if (this.state.sharedRepos.length > 0) {
       await this.persistSharedRepos();
     }
+    // Persist AI chats
+    for (const connectionId of Object.keys(this.state.aiChatsByConnection)) {
+      await this.persistAIChats(connectionId);
+    }
   }
 
   /**
