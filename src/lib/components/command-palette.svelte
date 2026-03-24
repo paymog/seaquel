@@ -30,6 +30,7 @@
 	import { handleDeepLink } from "$lib/services/deep-link";
 	import { toast } from "svelte-sonner";
 	import { onboardingStore } from "$lib/stores/onboarding.svelte";
+	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 
 	const db = useDatabase();
 	const shortcuts = useShortcuts();
@@ -392,10 +393,12 @@
 						<span>{m.command_explain_analyze_query()}</span>
 					</Command.Item>
 				{/if}
+				{#if aiSettingsStore.settings.enabled}
 				<Command.Item value="toggle-ai" onSelect={toggleAI}>
 					<Sparkles class="size-4" />
 					<span>{m.command_toggle_ai()}</span>
 				</Command.Item>
+			{/if}
 			</Command.Group>
 		{/if}
 

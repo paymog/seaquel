@@ -232,6 +232,7 @@ import { errorToast } from "$lib/utils/toast";
 			name: m.settings_features(),
 			icon: BlocksIcon,
 			items: [
+				{ id: "ai-feature", name: m.settings_ai_feature(), icon: SparklesIcon },
 				{ id: "learn", name: m.settings_learn(), icon: GraduationCapIcon },
 			],
 		},
@@ -274,6 +275,16 @@ import { errorToast } from "$lib/utils/toast";
 		return false;
 	}
 
+	// Handle AI toggle
+	async function handleAIToggle(checked: boolean) {
+		const database = await getDatabase();
+		await aiSettingsStore.setEnabled(database, checked);
+		// If disabling AI, close the AI panel
+		if (!checked && db.state.isAIOpen) {
+			db.ui.toggleAI();
+		}
+	}
+
 	// Handle Learn toggle
 	function handleLearnToggle(checked: boolean) {
 		onboardingStore.setLearnEnabled(checked);
@@ -290,7 +301,7 @@ import { errorToast } from "$lib/utils/toast";
 		// Also highlight first item if viewing the parent group
 		if (view === "general") return itemId === "app-info";
 		if (view === "appearance") return itemId === "theme";
-		if (view === "features") return itemId === "learn";
+		if (view === "features") return itemId === "ai-feature";
 		if (view === "ai") return itemId === "ai-provider";
 		return false;
 	}
@@ -494,6 +505,7 @@ import { errorToast } from "$lib/utils/toast";
 			<Sidebar.Root collapsible="none" class="hidden md:flex">
 				<Sidebar.Content>
 					{#each navGroups as group (group.id)}
+					{#if group.id !== "ai" || aiSettingsStore.settings.enabled}
 						<Sidebar.Group>
 							<Sidebar.GroupLabel
 								class="gap-2 cursor-pointer hover:text-foreground transition-colors"
@@ -518,6 +530,7 @@ import { errorToast } from "$lib/utils/toast";
 								</Sidebar.Menu>
 							</Sidebar.GroupContent>
 						</Sidebar.Group>
+					{/if}
 					{/each}
 				</Sidebar.Content>
 			</Sidebar.Root>
@@ -967,6 +980,32 @@ import { errorToast } from "$lib/utils/toast";
 											</div>
 										</div>
 									{/each}
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					{#if shouldShowSection("ai-feature")}
+						<div class="space-y-6">
+							<div>
+								<h2 class="text-lg font-medium">{m.settings_ai_feature()}</h2>
+								<p class="text-sm text-muted-foreground mt-1">
+									{m.settings_ai_feature_description()}
+								</p>
+							</div>
+
+							<div class="space-y-4">
+								<div class="flex items-center justify-between">
+									<div>
+										<p class="text-sm font-medium">{m.settings_ai_feature_enabled()}</p>
+										<p class="text-xs text-muted-foreground">
+											{m.settings_ai_feature_enabled_description()}
+										</p>
+									</div>
+									<Switch
+										checked={aiSettingsStore.settings.enabled}
+										onCheckedChange={handleAIToggle}
+									/>
 								</div>
 							</div>
 						</div>

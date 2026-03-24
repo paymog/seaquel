@@ -67,6 +67,10 @@ class AISettingsStore {
     await getKeyringService().deleteAIApiKeyForProvider(id);
   }
 
+  async setEnabled(db: SqliteDatabase, enabled: boolean): Promise<void> {
+    await this.persistSettings(db, { ...this.settings, enabled });
+  }
+
   async savePrivacySettings(
     db: SqliteDatabase,
     patch: Pick<AISettings, "shareSchemaGlobally" | "shareDataGlobally">,

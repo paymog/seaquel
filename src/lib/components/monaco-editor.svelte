@@ -143,11 +143,14 @@
 		editor.addCommand(monaco.KeyCode.Slash, () => {
 			const pos = editorRef.getPosition();
 			const model = editorRef.getModel();
-			if (!pos || !model) return;
+			if (!pos || !model) {
+				editorRef.trigger("keyboard", "type", { text: "/" });
+				return;
+			}
 			const lineContent = model.getLineContent(pos.lineNumber);
 			const beforeCursor = lineContent.substring(0, pos.column - 1);
-			if (beforeCursor.trim() === "") {
-				onAIInlinePrompt?.({ lineNumber: pos.lineNumber, column: pos.column });
+			if (onAIInlinePrompt && beforeCursor.trim() === "") {
+				onAIInlinePrompt({ lineNumber: pos.lineNumber, column: pos.column });
 			} else {
 				editorRef.trigger("keyboard", "type", { text: "/" });
 			}

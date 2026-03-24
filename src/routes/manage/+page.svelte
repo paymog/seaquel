@@ -22,6 +22,7 @@
     import { DashboardView } from "$lib/components/dashboard";
     import HeaderTabs from "$lib/components/header-tabs.svelte";
     import ProjectSettingsDialog from "$lib/components/project-settings-dialog.svelte";
+    import { aiSettingsStore } from "$lib/stores/ai-settings.svelte.js";
 
     const db = useDatabase();
     const shortcuts = useShortcuts();
@@ -128,7 +129,7 @@
     {/if}
 </SidebarInset>
 
-{#if !db.state.isDashboardFullscreen}
+{#if !db.state.isDashboardFullscreen && aiSettingsStore.settings.enabled}
     <Sidebar.Provider class="contents" open={db.state.isAIOpen} onOpenChange={(open) => { if (open !== db.state.isAIOpen) db.ui.toggleAI(); }} style="--sidebar-width: 24rem">
         <Sidebar.Root side="right" collapsible="offcanvas" class="top-(--header-height) h-[calc(100svh-var(--header-height))]">
             <AIAssistant />

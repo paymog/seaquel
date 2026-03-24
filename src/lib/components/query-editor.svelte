@@ -695,7 +695,7 @@ import { errorToast } from "$lib/utils/toast";
 								schema={db.state.activeSchema}
 								onExecute={handleExecuteCurrent}
 								onToggleSidebar={() => sidebar.toggle()}
-								onAIInlinePrompt={handleAIInlinePrompt}
+								onAIInlinePrompt={aiSettingsStore.settings.enabled ? handleAIInlinePrompt : undefined}
 								onChange={(newValue) => {
 									currentQuery = newValue;
 									if (db.state.activeQueryTabId) {

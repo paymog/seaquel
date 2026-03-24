@@ -31,6 +31,7 @@
     import { page } from "$app/state";
     import { resolve } from "$app/paths";
     import UpdateBadge from "./update-badge.svelte";
+    import { aiSettingsStore } from "$lib/stores/ai-settings.svelte.js";
 
     let appVersion = $state("");
 
@@ -217,6 +218,7 @@
                 >
                     <NetworkIcon class="size-3.5" />
                 </Button>
+                {#if aiSettingsStore.settings.enabled}
                 <Button
                     size="icon"
                     variant="ghost"
@@ -227,6 +229,7 @@
                 >
                     <SparklesIcon class="size-3.5" />
                 </Button>
+                {/if}
             {/if}
             {#if isTauri()}
                 <UpdateBadge />
