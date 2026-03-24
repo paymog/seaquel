@@ -231,10 +231,7 @@ import { errorToast } from "$lib/utils/toast";
 			id: "features",
 			name: m.settings_features(),
 			icon: BlocksIcon,
-			items: [
-				{ id: "ai-feature", name: m.settings_ai_feature(), icon: SparklesIcon },
-				{ id: "learn", name: m.settings_learn(), icon: GraduationCapIcon },
-			],
+			items: [],
 		},
 		{
 			id: "ai",
@@ -301,7 +298,7 @@ import { errorToast } from "$lib/utils/toast";
 		// Also highlight first item if viewing the parent group
 		if (view === "general") return itemId === "app-info";
 		if (view === "appearance") return itemId === "theme";
-		if (view === "features") return itemId === "ai-feature";
+		if (view === "features") return false;
 		if (view === "ai") return itemId === "ai-provider";
 		return false;
 	}
@@ -985,54 +982,31 @@ import { errorToast } from "$lib/utils/toast";
 						</div>
 					{/if}
 
-					{#if shouldShowSection("ai-feature")}
-						<div class="space-y-6">
-							<div>
-								<h2 class="text-lg font-medium">{m.settings_ai_feature()}</h2>
-								<p class="text-sm text-muted-foreground mt-1">
-									{m.settings_ai_feature_description()}
-								</p>
-							</div>
-
-							<div class="space-y-4">
-								<div class="flex items-center justify-between">
-									<div>
-										<p class="text-sm font-medium">{m.settings_ai_feature_enabled()}</p>
-										<p class="text-xs text-muted-foreground">
-											{m.settings_ai_feature_enabled_description()}
-										</p>
-									</div>
-									<Switch
-										checked={aiSettingsStore.settings.enabled}
-										onCheckedChange={handleAIToggle}
-									/>
+					{#if shouldShowSection("ai-feature") || shouldShowSection("learn")}
+						<div class="space-y-4">
+							<div class="flex items-center justify-between">
+								<div>
+									<p class="text-sm font-medium">{m.settings_ai_feature()}</p>
+									<p class="text-xs text-muted-foreground">
+										{m.settings_ai_feature_enabled_description()}
+									</p>
 								</div>
+								<Switch
+									checked={aiSettingsStore.settings.enabled}
+									onCheckedChange={handleAIToggle}
+								/>
 							</div>
-						</div>
-					{/if}
-
-					{#if shouldShowSection("learn")}
-						<div class="space-y-6">
-							<div>
-								<h2 class="text-lg font-medium">{m.settings_learn()}</h2>
-								<p class="text-sm text-muted-foreground mt-1">
-									{m.settings_learn_description()}
-								</p>
-							</div>
-
-							<div class="space-y-4">
-								<div class="flex items-center justify-between">
-									<div>
-										<p class="text-sm font-medium">{m.settings_learn_enabled()}</p>
-										<p class="text-xs text-muted-foreground">
-											{m.settings_learn_enabled_description()}
-										</p>
-									</div>
-									<Switch
-										checked={onboardingStore.learnEnabled}
-										onCheckedChange={handleLearnToggle}
-									/>
+							<div class="flex items-center justify-between">
+								<div>
+									<p class="text-sm font-medium">{m.settings_learn()}</p>
+									<p class="text-xs text-muted-foreground">
+										{m.settings_learn_enabled_description()}
+									</p>
 								</div>
+								<Switch
+									checked={onboardingStore.learnEnabled}
+									onCheckedChange={handleLearnToggle}
+								/>
 							</div>
 						</div>
 					{/if}
