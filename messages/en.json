@@ -929,7 +929,7 @@
   "settings_ai_privacy": "Privacy",
   "settings_ai_privacy_description": "Control what data is sent to the AI provider",
   "settings_ai_share_schema_globally": "Share schema with AI",
-  "settings_ai_share_schema_globally_description": "Send your database schema (table and column names) to the AI to improve query suggestions",
+  "settings_ai_share_schema_globally_description": "Send your database schema (table and column names) to the AI to improve query suggestions.",
   "settings_ai_share_data_globally": "Allow AI to run read-only queries",
   "settings_ai_share_data_globally_description": "Lets the AI execute SELECT queries against your database to answer data-specific questions. You will be asked to approve each query.",
   "settings_ai_no_context_note": "With both options off, the AI won't have access to your schema or data. It will still work as an expert SQL assistant, but won't be able to provide answers specific to your database.",

@@ -1,6 +1,8 @@
-import type { AIMessage } from "$lib/types";
+import type { AIMessage, DashboardWidget } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { AIChatManager } from "./ai-chat-manager.svelte.js";
+import type { DashboardManager } from "./dashboard-manager.svelte.js";
+import type { DashboardTabManager } from "./dashboard-tabs.svelte.js";
 import { sendAIMessage as sendAIMessageService } from "$lib/services/ai";
 import { resolveMentions } from "$lib/services/ai-mentions";
 import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
@@ -17,6 +19,8 @@ export class UIStateManager {
     private executeRawQuery: (query: string) => Promise<Record<string, unknown>[]>,
     private aiChatManager: AIChatManager,
     private persistAIChatMessages: (chatId: string) => Promise<void>,
+    private dashboardManager: DashboardManager,
+    private dashboardTabs: DashboardTabManager,
   ) {}
 
   setAIAllowAll() {
@@ -190,6 +194,47 @@ export class UIStateManager {
           pendingApproval: null,
         }));
         void this.persistAIChatMessages(chatId);
+      },
+      onCreateDashboard: async (name: string) => {
+        const dashboard = await this.dashboardManager.createDashboard(name);
+        if (!dashboard) return null;
+        this.dashboardTabs.add(dashboard.id, name);
+        return { dashboardId: dashboard.id };
+      },
+      onAddWidget: async (
+        dashboardId: string,
+        widget: Omit<DashboardWidget, "id" | "result" | "isLoading" | "error" | "lastRefreshed">,
+      ) => {
+        const widgetId = `widget-${crypto.randomUUID()}`;
+        const fullWidget = { ...widget, id: widgetId } as DashboardWidget;
+        await this.dashboardManager.addWidget(dashboardId, fullWidget);
+        await this.dashboardManager.executeWidget(dashboardId, widgetId);
+        return { widgetId };
+      },
+      onGetDashboard: (dashboardId: string) => {
+        const dashboard = this.dashboardManager.getDashboard(dashboardId);
+        if (!dashboard) return null;
+        return {
+          id: dashboard.id,
+          name: dashboard.name,
+          widgets: dashboard.widgets.map(
+            ({ result: _, isLoading: __, error: ___, lastRefreshed: ____, ...rest }) => rest,
+          ),
+        };
+      },
+      onUpdateWidget: async (
+        dashboardId: string,
+        widgetId: string,
+        updates: Partial<DashboardWidget>,
+      ) => {
+        const queryChanged = updates.query !== undefined;
+        await this.dashboardManager.updateWidget(dashboardId, widgetId, updates);
+        if (queryChanged) {
+          await this.dashboardManager.executeWidget(dashboardId, widgetId);
+        }
+      },
+      onRemoveWidget: async (dashboardId: string, widgetId: string) => {
+        await this.dashboardManager.removeWidget(dashboardId, widgetId);
       },
     });
   }

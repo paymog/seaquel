@@ -584,6 +584,7 @@ import { errorToast } from "$lib/utils/toast";
 			monacoRef?.insertText(sql);
 			aiInlinePromptOpen = false;
 			aiInlinePromptText = "";
+			handleExecute();
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			if (msg === "no_provider") {

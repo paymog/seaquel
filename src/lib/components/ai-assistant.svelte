@@ -2,7 +2,7 @@
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
 	import { Button } from "$lib/components/ui/button";
 	import { Textarea } from "$lib/components/ui/textarea";
-	import { XIcon, SendIcon, SparklesIcon, PlusIcon, ChevronDownIcon, Trash2Icon, ListIcon } from "@lucide/svelte";
+	import { ChevronRightIcon, SendIcon, SparklesIcon, PlusIcon, ChevronDownIcon, Trash2Icon, ListIcon } from "@lucide/svelte";
 	import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
 	import { marked } from "marked";
 
@@ -207,7 +207,7 @@
 				<PlusIcon />
 			</Button>
 			<Button size="icon" variant="ghost" class="size-6 [&_svg:not([class*='size-'])]:size-4" aria-label={m.ai_close()} onclick={() => db.ui.toggleAI()}>
-				<XIcon />
+				<ChevronRightIcon />
 			</Button>
 		</div>
 	</div>

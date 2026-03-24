@@ -56,7 +56,7 @@
 		<p class="text-2xl font-medium text-muted-foreground uppercase tracking-wider">
 			{widget.kpiConfig?.label ?? widget.title}
 		</p>
-		<p class="font-bold tabular-nums" style="font-size: clamp(2rem, 30cqh, 8rem); line-height: 1.1;">
+		<p class="font-bold tabular-nums" style="font-size: clamp(1rem, 20cqh, 2rem); line-height: 1.1;">
 			{formattedValue}
 		</p>
 		{#if trend}

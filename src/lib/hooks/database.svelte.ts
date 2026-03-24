@@ -126,6 +126,21 @@ class UseDatabase {
       (chatId) => this.persistence.removeAIChat(chatId),
     );
 
+    // Dashboard tabs & manager (before UI, since UIStateManager needs them)
+    this.dashboardTabs = new DashboardTabManager(
+      this.state,
+      this.tabs,
+      scheduleProjectPersistence,
+      setActiveView,
+    );
+    this.dashboards = new DashboardManager(
+      this.state,
+      async (query: string) => {
+        return await this.queries.executeRaw(query);
+      },
+      scheduleProjectPersistence,
+    );
+
     // UI
     this.ui = new UIStateManager(
       this.state,
@@ -133,6 +148,8 @@ class UseDatabase {
       (query) => this.queries.executeRaw(query),
       this.aiChats,
       (chatId) => this.persistence.persistAIChatMessages(chatId),
+      this.dashboards,
+      this.dashboardTabs,
     );
 
     // Shared provider registry (used by connections, query execution, schema tabs, explain tabs)
@@ -188,22 +205,7 @@ class UseDatabase {
       scheduleProjectPersistence,
       setActiveView,
     );
-    this.dashboardTabs = new DashboardTabManager(
-      this.state,
-      this.tabs,
-      scheduleProjectPersistence,
-      setActiveView,
-    );
     this.starterTabs = new StarterTabManager(this.state, scheduleProjectPersistence);
-
-    // Dashboards
-    this.dashboards = new DashboardManager(
-      this.state,
-      async (query: string) => {
-        return await this.queries.executeRaw(query);
-      },
-      scheduleProjectPersistence,
-    );
 
     // Workflow
     this.workflowState = new WorkflowState();

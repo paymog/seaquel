@@ -124,12 +124,12 @@ function formatQueryContext(query: SavedQuery): string {
  * Formats a dashboard into a context block for the LLM.
  */
 function formatDashboardContext(dashboard: Dashboard): string {
-  const lines: string[] = [`Dashboard: ${dashboard.name}`];
+  const lines: string[] = [`Dashboard: ${dashboard.name} (id: ${dashboard.id})`];
 
   if (dashboard.widgets.length > 0) {
     lines.push("Widgets:");
     for (const w of dashboard.widgets) {
-      lines.push(`  - ${w.title} (${w.widgetType})`);
+      lines.push(`  - ${w.title} [id: ${w.id}] (${w.widgetType})`);
       if (w.query) {
         lines.push(`    Query: ${w.query}`);
       }

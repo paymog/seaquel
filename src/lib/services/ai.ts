@@ -1,8 +1,28 @@
 import type { SchemaTable } from "$lib/types";
 import type { AIMessage } from "$lib/types/query";
 import type { DatabaseType } from "$lib/types/database";
+import type { DashboardWidget, KpiConfig, TextConfig } from "$lib/types/dashboard";
+import type { ChartConfig } from "$lib/types/chart";
 import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 import { getKeyringService } from "$lib/services/keyring";
+
+interface DashboardGetResult {
+  id: string;
+  name: string;
+  widgets: Array<{
+    id: string;
+    title: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    widgetType: string;
+    query: string;
+    chartConfig?: ChartConfig;
+    kpiConfig?: KpiConfig;
+    textConfig?: TextConfig;
+  }>;
+}
 
 // --- Tool definition ---
 
@@ -21,6 +41,254 @@ const RUN_QUERY_TOOL = {
     required: ["query"],
   },
 };
+
+const CREATE_DASHBOARD_TOOL = {
+  name: "create_dashboard",
+  description: "Create a new empty dashboard. Returns the dashboard ID to use when adding widgets.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      name: {
+        type: "string",
+        description: "Name for the new dashboard",
+      },
+    },
+    required: ["name"],
+  },
+};
+
+const ADD_WIDGET_TOOL = {
+  name: "add_widget",
+  description:
+    "Add a widget to a dashboard. Provide position (x, y), size (width, height), widget type, and the relevant config for that type.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      dashboard_id: {
+        type: "string",
+        description: "ID of the dashboard to add the widget to",
+      },
+      title: {
+        type: "string",
+        description: "Display title for the widget",
+      },
+      x: {
+        type: "number",
+        description: "X position in pixels on the canvas",
+      },
+      y: {
+        type: "number",
+        description: "Y position in pixels on the canvas",
+      },
+      width: {
+        type: "number",
+        description: "Width in pixels",
+      },
+      height: {
+        type: "number",
+        description: "Height in pixels",
+      },
+      widget_type: {
+        type: "string",
+        enum: ["chart", "kpi", "text"],
+        description: "Type of widget",
+      },
+      query: {
+        type: "string",
+        description: "SQL SELECT query that powers this widget (not needed for text widgets)",
+      },
+      chart_config: {
+        type: "object",
+        description: "Configuration for chart widgets",
+        properties: {
+          type: {
+            type: "string",
+            enum: ["bar", "line", "pie", "scatter", "area"],
+            description: "Chart type",
+          },
+          xAxis: {
+            type: "string",
+            description: "Column name for the X axis",
+          },
+          yAxis: {
+            type: "array",
+            items: { type: "string" },
+            description: "Column names for the Y axis values",
+          },
+          colors: {
+            type: "object",
+            description: "Custom colors per Y-axis column (column name → hex color)",
+          },
+        },
+      },
+      kpi_config: {
+        type: "object",
+        description: "Configuration for KPI widgets",
+        properties: {
+          label: {
+            type: "string",
+            description: "Label for the KPI value",
+          },
+          valueColumn: {
+            type: "string",
+            description: "Column name containing the KPI value",
+          },
+          format: {
+            type: "string",
+            enum: ["number", "percentage"],
+            description: "How to format the value",
+          },
+          prefix: {
+            type: "string",
+            description: "Prefix to display before the value (e.g. $)",
+          },
+          suffix: {
+            type: "string",
+            description: "Suffix to display after the value (e.g. %)",
+          },
+        },
+        required: ["label", "valueColumn"],
+      },
+      text_config: {
+        type: "object",
+        description: "Configuration for text widgets",
+        properties: {
+          content: {
+            type: "string",
+            description: "Text content to display",
+          },
+        },
+        required: ["content"],
+      },
+    },
+    required: ["dashboard_id", "title", "x", "y", "width", "height", "widget_type"],
+  },
+};
+
+const GET_DASHBOARD_TOOL = {
+  name: "get_dashboard",
+  description:
+    "Retrieve a dashboard and all its widgets. Use this to inspect the current state before making updates.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      dashboard_id: {
+        type: "string",
+        description: "ID of the dashboard to retrieve",
+      },
+    },
+    required: ["dashboard_id"],
+  },
+};
+
+const UPDATE_WIDGET_TOOL = {
+  name: "update_widget",
+  description:
+    "Update an existing widget on a dashboard. Only the fields you provide will be changed.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      dashboard_id: {
+        type: "string",
+        description: "ID of the dashboard containing the widget",
+      },
+      widget_id: {
+        type: "string",
+        description: "ID of the widget to update",
+      },
+      title: {
+        type: "string",
+        description: "New display title",
+      },
+      x: {
+        type: "number",
+        description: "New X position in pixels",
+      },
+      y: {
+        type: "number",
+        description: "New Y position in pixels",
+      },
+      width: {
+        type: "number",
+        description: "New width in pixels",
+      },
+      height: {
+        type: "number",
+        description: "New height in pixels",
+      },
+      widget_type: {
+        type: "string",
+        enum: ["chart", "kpi", "text"],
+        description: "New widget type",
+      },
+      query: {
+        type: "string",
+        description: "New SQL query",
+      },
+      chart_config: {
+        type: "object",
+        description: "New chart configuration",
+        properties: {
+          type: {
+            type: "string",
+            enum: ["bar", "line", "pie", "scatter", "area"],
+          },
+          xAxis: { type: "string" },
+          yAxis: { type: "array", items: { type: "string" } },
+          colors: { type: "object" },
+        },
+      },
+      kpi_config: {
+        type: "object",
+        description: "New KPI configuration",
+        properties: {
+          label: { type: "string" },
+          valueColumn: { type: "string" },
+          format: { type: "string", enum: ["number", "percentage"] },
+          prefix: { type: "string" },
+          suffix: { type: "string" },
+        },
+        required: ["label", "valueColumn"],
+      },
+      text_config: {
+        type: "object",
+        description: "New text configuration",
+        properties: {
+          content: { type: "string" },
+        },
+        required: ["content"],
+      },
+    },
+    required: ["dashboard_id", "widget_id"],
+  },
+};
+
+const REMOVE_WIDGET_TOOL = {
+  name: "remove_widget",
+  description: "Remove a widget from a dashboard.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      dashboard_id: {
+        type: "string",
+        description: "ID of the dashboard containing the widget",
+      },
+      widget_id: {
+        type: "string",
+        description: "ID of the widget to remove",
+      },
+    },
+    required: ["dashboard_id", "widget_id"],
+  },
+};
+
+const DASHBOARD_TOOL_NAMES = new Set([
+  "create_dashboard",
+  "add_widget",
+  "get_dashboard",
+  "update_widget",
+  "remove_widget",
+]);
 
 // --- Read-only query validation ---
 
@@ -94,7 +362,11 @@ const DATABASE_LABELS: Record<DatabaseType, string> = {
   duckdb: "DuckDB",
 };
 
-function buildSystemPrompt(schemaCtx: string, dbType?: DatabaseType): string {
+function buildSystemPrompt(
+  schemaCtx: string,
+  dbType?: DatabaseType,
+  hasDashboardTools?: boolean,
+): string {
   const dbLabel = dbType ? DATABASE_LABELS[dbType] : "SQL";
   const parts = [
     `You are a helpful SQL assistant for a ${dbLabel} database. Always use ${dbLabel}-compatible syntax.`,
@@ -103,6 +375,17 @@ function buildSystemPrompt(schemaCtx: string, dbType?: DatabaseType): string {
   parts.push(
     "Provide clear, concise SQL queries and explanations. When writing SQL, wrap it in a markdown code block.",
   );
+  if (hasDashboardTools) {
+    parts.push(
+      `Dashboard creation guidelines:
+- Use create_dashboard first, then add_widget for each widget.
+- Layout conventions (pixel units): KPI widgets are 220×140, chart widgets are 460×340, text widgets vary. Use 20px gaps between widgets. The canvas is roughly 980px wide.
+- Widget types: "kpi" requires kpi_config (label, valueColumn, optional format/prefix/suffix). "chart" requires chart_config (type, xAxis, yAxis array; chart type should match the data). "text" requires text_config (content).
+- Chart config: xAxis is the category column, yAxis is an array of value columns, type should be "bar", "line", "pie", "scatter", or "area" depending on data.
+- Always provide a SQL query for kpi and chart widgets. Text widgets do not need a query.
+- Use get_dashboard to inspect the current state before updating or removing widgets.`,
+    );
+  }
   return parts.join("\n\n");
 }
 
@@ -128,11 +411,174 @@ export interface SendAIMessageParams {
   onChunk: (delta: string) => void;
   onDone: () => void;
   onError: (msg: string) => void;
+  onCreateDashboard?: (name: string) => Promise<{ dashboardId: string } | null>;
+  onAddWidget?: (
+    dashboardId: string,
+    widget: Omit<DashboardWidget, "id" | "result" | "isLoading" | "error" | "lastRefreshed">,
+  ) => Promise<{ widgetId: string } | null>;
+  onGetDashboard?: (dashboardId: string) => DashboardGetResult | null;
+  onUpdateWidget?: (
+    dashboardId: string,
+    widgetId: string,
+    updates: Partial<DashboardWidget>,
+  ) => Promise<void>;
+  onRemoveWidget?: (dashboardId: string, widgetId: string) => Promise<void>;
 }
 
 interface TurnResult {
   assistantText: string;
   toolCall: { id: string; name: string; input: Record<string, unknown> } | null;
+}
+
+async function handleDashboardToolCall(
+  toolName: string,
+  input: Record<string, unknown>,
+  params: SendAIMessageParams,
+): Promise<string> {
+  if (
+    !params.onCreateDashboard ||
+    !params.onAddWidget ||
+    !params.onGetDashboard ||
+    !params.onUpdateWidget ||
+    !params.onRemoveWidget
+  ) {
+    return JSON.stringify({ error: "Dashboard tools not available" });
+  }
+  try {
+    switch (toolName) {
+      case "create_dashboard": {
+        const name = typeof input.name === "string" ? input.name : "Untitled Dashboard";
+        const result = await params.onCreateDashboard(name);
+        if (!result) return JSON.stringify({ error: "Failed to create dashboard" });
+        return JSON.stringify({ dashboard_id: result.dashboardId });
+      }
+      case "add_widget": {
+        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+        const dashboardId = String(input.dashboard_id ?? "");
+        const widgetType = (input.widget_type as "chart" | "kpi" | "text") ?? "chart";
+        const widget: Omit<
+          DashboardWidget,
+          "id" | "result" | "isLoading" | "error" | "lastRefreshed"
+        > = {
+          // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+          title: String(input.title ?? ""),
+          x: Number(input.x ?? 0),
+          y: Number(input.y ?? 0),
+          width: Number(input.width ?? 460),
+          height: Number(input.height ?? 340),
+          widgetType,
+          querySource: "custom",
+          query: typeof input.query === "string" ? input.query : "",
+          chartConfig:
+            widgetType === "chart" && input.chart_config
+              ? {
+                  type:
+                    ((input.chart_config as Record<string, unknown>).type as ChartConfig["type"]) ??
+                    "bar",
+                  xAxis: ((input.chart_config as Record<string, unknown>).xAxis as string) ?? null,
+                  yAxis: ((input.chart_config as Record<string, unknown>).yAxis as string[]) ?? [],
+                  dataScope: "all",
+                  colors: (input.chart_config as Record<string, unknown>).colors as
+                    | Record<string, string>
+                    | undefined,
+                }
+              : undefined,
+          kpiConfig:
+            widgetType === "kpi" && input.kpi_config
+              ? {
+                  // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+                  label: String((input.kpi_config as Record<string, unknown>).label ?? ""),
+                  valueColumn: String(
+                    // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+                    (input.kpi_config as Record<string, unknown>).valueColumn ?? "",
+                  ),
+                  format: (input.kpi_config as Record<string, unknown>)
+                    .format as KpiConfig["format"],
+                  prefix: (input.kpi_config as Record<string, unknown>).prefix as
+                    | string
+                    | undefined,
+                  suffix: (input.kpi_config as Record<string, unknown>).suffix as
+                    | string
+                    | undefined,
+                }
+              : undefined,
+          textConfig:
+            widgetType === "text" && input.text_config
+              ? // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+                { content: String((input.text_config as Record<string, unknown>).content ?? "") }
+              : undefined,
+        };
+        const result = await params.onAddWidget(dashboardId, widget);
+        if (!result) return JSON.stringify({ error: "Failed to add widget" });
+        return JSON.stringify({ widget_id: result.widgetId });
+      }
+      case "get_dashboard": {
+        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+        const dashboardId = String(input.dashboard_id ?? "");
+        const result = params.onGetDashboard(dashboardId);
+        if (!result) return JSON.stringify({ error: "Dashboard not found" });
+        return JSON.stringify(result);
+      }
+      case "update_widget": {
+        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+        const dashboardId = String(input.dashboard_id ?? "");
+        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+        const widgetId = String(input.widget_id ?? "");
+        const updates: Partial<DashboardWidget> = {};
+        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+        if (input.title !== undefined) updates.title = String(input.title);
+        if (input.x !== undefined) updates.x = Number(input.x);
+        if (input.y !== undefined) updates.y = Number(input.y);
+        if (input.width !== undefined) updates.width = Number(input.width);
+        if (input.height !== undefined) updates.height = Number(input.height);
+        if (input.widget_type !== undefined)
+          updates.widgetType = input.widget_type as DashboardWidget["widgetType"];
+        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+        if (input.query !== undefined) updates.query = String(input.query);
+        if (input.chart_config !== undefined) {
+          const cc = input.chart_config as Record<string, unknown>;
+          updates.chartConfig = {
+            type: (cc.type as ChartConfig["type"]) ?? "bar",
+            xAxis: (cc.xAxis as string) ?? null,
+            yAxis: (cc.yAxis as string[]) ?? [],
+            dataScope: "all",
+            colors: cc.colors as Record<string, string> | undefined,
+          };
+        }
+        if (input.kpi_config !== undefined) {
+          const kc = input.kpi_config as Record<string, unknown>;
+          updates.kpiConfig = {
+            // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+            label: String(kc.label ?? ""),
+            // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+            valueColumn: String(kc.valueColumn ?? ""),
+            format: kc.format as KpiConfig["format"],
+            prefix: kc.prefix as string | undefined,
+            suffix: kc.suffix as string | undefined,
+          };
+        }
+        if (input.text_config !== undefined) {
+          const tc = input.text_config as Record<string, unknown>;
+          // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+          updates.textConfig = { content: String(tc.content ?? "") };
+        }
+        await params.onUpdateWidget(dashboardId, widgetId, updates);
+        return JSON.stringify({ success: true });
+      }
+      case "remove_widget": {
+        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+        const dashboardId = String(input.dashboard_id ?? "");
+        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+        const widgetId = String(input.widget_id ?? "");
+        await params.onRemoveWidget(dashboardId, widgetId);
+        return JSON.stringify({ success: true });
+      }
+      default:
+        return JSON.stringify({ error: "Unknown dashboard tool" });
+    }
+  } catch (err) {
+    return JSON.stringify({ error: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 export async function sendAIMessage(params: SendAIMessageParams): Promise<void> {
@@ -165,8 +611,18 @@ export async function sendAIMessage(params: SendAIMessageParams): Promise<void> 
   }
 
   const schemaCtx = shareSchema ? buildSchemaContext(schema) : "";
-  const systemPrompt = buildSystemPrompt(schemaCtx, databaseType);
-  const tools = shareData ? [RUN_QUERY_TOOL] : [];
+  const systemPrompt = buildSystemPrompt(schemaCtx, databaseType, !!params.onCreateDashboard);
+  const dataTools = shareData ? [RUN_QUERY_TOOL] : [];
+  const dashboardTools = params.onCreateDashboard
+    ? [
+        CREATE_DASHBOARD_TOOL,
+        ADD_WIDGET_TOOL,
+        GET_DASHBOARD_TOOL,
+        UPDATE_WIDGET_TOOL,
+        REMOVE_WIDGET_TOOL,
+      ]
+    : [];
+  const tools = [...dataTools, ...dashboardTools];
 
   type ApiMessage = Record<string, unknown>;
   let apiMessages: ApiMessage[] = messages.map((m) => ({ role: m.role, content: m.content }));
@@ -194,12 +650,30 @@ export async function sendAIMessage(params: SendAIMessageParams): Promise<void> 
       }
 
       toolCallCount++;
-      if (toolCallCount > 10) {
-        onError("Tool call limit exceeded (max 10 per message)");
+      if (toolCallCount > 20) {
+        onError("Tool call limit exceeded (max 20 per message)");
         return;
       }
 
       const { id: toolUseId, name: toolName, input } = turnResult.toolCall;
+
+      if (DASHBOARD_TOOL_NAMES.has(toolName)) {
+        const dashResult = await handleDashboardToolCall(toolName, input, params);
+        const assistantContent: unknown[] = [];
+        if (turnResult.assistantText) {
+          assistantContent.push({ type: "text", text: turnResult.assistantText });
+        }
+        assistantContent.push({ type: "tool_use", id: toolUseId, name: toolName, input });
+        apiMessages = [
+          ...apiMessages,
+          { role: "assistant", content: assistantContent },
+          {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: toolUseId, content: dashResult }],
+          },
+        ];
+        continue;
+      }
 
       if (toolName !== "run_query") {
         const assistantContent: unknown[] = [];
@@ -292,8 +766,8 @@ export async function sendAIMessage(params: SendAIMessageParams): Promise<void> 
       }
 
       toolCallCount++;
-      if (toolCallCount > 10) {
-        onError("Tool call limit exceeded (max 10 per message)");
+      if (toolCallCount > 20) {
+        onError("Tool call limit exceeded (max 20 per message)");
         return;
       }
 
@@ -311,6 +785,16 @@ export async function sendAIMessage(params: SendAIMessageParams): Promise<void> 
       };
       if (turnResult.assistantText) {
         assistantMsg.content = turnResult.assistantText;
+      }
+
+      if (DASHBOARD_TOOL_NAMES.has(toolName)) {
+        const dashResult = await handleDashboardToolCall(toolName, input, params);
+        apiMessages = [
+          ...apiMessages,
+          assistantMsg,
+          { role: "tool" as const, tool_call_id: toolCallId, content: dashResult },
+        ];
+        continue;
       }
 
       if (toolName !== "run_query") {
@@ -415,12 +899,14 @@ export async function generateSQL(params: GenerateSQLParams): Promise<string> {
 
 // --- Streaming implementations ---
 
+type ToolDefinition = { name: string; description: string; input_schema: Record<string, unknown> };
+
 async function streamAnthropicTurn(params: {
   apiKey: string;
   model: string;
   systemPrompt: string;
   messages: { role: string; content: unknown }[];
-  tools: (typeof RUN_QUERY_TOOL)[];
+  tools: ToolDefinition[];
   onChunk: (delta: string) => void;
   onError: (msg: string) => void;
 }): Promise<TurnResult | null> {
@@ -519,7 +1005,7 @@ interface StreamOpenAICompatTurnParams {
   baseUrl: string;
   systemPrompt: string;
   messages: { role: string; content: unknown }[];
-  tools: (typeof RUN_QUERY_TOOL)[];
+  tools: ToolDefinition[];
   onChunk: (delta: string) => void;
   onError: (msg: string) => void;
 }

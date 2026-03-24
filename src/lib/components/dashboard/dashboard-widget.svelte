@@ -56,7 +56,7 @@
 			{/if}
 
 			<!-- Content -->
-			<div class="flex-1 min-h-0 overflow-hidden">
+			<div class="flex-1 min-h-0 overflow-hidden pt-6">
 				{#if widget.widgetType === 'text'}
 					<DashboardTextWidget {widget} />
 				{:else if widget.error}
