@@ -27,6 +27,9 @@ export interface WizardFormData {
   savePassword: boolean;
   saveSshPassword: boolean;
   saveSshKeyPassphrase: boolean;
+  // AI privacy overrides (undefined = use global default)
+  aiShareSchema?: boolean;
+  aiShareData?: boolean;
 }
 
 export interface DatabaseTypeConfig {

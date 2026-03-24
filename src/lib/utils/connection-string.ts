@@ -94,6 +94,9 @@ export function getConnectionData(formData: ConnectionFormData) {
     savePassword: keychainAvailable ? formData.savePassword : false,
     saveSshPassword: keychainAvailable ? formData.saveSshPassword : false,
     saveSshKeyPassphrase: keychainAvailable ? formData.saveSshKeyPassphrase : false,
+    // AI privacy overrides (undefined = use global default)
+    aiShareSchema: formData.aiShareSchema,
+    aiShareData: formData.aiShareData,
   };
 }
 

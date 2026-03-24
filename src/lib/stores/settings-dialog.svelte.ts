@@ -1,5 +1,12 @@
-export type SettingsSection = "app-info" | "license" | "theme" | "themes" | "learn";
-export type SettingsGroup = "general" | "appearance" | "features";
+export type SettingsSection =
+  | "app-info"
+  | "license"
+  | "theme"
+  | "themes"
+  | "learn"
+  | "ai-provider"
+  | "ai-privacy";
+export type SettingsGroup = "general" | "appearance" | "features" | "ai";
 export type SettingsView = SettingsGroup | SettingsSection;
 
 // Map sections to their parent groups
@@ -9,6 +16,8 @@ export const sectionToGroup: Record<SettingsSection, SettingsGroup> = {
   theme: "appearance",
   themes: "appearance",
   learn: "features",
+  "ai-provider": "ai",
+  "ai-privacy": "ai",
 };
 
 // Map groups to their sections
@@ -16,6 +25,7 @@ export const groupSections: Record<SettingsGroup, SettingsSection[]> = {
   general: ["app-info", "license"],
   appearance: ["theme", "themes"],
   features: ["learn"],
+  ai: ["ai-provider", "ai-privacy"],
 };
 
 class SettingsDialogStore {
@@ -40,7 +50,8 @@ class SettingsDialogStore {
     return (
       this.activeView === "general" ||
       this.activeView === "appearance" ||
-      this.activeView === "features"
+      this.activeView === "features" ||
+      this.activeView === "ai"
     );
   }
 
@@ -49,7 +60,8 @@ class SettingsDialogStore {
     if (
       this.activeView === "general" ||
       this.activeView === "appearance" ||
-      this.activeView === "features"
+      this.activeView === "features" ||
+      this.activeView === "ai"
     ) {
       return this.activeView;
     }

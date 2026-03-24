@@ -2,8 +2,11 @@ import type {
   SavedQuery,
   QueryHistoryItem,
   Dashboard,
+  AIChat,
   PersistedSavedQuery,
   PersistedQueryHistoryItem,
+  PersistedAIChat,
+  PersistedAIMessage,
 } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
@@ -11,8 +14,8 @@ import type { PersistedDashboard } from "$lib/storage/repository";
 
 /**
  * Manages restoration of persisted connection data when loading the app.
- * Handles hydration of query history (per-connection) and
- * saved queries / dashboards (per-project).
+ * Handles hydration of query history (per-connection), AI chats (per-connection),
+ * and saved queries / dashboards (per-project).
  *
  * Note: Tab restoration is handled by ProjectManager since tabs are per-project.
  */
@@ -24,7 +27,7 @@ export class StateRestorationManager {
 
   /**
    * Initialize connection data maps for a new connection.
-   * Sets up query history and schema storage.
+   * Sets up query history, schema storage, and AI chat storage.
    */
   initializeConnectionMaps(connectionId: string): void {
     // Query history remains per-connection
@@ -37,6 +40,11 @@ export class StateRestorationManager {
       ...this.state.schemas,
       [connectionId]: [],
     };
+    // AI chats per-connection
+    this.state.aiChatsByConnection = {
+      ...this.state.aiChatsByConnection,
+      [connectionId]: this.state.aiChatsByConnection[connectionId] ?? [],
+    };
   }
 
   /**
@@ -48,6 +56,20 @@ export class StateRestorationManager {
 
     const { [connectionId]: _3, ...restSchemas } = this.state.schemas;
     this.state.schemas = restSchemas;
+
+    // Clean up AI chat state
+    const chats = this.state.aiChatsByConnection[connectionId] ?? [];
+    const { [connectionId]: _4, ...restAIChats } = this.state.aiChatsByConnection;
+    this.state.aiChatsByConnection = restAIChats;
+
+    const { [connectionId]: _5, ...restActiveChat } = this.state.activeAIChatIdByConnection;
+    this.state.activeAIChatIdByConnection = restActiveChat;
+
+    const newMessages = { ...this.state.aiMessagesByChat };
+    for (const chat of chats) {
+      delete newMessages[chat.id];
+    }
+    this.state.aiMessagesByChat = newMessages;
   }
 
   /**
@@ -104,6 +126,47 @@ export class StateRestorationManager {
   }
 
   /**
+   * Restore AI chats from persisted data.
+   */
+  restoreAIChats(connectionId: string, data: PersistedAIChat[]): void {
+    const chats: AIChat[] = data.map((c) => ({
+      id: c.id,
+      connectionId: c.connectionId,
+      title: c.title,
+      createdAt: new Date(c.createdAt),
+      updatedAt: new Date(c.updatedAt),
+    }));
+    this.state.aiChatsByConnection = {
+      ...this.state.aiChatsByConnection,
+      [connectionId]: chats,
+    };
+    // Set most recent chat as active
+    if (chats.length > 0) {
+      this.state.activeAIChatIdByConnection = {
+        ...this.state.activeAIChatIdByConnection,
+        [connectionId]: chats[0].id,
+      };
+    }
+  }
+
+  /**
+   * Restore AI chat messages from persisted data.
+   */
+  restoreAIChatMessages(chatId: string, data: PersistedAIMessage[]): void {
+    this.state.aiMessagesByChat = {
+      ...this.state.aiMessagesByChat,
+      [chatId]: data.map((m) => ({
+        id: m.id,
+        chatId: m.chatId,
+        role: m.role,
+        content: m.content,
+        timestamp: new Date(m.timestamp),
+        query: m.query,
+      })),
+    };
+  }
+
+  /**
    * Restore dashboards from persisted data (per-project).
    */
   restoreDashboards(projectId: string, data: PersistedDashboard[]): void {
@@ -124,13 +187,25 @@ export class StateRestorationManager {
   }
 
   /**
-   * Load connection data (query history only) from persistence.
+   * Load connection data (query history and AI chats) from persistence.
    */
   async loadConnectionData(connectionId: string): Promise<void> {
     const data = await this.persistence.loadConnectionData(connectionId);
 
     if (data.queryHistory.length > 0) {
       this.restoreQueryHistory(connectionId, data.queryHistory);
+    }
+
+    // Load AI chats
+    const aiChats = await this.persistence.loadAIChats(connectionId);
+    if (aiChats.length > 0) {
+      this.restoreAIChats(connectionId, aiChats);
+      // Load messages for the most recent (active) chat only
+      const activeChatId = aiChats[0].id;
+      const messages = await this.persistence.loadAIChatMessages(activeChatId);
+      if (messages.length > 0) {
+        this.restoreAIChatMessages(activeChatId, messages);
+      }
     }
   }
 
@@ -147,5 +222,13 @@ export class StateRestorationManager {
     if (dashboards.length > 0) {
       this.restoreDashboards(projectId, dashboards);
     }
+  }
+
+  /**
+   * Load messages for a specific AI chat (lazy loading when switching chats).
+   */
+  async loadAIChatMessages(chatId: string): Promise<void> {
+    const messages = await this.persistence.loadAIChatMessages(chatId);
+    this.restoreAIChatMessages(chatId, messages);
   }
 }

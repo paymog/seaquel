@@ -30,6 +30,14 @@ export interface KeyringService {
   getLicenseKey(): Promise<string | null>;
   deleteLicenseKey(): Promise<void>;
 
+  setAIApiKey(key: string): Promise<void>;
+  getAIApiKey(): Promise<string | null>;
+  deleteAIApiKey(): Promise<void>;
+
+  setAIApiKeyForProvider(id: string, key: string): Promise<void>;
+  getAIApiKeyForProvider(id: string): Promise<string | null>;
+  deleteAIApiKeyForProvider(id: string): Promise<void>;
+
   isAvailable(): boolean;
 }
 
@@ -152,6 +160,52 @@ class TauriKeyringService implements KeyringService {
     }
   }
 
+  async setAIApiKey(key: string): Promise<void> {
+    await this.init();
+    await this.keyringApi!.setPassword(SERVICE, "ai-api-key", key);
+  }
+
+  async getAIApiKey(): Promise<string | null> {
+    await this.init();
+    try {
+      return await this.keyringApi!.getPassword(SERVICE, "ai-api-key");
+    } catch {
+      return null;
+    }
+  }
+
+  async deleteAIApiKey(): Promise<void> {
+    await this.init();
+    try {
+      await this.keyringApi!.deletePassword(SERVICE, "ai-api-key");
+    } catch {
+      // Ignore - entry may not exist
+    }
+  }
+
+  async setAIApiKeyForProvider(id: string, key: string): Promise<void> {
+    await this.init();
+    await this.keyringApi!.setPassword(SERVICE, `ai-api-key:${id}`, key);
+  }
+
+  async getAIApiKeyForProvider(id: string): Promise<string | null> {
+    await this.init();
+    try {
+      return await this.keyringApi!.getPassword(SERVICE, `ai-api-key:${id}`);
+    } catch {
+      return null;
+    }
+  }
+
+  async deleteAIApiKeyForProvider(id: string): Promise<void> {
+    await this.init();
+    try {
+      await this.keyringApi!.deletePassword(SERVICE, `ai-api-key:${id}`);
+    } catch {
+      // Ignore
+    }
+  }
+
   isAvailable(): boolean {
     return true;
   }
@@ -182,6 +236,16 @@ class NoopKeyringService implements KeyringService {
     return null;
   }
   async deleteLicenseKey(): Promise<void> {}
+  async setAIApiKey(): Promise<void> {}
+  async getAIApiKey(): Promise<string | null> {
+    return null;
+  }
+  async deleteAIApiKey(): Promise<void> {}
+  async setAIApiKeyForProvider(): Promise<void> {}
+  async getAIApiKeyForProvider(): Promise<string | null> {
+    return null;
+  }
+  async deleteAIApiKeyForProvider(): Promise<void> {}
   isAvailable(): boolean {
     return false;
   }

@@ -200,6 +200,29 @@ export interface PersistedDashboardTab {
   dashboardId: string;
 }
 
+/**
+ * Persisted AI chat.
+ */
+export interface PersistedAIChat {
+  id: string;
+  connectionId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Persisted AI message.
+ */
+export interface PersistedAIMessage {
+  id: string;
+  chatId: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  query?: string;
+}
+
 export type ActiveViewType =
   | "query"
   | "schema"

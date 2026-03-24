@@ -29,7 +29,10 @@ import { WorkflowManager } from "./database/workflow-manager.svelte.js";
 import { SharedRepoManager } from "./database/shared-repo-manager.svelte.js";
 import { SharedQueryManager } from "./database/shared-query-manager.svelte.js";
 import { SharedDashboardManager } from "./database/shared-dashboard-manager.svelte.js";
+import { AIChatManager } from "./database/ai-chat-manager.svelte.js";
 import { ProviderRegistry } from "$lib/providers";
+import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
+import { getDatabase } from "$lib/storage/db";
 
 /**
  * Main database context class that orchestrates all managers.
@@ -70,6 +73,7 @@ class UseDatabase {
   readonly connectionTabs: ConnectionTabManager;
   readonly sharedQueries: SharedQueryManager;
   readonly sharedDashboards: SharedDashboardManager;
+  readonly aiChats: AIChatManager;
 
   private _stateRestoration: StateRestorationManager;
   private _readyResolve!: () => void;
@@ -113,8 +117,23 @@ class UseDatabase {
     this.projects = new ProjectManager(this.state, this.persistence, this._stateRestoration);
     this.labels = new LabelManager(this.state, this.persistence);
 
+    // AI chats
+    this.aiChats = new AIChatManager(
+      this.state,
+      (connectionId) => this.persistence.scheduleAIChats(connectionId),
+      (chatId) => this._stateRestoration.loadAIChatMessages(chatId),
+      (chatId) => this.persistence.persistAIChatMessages(chatId),
+      (chatId) => this.persistence.removeAIChat(chatId),
+    );
+
     // UI
-    this.ui = new UIStateManager(this.state, scheduleProjectPersistence);
+    this.ui = new UIStateManager(
+      this.state,
+      scheduleProjectPersistence,
+      (query) => this.queries.executeRaw(query),
+      this.aiChats,
+      (chatId) => this.persistence.persistAIChatMessages(chatId),
+    );
 
     // Shared provider registry (used by connections, query execution, schema tabs, explain tabs)
     const providers = new ProviderRegistry();
@@ -240,6 +259,9 @@ class UseDatabase {
         this.queryTabs.add();
         this.ui.setActiveView("query");
       },
+      () => {
+        this.ui.resetAISessionState();
+      },
     );
 
     // Set up cross-manager callbacks
@@ -292,6 +314,11 @@ class UseDatabase {
       await this.projects.initialize();
       void log.info("Projects initialized");
 
+      // Initialize AI settings from persisted storage
+      const sqliteDb = await getDatabase();
+      await aiSettingsStore.initialize(sqliteDb);
+      void log.info("AI settings initialized");
+
       // Initialize connections (also loads saved queries, history, and dashboards)
       await this.connections.initializePersistedConnections();
       void log.info(`Persisted connections loaded (count=${this.state.connections.length})`);
@@ -334,6 +361,20 @@ class UseDatabase {
     } catch (error) {
       console.error("Failed to initialize shared repos:", error);
     }
+  }
+
+  async setConnectionAIModel(
+    connectionId: string,
+    providerId: string,
+    model: string,
+  ): Promise<void> {
+    const conn = this.state.connections.find((c) => c.id === connectionId);
+    if (!conn) return;
+    const updated = { ...conn, activeAIProviderId: providerId, activeAIModel: model };
+    this.state.connections = this.state.connections.map((c) =>
+      c.id === connectionId ? updated : c,
+    );
+    await this.persistence.persistConnection(updated);
   }
 
   /**

@@ -33,6 +33,7 @@ export type {
   QueryTab,
   QueryHistoryItem,
   SavedQuery,
+  AIChat,
   AIMessage,
   QueryExecutor,
 } from "./query";
@@ -94,6 +95,8 @@ export type {
   PersistedConnectionTab,
   PersistedConnectionState,
   PersistedDashboardTab,
+  PersistedAIChat,
+  PersistedAIMessage,
   ActiveViewType,
 } from "./persisted";
 
@@ -118,6 +121,9 @@ export type {
   ConnectionOverride,
 } from "./shared-queries";
 export { serializeRepo, deserializeRepo, CREDENTIAL_FIELDS } from "./shared-queries";
+
+// AI types
+export * from "./ai";
 
 // Query builder types (interactive SELECT tutorial)
 export type {

@@ -1,6 +1,7 @@
 <script lang="ts" module>
 	export interface MonacoEditorRef {
 		getCursorOffset: () => number;
+		insertText: (text: string) => void;
 	}
 </script>
 
@@ -17,6 +18,7 @@
 		onExecute = () => {},
 		onToggleSidebar = () => {},
 		onChange = (_value: string) => {},
+		onAIInlinePrompt,
 		class: className = ""
 	}: {
 		value?: string;
@@ -25,6 +27,7 @@
 		onExecute?: () => void;
 		onToggleSidebar?: () => void;
 		onChange?: (value: string) => void;
+		onAIInlinePrompt?: (pos: { lineNumber: number; column: number }) => void;
 		class?: string;
 	} = $props();
 
@@ -135,6 +138,21 @@
 			onToggleSidebar();
 		});
 
+		// Trigger AI inline prompt when "/" is typed at the start of an empty line
+		const editorRef = editor;
+		editor.addCommand(monaco.KeyCode.Slash, () => {
+			const pos = editorRef.getPosition();
+			const model = editorRef.getModel();
+			if (!pos || !model) return;
+			const lineContent = model.getLineContent(pos.lineNumber);
+			const beforeCursor = lineContent.substring(0, pos.column - 1);
+			if (beforeCursor.trim() === "") {
+				onAIInlinePrompt?.({ lineNumber: pos.lineNumber, column: pos.column });
+			} else {
+				editorRef.trigger("keyboard", "type", { text: "/" });
+			}
+		});
+
 		// Expose ref for external access
 		ref = {
 			getCursorOffset: () => {
@@ -142,6 +160,28 @@
 				const position = editor.getPosition();
 				if (!position) return 0;
 				return editor.getModel()?.getOffsetAt(position) ?? 0;
+			},
+			insertText: (text: string) => {
+				if (!editor) return;
+				const position = editor.getPosition();
+				if (!position) return;
+				editor.executeEdits("ai-inline", [{
+					range: new monaco.Range(
+						position.lineNumber,
+						position.column,
+						position.lineNumber,
+						position.column,
+					),
+					text,
+				}]);
+				// Move cursor to end of inserted text
+				const lines = text.split("\n");
+				const newLine = position.lineNumber + lines.length - 1;
+				const newCol = lines.length === 1
+					? position.column + text.length
+					: lines[lines.length - 1].length + 1;
+				editor.setPosition({ lineNumber: newLine, column: newCol });
+				editor.focus();
 			}
 		};
 	});

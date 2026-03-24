@@ -90,4 +90,12 @@ export interface DatabaseConnection {
   sharedConnectionId?: string;
   /** Whether this connection is excluded from Git sharing (local-only) */
   isLocalOnly?: boolean;
+  /** Whether to share schema with AI for this connection (undefined = use global default) */
+  aiShareSchema?: boolean;
+  /** Whether to share data with AI for this connection (undefined = use global default) */
+  aiShareData?: boolean;
+  /** Active AI provider ID for this connection */
+  activeAIProviderId?: string;
+  /** Active AI model for this connection */
+  activeAIModel?: string;
 }

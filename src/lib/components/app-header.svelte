@@ -10,7 +10,7 @@
     import { useDatabase } from "$lib/hooks/database.svelte.js";
 
     import PlusIcon from "@lucide/svelte/icons/plus";
-    import BotIcon from "@lucide/svelte/icons/bot";
+    import SparklesIcon from "@lucide/svelte/icons/sparkles";
     import NetworkIcon from "@lucide/svelte/icons/network";
     import SettingsIcon from "@lucide/svelte/icons/settings";
     import ProjectSettingsDialog from "./project-settings-dialog.svelte";
@@ -225,7 +225,7 @@
                     aria-label={m.header_toggle_ai()}
                     onclick={() => db.ui.toggleAI()}
                 >
-                    <BotIcon class="size-3.5" />
+                    <SparklesIcon class="size-3.5" />
                 </Button>
             {/if}
             {#if isTauri()}

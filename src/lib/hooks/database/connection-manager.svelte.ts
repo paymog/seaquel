@@ -56,6 +56,7 @@ export class ConnectionManager {
       providerConnectionId?: string,
     ) => void,
     private onCreateInitialTab: () => void,
+    private onActiveConnectionChanged: () => void = () => {},
   ) {}
 
   /**
@@ -116,6 +117,8 @@ export class ConnectionManager {
           labelIds: persisted.labelIds || [],
           isLocalOnly: persisted.isLocalOnly,
           sharedConnectionId: persisted.sharedConnectionId,
+          activeAIProviderId: persisted.activeAIProviderId,
+          activeAIModel: persisted.activeAIModel,
           // database is undefined - user needs to provide password to connect
         };
         this.state.connections.push(connection);
@@ -593,6 +596,7 @@ export class ConnectionManager {
     const connection = this.state.connections.find((c) => c.id === id);
     if (connection) {
       this.setActiveForProject(id, connection.projectId);
+      this.onActiveConnectionChanged();
     }
   }
 

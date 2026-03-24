@@ -1,0 +1,137 @@
+import type { SqliteDatabase } from "$lib/storage";
+import { appStateRepo } from "$lib/storage";
+import { getKeyringService } from "$lib/services/keyring";
+import { DEFAULT_AI_SETTINGS, type AISettings, type AIProvider } from "$lib/types/ai";
+
+const AI_SETTINGS_KEY = "aiSettings";
+
+class AISettingsStore {
+  settings = $state<AISettings>({ ...DEFAULT_AI_SETTINGS });
+
+  getProvider(id: string): AIProvider | null {
+    return this.settings.providers.find((p) => p.id === id) ?? null;
+  }
+
+  async initialize(db: SqliteDatabase): Promise<void> {
+    const raw = await appStateRepo.get(db, AI_SETTINGS_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        // Migration: strip legacy fields from old AIProviderConfig shape
+        const providers = (parsed.providers ?? []).map(
+          (p: AIProvider & { model?: string; provider?: string }) => {
+            const {
+              model: _model,
+              provider,
+              ...rest
+            } = p as AIProvider & { model?: string; provider?: string };
+            return { ...rest, type: rest.type ?? provider ?? "anthropic" } as AIProvider;
+          },
+        );
+        this.settings = { ...DEFAULT_AI_SETTINGS, ...parsed, providers };
+      } catch (err) {
+        console.error("[AI] Failed to parse saved AI settings, using defaults:", err);
+      }
+    }
+  }
+
+  private async persistSettings(db: SqliteDatabase, settings: AISettings): Promise<void> {
+    this.settings = settings;
+    await appStateRepo.set(db, AI_SETTINGS_KEY, JSON.stringify(settings));
+  }
+
+  async addProvider(db: SqliteDatabase, config: AIProvider, apiKey?: string): Promise<void> {
+    const providers = [...this.settings.providers, config];
+    await this.persistSettings(db, { ...this.settings, providers });
+    if (apiKey) {
+      await getKeyringService().setAIApiKeyForProvider(config.id, apiKey);
+    }
+  }
+
+  async updateProvider(db: SqliteDatabase, config: AIProvider, apiKey?: string): Promise<void> {
+    const providers = this.settings.providers.map((p) => (p.id === config.id ? config : p));
+    await this.persistSettings(db, { ...this.settings, providers });
+    if (apiKey !== undefined) {
+      const keyring = getKeyringService();
+      if (apiKey === "") {
+        await keyring.deleteAIApiKeyForProvider(config.id);
+      } else {
+        await keyring.setAIApiKeyForProvider(config.id, apiKey);
+      }
+    }
+  }
+
+  async deleteProvider(db: SqliteDatabase, id: string): Promise<void> {
+    const providers = this.settings.providers.filter((p) => p.id !== id);
+    await this.persistSettings(db, { ...this.settings, providers });
+    await getKeyringService().deleteAIApiKeyForProvider(id);
+  }
+
+  async savePrivacySettings(
+    db: SqliteDatabase,
+    patch: Pick<AISettings, "shareSchemaGlobally" | "shareDataGlobally">,
+  ): Promise<void> {
+    await this.persistSettings(db, { ...this.settings, ...patch });
+  }
+
+  async testConnection(providerId: string): Promise<boolean> {
+    const config = this.settings.providers.find((p) => p.id === providerId);
+    if (!config) return false;
+    const apiKey = (await getKeyringService().getAIApiKeyForProvider(config.id)) ?? "";
+    // Anthropic always requires a key; openai-compatible providers (e.g. Ollama) may not
+    if (config.type === "anthropic" && !apiKey) return false;
+    try {
+      if (config.type === "anthropic") {
+        const res = await fetch("https://api.anthropic.com/v1/models", {
+          headers: {
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+        });
+        return res.ok;
+      } else {
+        const baseUrl = (config.baseUrl ?? "").replace(/\/$/, "");
+        if (!baseUrl) return false;
+        const headers: Record<string, string> = {};
+        if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+        const res = await fetch(`${baseUrl}/models`, { headers });
+        return res.ok;
+      }
+    } catch (err) {
+      console.error("[AI] testConnection error:", err);
+      return false;
+    }
+  }
+
+  async fetchModels(providerId: string): Promise<string[]> {
+    const config = this.settings.providers.find((p) => p.id === providerId);
+    if (!config) return [];
+    const apiKey = (await getKeyringService().getAIApiKeyForProvider(config.id)) ?? "";
+    // Anthropic always requires a key; openai-compatible providers (e.g. Ollama) may not
+    if (config.type === "anthropic" && !apiKey) return [];
+    try {
+      if (config.type === "anthropic") {
+        const res = await fetch("https://api.anthropic.com/v1/models", {
+          headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+        });
+        if (!res.ok) return [];
+        const data = await res.json();
+        return (data.data as Array<{ id: string }>).map((e) => e.id);
+      } else {
+        const baseUrl = (config.baseUrl ?? "").replace(/\/$/, "");
+        if (!baseUrl) return [];
+        const headers: Record<string, string> = {};
+        if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+        const res = await fetch(`${baseUrl}/models`, { headers });
+        if (!res.ok) return [];
+        const data = await res.json();
+        return (data.data as Array<{ id: string }>).map((e) => e.id);
+      }
+    } catch (err) {
+      console.error("[AI] fetchModels error:", err);
+      return [];
+    }
+  }
+}
+
+export const aiSettingsStore = new AISettingsStore();

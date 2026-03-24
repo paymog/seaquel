@@ -5,6 +5,8 @@ import type {
   PersistedSavedQuery,
   PersistedQueryHistoryItem,
   PersistedSharedQueryRepo,
+  PersistedAIChat,
+  PersistedAIMessage,
 } from "$lib/types";
 import type { PersistedConnection } from "$lib/hooks/database/types";
 import type { SavedWorkflow } from "$lib/types/workflow";
@@ -131,6 +133,8 @@ export const connectionsRepo = {
       save_ssh_key_passphrase: number;
       is_local_only: number;
       shared_connection_id: string | null;
+      ai_share_schema: number | null;
+      ai_share_data: number | null;
     }>("SELECT * FROM connections");
 
     const connections: PersistedConnection[] = [];
@@ -159,6 +163,14 @@ export const connectionsRepo = {
         labelIds: labelRows.map((l) => l.label_id),
         isLocalOnly: row.is_local_only === 1 ? true : undefined,
         sharedConnectionId: row.shared_connection_id ?? undefined,
+        aiShareSchema:
+          row.ai_share_schema === null || row.ai_share_schema === undefined
+            ? undefined
+            : Boolean(row.ai_share_schema),
+        aiShareData:
+          row.ai_share_data === null || row.ai_share_data === undefined
+            ? undefined
+            : Boolean(row.ai_share_data),
       });
     }
     return connections;
@@ -169,8 +181,8 @@ export const connectionsRepo = {
       `INSERT INTO connections
        (id, project_id, name, type, host, port, database_name, username, ssl_mode,
         connection_string, last_connected, ssh_tunnel, save_password, save_ssh_password,
-        save_ssh_key_passphrase, is_local_only, shared_connection_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        save_ssh_key_passphrase, is_local_only, shared_connection_id, ai_share_schema, ai_share_data)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          project_id = excluded.project_id,
          name = excluded.name,
@@ -187,7 +199,9 @@ export const connectionsRepo = {
          save_ssh_password = excluded.save_ssh_password,
          save_ssh_key_passphrase = excluded.save_ssh_key_passphrase,
          is_local_only = excluded.is_local_only,
-         shared_connection_id = excluded.shared_connection_id`,
+         shared_connection_id = excluded.shared_connection_id,
+         ai_share_schema = excluded.ai_share_schema,
+         ai_share_data = excluded.ai_share_data`,
       [
         conn.id,
         conn.projectId,
@@ -208,6 +222,8 @@ export const connectionsRepo = {
         conn.saveSshKeyPassphrase ? 1 : 0,
         conn.isLocalOnly ? 1 : 0,
         conn.sharedConnectionId ?? null,
+        conn.aiShareSchema === undefined ? null : conn.aiShareSchema ? 1 : 0,
+        conn.aiShareData === undefined ? null : conn.aiShareData ? 1 : 0,
       ],
     );
 
@@ -1010,5 +1026,79 @@ export const importStateRepo = {
        VALUES (?, ?, ?)`,
       [source, hasOfferedImport ? 1 : 0, lastCheckTimestamp],
     );
+  },
+};
+
+// === AI Chats ===
+
+export const aiChatsRepo = {
+  async loadByConnection(db: SqliteDatabase, connectionId: string): Promise<PersistedAIChat[]> {
+    const rows = await db.query<{
+      id: string;
+      connection_id: string;
+      title: string;
+      created_at: string;
+      updated_at: string;
+    }>("SELECT * FROM ai_chats WHERE connection_id = ? ORDER BY updated_at DESC", [connectionId]);
+    return rows.map((r) => ({
+      id: r.id,
+      connectionId: r.connection_id,
+      title: r.title,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  },
+
+  async saveChat(db: SqliteDatabase, chat: PersistedAIChat): Promise<void> {
+    await db.execute(
+      `INSERT INTO ai_chats (id, connection_id, title, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title,
+         updated_at = excluded.updated_at`,
+      [chat.id, chat.connectionId, chat.title, chat.createdAt, chat.updatedAt],
+    );
+  },
+
+  async removeChat(db: SqliteDatabase, chatId: string): Promise<void> {
+    await db.execute("DELETE FROM ai_chats WHERE id = ?", [chatId]);
+  },
+
+  async removeByConnection(db: SqliteDatabase, connectionId: string): Promise<void> {
+    await db.execute("DELETE FROM ai_chats WHERE connection_id = ?", [connectionId]);
+  },
+
+  async loadMessages(db: SqliteDatabase, chatId: string): Promise<PersistedAIMessage[]> {
+    const rows = await db.query<{
+      id: string;
+      chat_id: string;
+      role: string;
+      content: string;
+      timestamp: string;
+      query: string | null;
+    }>("SELECT * FROM ai_messages WHERE chat_id = ? ORDER BY timestamp ASC", [chatId]);
+    return rows.map((r) => ({
+      id: r.id,
+      chatId: r.chat_id,
+      role: r.role as "user" | "assistant",
+      content: r.content,
+      timestamp: r.timestamp,
+      query: r.query ?? undefined,
+    }));
+  },
+
+  async replaceAllMessages(
+    db: SqliteDatabase,
+    chatId: string,
+    messages: PersistedAIMessage[],
+  ): Promise<void> {
+    await db.execute("DELETE FROM ai_messages WHERE chat_id = ?", [chatId]);
+    for (const m of messages) {
+      await db.execute(
+        `INSERT INTO ai_messages (id, chat_id, role, content, timestamp, query)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [m.id, chatId, m.role, m.content, m.timestamp, m.query ?? null],
+      );
+    }
   },
 };

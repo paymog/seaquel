@@ -198,11 +198,29 @@ export interface SavedQuery {
 }
 
 /**
+ * An AI chat conversation belonging to a specific database connection.
+ */
+export interface AIChat {
+  /** Unique identifier */
+  id: string;
+  /** The connection this chat belongs to */
+  connectionId: string;
+  /** Chat title (auto-generated from first message) */
+  title: string;
+  /** When the chat was created */
+  createdAt: Date;
+  /** When the chat was last active */
+  updatedAt: Date;
+}
+
+/**
  * A message in the AI assistant conversation.
  */
 export interface AIMessage {
   /** Unique identifier */
   id: string;
+  /** The chat this message belongs to */
+  chatId?: string;
   /** Who sent the message */
   role: "user" | "assistant";
   /** Message content */
@@ -211,6 +229,15 @@ export interface AIMessage {
   timestamp: Date;
   /** SQL query suggested or discussed, if any */
   query?: string;
+  /** Set while waiting for the user to approve an AI-requested query. Cleared once resolved. */
+  pendingApproval?: {
+    query: string;
+    connectionName: string;
+    approve: () => void;
+    deny: () => void;
+  } | null;
+  /** Set when no AI model is selected — stores the user prompt to retry once a model is chosen. */
+  pendingModelSelection?: string;
 }
 
 /**

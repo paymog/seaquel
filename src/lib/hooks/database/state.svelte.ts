@@ -3,6 +3,7 @@ import type {
   SchemaTable,
   QueryTab,
   QueryHistoryItem,
+  AIChat,
   AIMessage,
   SchemaTab,
   SavedQuery,
@@ -129,8 +130,11 @@ export class DatabaseState {
   connectionOverrides = $state<Record<string, ConnectionOverride>>({});
 
   // === AI STATE ===
-  aiMessages = $state<AIMessage[]>([]);
+  aiChatsByConnection = $state<Record<string, AIChat[]>>({});
+  activeAIChatIdByConnection = $state<Record<string, string | null>>({});
+  aiMessagesByChat = $state<Record<string, AIMessage[]>>({});
   isAIOpen = $state(false);
+  isAIStreaming = $state(false);
   isDashboardFullscreen = $state(false);
 
   // === VIEW STATE ===
@@ -430,4 +434,28 @@ export class DatabaseState {
 
   // Derived: all shared labels across all repos
   allSharedLabels = $derived(Object.values(this.sharedLabelsByRepo).flat());
+
+  // === AI DERIVED VALUES ===
+
+  // Derived: chats for active connection
+  activeConnectionAIChats = $derived(
+    this.activeConnectionId ? (this.aiChatsByConnection[this.activeConnectionId] ?? []) : [],
+  );
+
+  // Derived: active chat ID for active connection
+  activeAIChatId = $derived(
+    this.activeConnectionId
+      ? (this.activeAIChatIdByConnection[this.activeConnectionId] ?? null)
+      : null,
+  );
+
+  // Derived: active chat object
+  activeAIChat = $derived(
+    this.activeConnectionAIChats.find((c) => c.id === this.activeAIChatId) || null,
+  );
+
+  // Derived: messages for active chat (same name as old flat array for minimal UI changes)
+  aiMessages = $derived(
+    this.activeAIChatId ? (this.aiMessagesByChat[this.activeAIChatId] ?? []) : [],
+  );
 }

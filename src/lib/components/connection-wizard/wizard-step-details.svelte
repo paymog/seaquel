@@ -14,6 +14,8 @@
 	import type { SSHAuthMethod } from "$lib/types";
 	import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 	import { getKeyringService } from "$lib/services/keyring";
+	import { Switch } from "$lib/components/ui/switch";
+	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte.js";
 	import CopyIcon from "@lucide/svelte/icons/copy";
 	import ServerIcon from "@lucide/svelte/icons/server";
 	import DatabaseIcon from "@lucide/svelte/icons/database";
@@ -23,6 +25,7 @@
 	import ShieldIcon from "@lucide/svelte/icons/shield";
 	import NetworkIcon from "@lucide/svelte/icons/network";
 	import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+	import SparklesIcon from "@lucide/svelte/icons/sparkles";
 	import { toast } from "svelte-sonner";
 	import { errorToast } from "$lib/utils/toast";
 	import { getUsername } from "$lib/api/tauri";
@@ -70,6 +73,7 @@
 
 	let advancedExpanded = $state(formData.sslMode !== "disable" || formData.sshEnabled);
 	let sshExpanded = $state(formData.sshEnabled);
+	let aiPrivacyExpanded = $state(formData.aiShareSchema !== undefined || formData.aiShareData !== undefined);
 
 	const selectDatabaseFile = async () => {
 		try {
@@ -122,6 +126,7 @@
 			formData.name = formData.databaseName;
 		}
 	});
+
 </script>
 
 <div class="flex flex-col gap-6 py-4">
@@ -462,6 +467,80 @@
 				{/if}
 			</div>
 		{/if}
+
+		<!-- AI Privacy overrides -->
+		<div class="border rounded-lg">
+			<button
+				type="button"
+				class="w-full flex items-center justify-between p-3 text-left hover:bg-accent/50 transition-colors rounded-lg"
+				onclick={() => (aiPrivacyExpanded = !aiPrivacyExpanded)}
+			>
+				<div class="flex items-center gap-2">
+					<SparklesIcon class="size-4 text-muted-foreground" />
+					<span class="text-sm font-medium">{m.wizard_ai_privacy()}</span>
+					{#if formData.aiShareSchema !== undefined || formData.aiShareData !== undefined}
+						<span class="size-1.5 rounded-full bg-primary inline-block"></span>
+					{/if}
+				</div>
+				<ChevronDownIcon
+					class="size-4 text-muted-foreground transition-transform {aiPrivacyExpanded ? 'rotate-180' : ''}"
+				/>
+			</button>
+
+			{#if aiPrivacyExpanded}
+				<div class="px-3 pt-1 pb-3 space-y-4">
+					<p class="text-xs text-muted-foreground">
+						{m.wizard_ai_privacy_description()}
+					</p>
+
+					<div class="flex items-start justify-between gap-4">
+						<div class="flex-1">
+							<p class="text-sm font-medium">{m.wizard_ai_share_schema()}</p>
+							<p class="text-xs text-muted-foreground">{m.wizard_ai_share_schema_description()}</p>
+							<div class="flex items-center gap-1.5 mt-1.5">
+								<Checkbox
+									id="ai-schema-use-default"
+									checked={formData.aiShareSchema === undefined}
+									onCheckedChange={(checked) => {
+										formData.aiShareSchema = checked ? undefined : aiSettingsStore.settings.shareSchemaGlobally;
+									}}
+								/>
+								<Label for="ai-schema-use-default" class="text-xs font-normal text-muted-foreground cursor-pointer">
+									{m.wizard_ai_share_default()}
+								</Label>
+							</div>
+						</div>
+						<Switch
+							checked={formData.aiShareSchema ?? aiSettingsStore.settings.shareSchemaGlobally}
+							onCheckedChange={(checked) => (formData.aiShareSchema = checked)}
+						/>
+					</div>
+
+					<div class="flex items-start justify-between gap-4">
+						<div class="flex-1">
+							<p class="text-sm font-medium">{m.wizard_ai_share_data()}</p>
+							<p class="text-xs text-muted-foreground">{m.wizard_ai_share_data_description()}</p>
+							<div class="flex items-center gap-1.5 mt-1.5">
+								<Checkbox
+									id="ai-data-use-default"
+									checked={formData.aiShareData === undefined}
+									onCheckedChange={(checked) => {
+										formData.aiShareData = checked ? undefined : aiSettingsStore.settings.shareDataGlobally;
+									}}
+								/>
+								<Label for="ai-data-use-default" class="text-xs font-normal text-muted-foreground cursor-pointer">
+									{m.wizard_ai_share_default()}
+								</Label>
+							</div>
+						</div>
+						<Switch
+							checked={formData.aiShareData ?? aiSettingsStore.settings.shareDataGlobally}
+							onCheckedChange={(checked) => (formData.aiShareData = checked)}
+						/>
+					</div>
+				</div>
+			{/if}
+		</div>
 
 		<!-- Test connection button -->
 		<Button variant="outline" class="w-full" onclick={onTest} disabled={isTesting}>

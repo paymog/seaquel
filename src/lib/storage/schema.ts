@@ -203,6 +203,27 @@ const DDL_STATEMENTS = [
     updated_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_dashboards_project ON dashboards(project_id)`,
+
+  // AI chats
+  `CREATE TABLE IF NOT EXISTS ai_chats (
+    id TEXT PRIMARY KEY,
+    connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ai_chats_connection ON ai_chats(connection_id)`,
+
+  // AI messages
+  `CREATE TABLE IF NOT EXISTS ai_messages (
+    id TEXT PRIMARY KEY,
+    chat_id TEXT NOT NULL REFERENCES ai_chats(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    query TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_ai_messages_chat ON ai_messages(chat_id)`,
 ];
 
 /**
@@ -279,6 +300,16 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
       table: "dashboards",
       column: "starred",
       sql: "ALTER TABLE dashboards ADD COLUMN starred INTEGER DEFAULT 0",
+    },
+    {
+      table: "connections",
+      column: "ai_share_schema",
+      sql: "ALTER TABLE connections ADD COLUMN ai_share_schema INTEGER",
+    },
+    {
+      table: "connections",
+      column: "ai_share_data",
+      sql: "ALTER TABLE connections ADD COLUMN ai_share_data INTEGER",
     },
   ];
 

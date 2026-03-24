@@ -10,6 +10,8 @@ import type {
   PersistedDashboardTab,
   PersistedSavedQuery,
   PersistedQueryHistoryItem,
+  PersistedAIChat,
+  PersistedAIMessage,
   DatabaseConnection,
   PersistedProject,
   PersistedProjectState,
@@ -31,6 +33,7 @@ import {
   sharedReposRepo,
   dashboardsRepo,
   connectionOverridesRepo,
+  aiChatsRepo,
 } from "$lib/storage";
 import { getKeyringService } from "$lib/services/keyring";
 import { log } from "$lib/utils/logger";
@@ -44,6 +47,7 @@ import { log } from "$lib/utils/logger";
 export class PersistenceManager {
   private persistenceTimer: ReturnType<typeof setTimeout> | null = null;
   private sharedReposTimer: ReturnType<typeof setTimeout> | null = null;
+  private aiChatTimer: ReturnType<typeof setTimeout> | null = null;
   readonly PERSISTENCE_DEBOUNCE_MS = 500;
   readonly MAX_HISTORY_ITEMS = 500;
 
@@ -113,6 +117,10 @@ export class PersistenceManager {
     if (this.sharedReposTimer) {
       clearTimeout(this.sharedReposTimer);
       this.sharedReposTimer = null;
+    }
+    if (this.aiChatTimer) {
+      clearTimeout(this.aiChatTimer);
+      this.aiChatTimer = null;
     }
     // Persist all projects that have data
     for (const projectId of Object.keys(this.state.queryTabsByProject)) {
@@ -429,8 +437,106 @@ export class PersistenceManager {
     try {
       const db = await getDatabase();
       await queryHistoryRepo.removeByConnection(db, connectionId);
+      await aiChatsRepo.removeByConnection(db, connectionId);
     } catch (error) {
       console.error(`Failed to remove data for connection ${connectionId}:`, error);
+    }
+  }
+
+  // === AI CHAT PERSISTENCE ===
+
+  scheduleAIChats(connectionId: string | null): void {
+    if (!connectionId) return;
+    if (this.aiChatTimer) clearTimeout(this.aiChatTimer);
+    this.aiChatTimer = setTimeout(() => {
+      void this.persistAIChats(connectionId);
+      this.aiChatTimer = null;
+    }, this.PERSISTENCE_DEBOUNCE_MS);
+  }
+
+  async persistAIChats(connectionId: string): Promise<void> {
+    try {
+      const db = await getDatabase();
+      const chats = this.state.aiChatsByConnection[connectionId] ?? [];
+      for (const chat of chats) {
+        await aiChatsRepo.saveChat(db, {
+          id: chat.id,
+          connectionId: chat.connectionId,
+          title: chat.title,
+          createdAt: chat.createdAt.toISOString(),
+          updatedAt: chat.updatedAt.toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to persist AI chats for connection ${connectionId}:`, error);
+    }
+  }
+
+  async persistAIChatMessages(chatId: string): Promise<void> {
+    try {
+      const db = await getDatabase();
+
+      // Ensure the parent chat record exists before inserting messages
+      // (chat persistence is debounced so it may not have run yet)
+      const chat = Object.values(this.state.aiChatsByConnection)
+        .flat()
+        .find((c) => c.id === chatId);
+      if (chat) {
+        await aiChatsRepo.saveChat(db, {
+          id: chat.id,
+          connectionId: chat.connectionId,
+          title: chat.title,
+          createdAt: chat.createdAt.toISOString(),
+          updatedAt: chat.updatedAt.toISOString(),
+        });
+      }
+
+      const messages = (this.state.aiMessagesByChat[chatId] ?? []).filter(
+        (m) => !m.pendingModelSelection,
+      );
+      await aiChatsRepo.replaceAllMessages(
+        db,
+        chatId,
+        messages.map((m) => ({
+          id: m.id,
+          chatId,
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp.toISOString(),
+          query: m.query,
+        })),
+      );
+    } catch (error) {
+      console.error(`Failed to persist AI chat messages for chat ${chatId}:`, error);
+    }
+  }
+
+  async loadAIChats(connectionId: string): Promise<PersistedAIChat[]> {
+    try {
+      const db = await getDatabase();
+      return await aiChatsRepo.loadByConnection(db, connectionId);
+    } catch (error) {
+      console.error(`Failed to load AI chats for connection ${connectionId}:`, error);
+      return [];
+    }
+  }
+
+  async loadAIChatMessages(chatId: string): Promise<PersistedAIMessage[]> {
+    try {
+      const db = await getDatabase();
+      return await aiChatsRepo.loadMessages(db, chatId);
+    } catch (error) {
+      console.error(`Failed to load AI chat messages for chat ${chatId}:`, error);
+      return [];
+    }
+  }
+
+  async removeAIChat(chatId: string): Promise<void> {
+    try {
+      const db = await getDatabase();
+      await aiChatsRepo.removeChat(db, chatId);
+    } catch (error) {
+      console.error(`Failed to remove AI chat ${chatId}:`, error);
     }
   }
 
@@ -550,6 +656,10 @@ export class PersistenceManager {
           labelIds: connection.labelIds,
           isLocalOnly: connection.isLocalOnly,
           sharedConnectionId: connection.sharedConnectionId,
+          aiShareSchema: connection.aiShareSchema,
+          aiShareData: connection.aiShareData,
+          activeAIProviderId: connection.activeAIProviderId,
+          activeAIModel: connection.activeAIModel,
         };
 
         await connectionsRepo.save(db, persistedConnection);

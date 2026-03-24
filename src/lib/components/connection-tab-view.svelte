@@ -54,6 +54,8 @@
 		savePassword: true,
 		saveSshPassword: true,
 		saveSshKeyPassphrase: true,
+		aiShareSchema: undefined,
+		aiShareData: undefined,
 	});
 	let currentStep = $state<"method" | "details">("method");
 	let isConnecting = $state(false);

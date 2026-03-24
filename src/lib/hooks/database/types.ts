@@ -27,4 +27,12 @@ export interface PersistedConnection {
   isLocalOnly?: boolean;
   /** If created from a shared connection template, its ID */
   sharedConnectionId?: string;
+  /** Whether the AI is allowed to share the DB schema for this connection */
+  aiShareSchema?: boolean;
+  /** Whether the AI is allowed to share data (query results) for this connection */
+  aiShareData?: boolean;
+  /** Active AI provider ID for this connection */
+  activeAIProviderId?: string;
+  /** Active AI model for this connection */
+  activeAIModel?: string;
 }

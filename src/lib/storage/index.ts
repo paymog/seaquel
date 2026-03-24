@@ -15,4 +15,5 @@ export {
   importStateRepo,
   dashboardsRepo,
   connectionOverridesRepo,
+  aiChatsRepo,
 } from "./repository";

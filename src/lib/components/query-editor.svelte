@@ -23,7 +23,12 @@ import { errorToast } from "$lib/utils/toast";
 	import { splitSqlStatements, getStatementAtOffset } from "$lib/db/sql-parser.js";
 	import { hasParameters, extractParameters, createDefaultParameters } from "$lib/db/query-params.js";
 	import type { QueryParameter, ParameterValue } from "$lib/types";
+	import { generateSQL } from "$lib/services/ai";
+	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
+	import { settingsDialogStore } from "$lib/stores/settings-dialog.svelte.js";
+	import { getDatabase } from "$lib/storage/db";
 	import QueryExampleCard from "$lib/components/empty-states/query-example-card.svelte";
+	import AiModelSwitcher from "$lib/components/ai-model-switcher.svelte";
 	import { sampleQueries } from "$lib/config/sample-queries.js";
 	import PlusIcon from "@lucide/svelte/icons/plus";
 	import { EmptyState } from "$lib/components/ui/empty-state";
@@ -59,6 +64,12 @@ import { errorToast } from "$lib/utils/toast";
 	let pendingDeleteRow = $state<{ index: number; row: Record<string, unknown> } | null>(null);
 	let showDeleteConfirm = $state(false);
 	let monacoRef = $state<MonacoEditorRef | null>(null);
+
+	// AI inline prompt state
+	let aiInlinePromptOpen = $state(false);
+	let aiInlinePromptText = $state("");
+	let aiInlinePromptLoading = $state(false);
+	let aiInlinePromptError = $state<{ message: string; action?: { label: string; fn: () => void } } | null>(null);
 
 	// Get the active result (for multi-statement support)
 	const activeResult = $derived(db.state.activeQueryResult);
@@ -531,6 +542,88 @@ import { errorToast } from "$lib/utils/toast";
 		await clipboardCopyColumn(contextCell.column, activeResult.rows);
 	};
 
+	// AI inline prompt handlers
+	function handleAIInlinePrompt(_pos: { lineNumber: number; column: number }) {
+		aiInlinePromptText = "";
+		aiInlinePromptError = null;
+		aiInlinePromptOpen = true;
+	}
+
+	async function submitAIInlinePrompt() {
+		if (!aiInlinePromptText.trim() || aiInlinePromptLoading) return;
+		aiInlinePromptLoading = true;
+		try {
+			const activeConn = db.state.activeConnection;
+			const shareSchema = activeConn?.aiShareSchema !== undefined
+				? activeConn.aiShareSchema
+				: aiSettingsStore.settings.shareSchemaGlobally;
+			const activeProviderId = activeConn?.activeAIProviderId ?? null;
+			const activeModel = activeConn?.activeAIModel ?? null;
+
+			if (!activeProviderId || !activeModel) {
+				aiInlinePromptError = {
+					message: "No AI provider configured.",
+					action: {
+						label: "Configure",
+						fn: () => { settingsDialogStore.open("ai-provider"); closeAIInlinePrompt(); },
+					},
+				};
+				aiInlinePromptLoading = false;
+				return;
+			}
+
+			const sql = await generateSQL({
+				request: aiInlinePromptText,
+				existingQuery: db.state.activeQueryTab?.query ?? "",
+				schema: db.state.activeSchema ?? [],
+				shareSchema,
+				providerId: activeProviderId,
+				model: activeModel,
+				databaseType: db.state.activeConnection?.type,
+			});
+			monacoRef?.insertText(sql);
+			aiInlinePromptOpen = false;
+			aiInlinePromptText = "";
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			if (msg === "no_provider") {
+				aiInlinePromptError = {
+					message: "No AI provider configured.",
+					action: {
+						label: "Configure",
+						fn: () => { settingsDialogStore.open("ai-provider"); closeAIInlinePrompt(); },
+					},
+				};
+			} else if (msg === "no_api_key") {
+				aiInlinePromptError = {
+					message: "No API key configured.",
+					action: {
+						label: "Settings → AI",
+						fn: () => { settingsDialogStore.open("ai-provider"); closeAIInlinePrompt(); },
+					},
+				};
+			} else if (msg === "rate_limit") {
+				aiInlinePromptError = { message: "Rate limit reached. Please wait and try again." };
+			} else {
+				aiInlinePromptError = { message: "Something went wrong. Please try again." };
+				toast.error(msg);
+			}
+		} finally {
+			aiInlinePromptLoading = false;
+		}
+	}
+
+	function closeAIInlinePrompt() {
+		aiInlinePromptOpen = false;
+		aiInlinePromptText = "";
+		aiInlinePromptLoading = false;
+		aiInlinePromptError = null;
+	}
+
+	const focusOnMount = () => (el: HTMLInputElement) => {
+		el.focus();
+	};
+
 	// Register keyboard shortcuts
 	onMount(() => {
 		shortcuts.registerHandler('saveQuery', handleSave);
@@ -594,7 +687,7 @@ import { errorToast } from "$lib/utils/toast";
 					</div>
 				{:else}
 					<!-- Just SQL Editor -->
-					<div class="h-full">
+					<div class="relative h-full">
 						{#key db.state.activeQueryTabId}
 							<MonacoEditor
 								bind:value={db.state.activeQueryTab.query}
@@ -602,6 +695,7 @@ import { errorToast } from "$lib/utils/toast";
 								schema={db.state.activeSchema}
 								onExecute={handleExecuteCurrent}
 								onToggleSidebar={() => sidebar.toggle()}
+								onAIInlinePrompt={handleAIInlinePrompt}
 								onChange={(newValue) => {
 									currentQuery = newValue;
 									if (db.state.activeQueryTabId) {
@@ -610,6 +704,61 @@ import { errorToast } from "$lib/utils/toast";
 								}}
 							/>
 						{/key}
+						{#if aiInlinePromptOpen}
+							<div
+								class="absolute top-12 left-4 right-4 z-50 flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 shadow-lg"
+								role="dialog"
+								aria-label="AI query prompt"
+							>
+								<svg class="h-4 w-4 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 10 10 10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+								<input
+									type="text"
+									class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+									placeholder="Ask AI to write a query..."
+									bind:value={aiInlinePromptText}
+									disabled={aiInlinePromptLoading}
+									oninput={() => { aiInlinePromptError = null; }}
+									onkeydown={(e) => {
+										if (e.key === "Enter") { e.preventDefault(); submitAIInlinePrompt(); }
+										if (e.key === "Escape") { e.preventDefault(); closeAIInlinePrompt(); }
+									}}
+									{@attach focusOnMount()}
+								/>
+								{#if aiInlinePromptLoading}
+									<span class="text-xs text-muted-foreground">Thinking...</span>
+								{:else if aiInlinePromptError}
+									<span class="text-xs text-destructive">
+										{aiInlinePromptError.message}
+										{#if aiInlinePromptError.action}
+											<button
+												class="underline hover:no-underline"
+												onclick={aiInlinePromptError.action.fn}
+											>{aiInlinePromptError.action.label}</button>
+										{/if}
+									</span>
+									<button
+										class="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+										onclick={closeAIInlinePrompt}
+										aria-label="Close"
+									>ESC</button>
+								{:else}
+									<AiModelSwitcher
+										providerId={db.state.activeConnection?.activeAIProviderId ?? null}
+										model={db.state.activeConnection?.activeAIModel ?? null}
+										onSelect={async (pid, mod) => {
+											const conn = db.state.activeConnection;
+											if (!conn) return;
+											await db.setConnectionAIModel(conn.id, pid, mod);
+										}}
+									/>
+									<button
+										class="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+										onclick={closeAIInlinePrompt}
+										aria-label="Close"
+									>ESC</button>
+								{/if}
+							</div>
+						{/if}
 					</div>
 				{/if}
 			</Resizable.Pane>

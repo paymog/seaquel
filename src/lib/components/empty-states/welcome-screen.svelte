@@ -5,7 +5,7 @@
 	import FileCodeIcon from "@lucide/svelte/icons/file-code";
 	import TableIcon from "@lucide/svelte/icons/table";
 	import NetworkIcon from "@lucide/svelte/icons/network";
-	import BotIcon from "@lucide/svelte/icons/bot";
+	import SparklesIcon from "@lucide/svelte/icons/sparkles";
 	import PlusIcon from "@lucide/svelte/icons/plus";
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
 	import { onboardingStore } from "$lib/stores/onboarding.svelte.js";
@@ -34,7 +34,7 @@
 			description: () => m.empty_states_welcome_feature_erd_viewer_description(),
 		},
 		{
-			icon: BotIcon,
+			icon: SparklesIcon,
 			title: () => m.empty_states_welcome_feature_ai_assistant_title(),
 			description: () => m.empty_states_welcome_feature_ai_assistant_description(),
 		},

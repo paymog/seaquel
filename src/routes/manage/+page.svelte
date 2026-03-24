@@ -7,6 +7,7 @@
     import ExplainViewer from "$lib/components/explain-viewer.svelte";
     import ErdViewer from "$lib/components/erd-viewer.svelte";
     import AIAssistant from "$lib/components/ai-assistant.svelte";
+    import * as Sidebar from "$lib/components/ui/sidebar/index.js";
     import StarterTabContent from "$lib/components/starter-tabs/starter-tab-content.svelte";
     import GettingStartedContent from "$lib/components/starter-tabs/getting-started-content.svelte";
     import { ScrollArea } from "$lib/components/ui/scroll-area";
@@ -62,7 +63,7 @@
     <SidebarLeft />
 {/if}
 
-<SidebarInset class="flex flex-col h-full overflow-hidden">
+<SidebarInset class="flex flex-col h-full overflow-hidden min-w-0">
     {#if !db.state.isDashboardFullscreen}
         <div class="h-8 flex items-center border-b shrink-0 pl-2">
             <HeaderTabs />
@@ -128,7 +129,11 @@
 </SidebarInset>
 
 {#if !db.state.isDashboardFullscreen}
-    <AIAssistant />
+    <Sidebar.Provider class="contents" open={db.state.isAIOpen} onOpenChange={(open) => { if (open !== db.state.isAIOpen) db.ui.toggleAI(); }} style="--sidebar-width: 24rem">
+        <Sidebar.Root side="right" collapsible="offcanvas" class="top-(--header-height) h-[calc(100svh-var(--header-height))]">
+            <AIAssistant />
+        </Sidebar.Root>
+    </Sidebar.Provider>
 {/if}
 
 {#if projectSettingsId}
