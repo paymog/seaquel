@@ -13,7 +13,14 @@
   import { mode } from "mode-watcher";
   import { m } from "$lib/paraglide/messages.js";
 
+  let { tabId: propTabId = undefined }: { tabId?: string } = $props();
+
   const db = useDatabase();
+  const activeExplainTab = $derived(
+    propTabId
+      ? db.state.explainTabs.find(t => t.id === propTabId) ?? null
+      : db.state.activeExplainTab
+  );
 
   // Map mode-watcher theme to xyflow colorMode
   const colorMode: ColorMode = $derived(mode.current === "dark" ? "dark" : "light");
@@ -25,18 +32,18 @@
 
   // Analyze the explain result for hot paths
   const analysis: HotPathAnalysis | undefined = $derived.by(() => {
-    if (!db.state.activeExplainTab?.result) {
+    if (!activeExplainTab?.result) {
       return undefined;
     }
-    return analyzeExplainPlan(db.state.activeExplainTab.result);
+    return analyzeExplainPlan(activeExplainTab.result);
   });
 
   // Convert explain result to xyflow nodes and edges
   const flowData = $derived.by(() => {
-    if (!db.state.activeExplainTab?.result) {
+    if (!activeExplainTab?.result) {
       return { nodes: [] as Node[], edges: [] as Edge[] };
     }
-    return layoutExplainPlan(db.state.activeExplainTab.result, analysis);
+    return layoutExplainPlan(activeExplainTab.result, analysis);
   });
 
   let nodes = $derived(flowData.nodes);
@@ -46,8 +53,8 @@
   let bottlenecksOpen = $state(true);
 
   const handleViewQuery = () => {
-    if (!db.state.activeExplainTab) return;
-    db.queryTabs.focusOrCreate(db.state.activeExplainTab.sourceQuery, 'Query', () => db.ui.setActiveView("query"));
+    if (!activeExplainTab) return;
+    db.queryTabs.focusOrCreate(activeExplainTab.sourceQuery, 'Query', () => db.ui.setActiveView("query"));
   };
 
   // Format time for display
@@ -59,8 +66,8 @@
 </script>
 
 <div class="flex flex-col h-full">
-  {#if db.state.activeExplainTab}
-    {#if db.state.activeExplainTab.isExecuting}
+  {#if activeExplainTab}
+    {#if activeExplainTab.isExecuting}
       <!-- Loading state -->
       <div class="flex-1 flex items-center justify-center">
         <div class="flex flex-col items-center gap-3">
@@ -68,7 +75,7 @@
           <p class="text-sm text-muted-foreground">{m.explain_analyzing()}</p>
         </div>
       </div>
-    {:else if db.state.activeExplainTab.result}
+    {:else if activeExplainTab.result}
       <!-- Summary Header -->
       <div class="p-4 border-b bg-muted/30 shrink-0">
         <div class="flex items-start justify-between">
@@ -76,24 +83,24 @@
             <h2 class="text-lg font-semibold flex items-center gap-2">
               <DatabaseIcon class="size-5" />
               {m.explain_query_plan()}
-              {#if db.state.activeExplainTab.result.isAnalyze}
+              {#if activeExplainTab.result.isAnalyze}
                 <Badge variant="default">{m.explain_analyzed()}</Badge>
               {/if}
             </h2>
             <div class="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
               <span class="flex items-center gap-1">
                 <ClockIcon class="size-3" />
-                {m.explain_planning()} {db.state.activeExplainTab.result.planningTime.toFixed(2)}ms
+                {m.explain_planning()} {activeExplainTab.result.planningTime.toFixed(2)}ms
               </span>
-              {#if db.state.activeExplainTab.result.executionTime !== undefined}
+              {#if activeExplainTab.result.executionTime !== undefined}
                 <span class="flex items-center gap-1">
                   <ClockIcon class="size-3" />
-                  {m.explain_execution()} {db.state.activeExplainTab.result.executionTime.toFixed(2)}ms
+                  {m.explain_execution()} {activeExplainTab.result.executionTime.toFixed(2)}ms
                 </span>
               {/if}
               <span class="flex items-center gap-1">
                 <RowsIcon class="size-3" />
-                {m.explain_estimated_rows()} {db.state.activeExplainTab.result.plan.planRows.toLocaleString()}
+                {m.explain_estimated_rows()} {activeExplainTab.result.plan.planRows.toLocaleString()}
               </span>
             </div>
           </div>

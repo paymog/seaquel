@@ -30,6 +30,7 @@ import { SharedRepoManager } from "./database/shared-repo-manager.svelte.js";
 import { SharedQueryManager } from "./database/shared-query-manager.svelte.js";
 import { SharedDashboardManager } from "./database/shared-dashboard-manager.svelte.js";
 import { AIChatManager } from "./database/ai-chat-manager.svelte.js";
+import { PaneManager } from "./database/pane-manager.svelte.js";
 import { ProviderRegistry } from "$lib/providers";
 import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 import { getDatabase } from "$lib/storage/db";
@@ -74,6 +75,7 @@ class UseDatabase {
   readonly sharedQueries: SharedQueryManager;
   readonly sharedDashboards: SharedDashboardManager;
   readonly aiChats: AIChatManager;
+  readonly panes: PaneManager;
 
   private _stateRestoration: StateRestorationManager;
   private _readyResolve!: () => void;
@@ -103,14 +105,16 @@ class UseDatabase {
         | "workflow"
         | "visualize"
         | "connection"
-        | "dashboard",
+        | "dashboard"
+        | "starter",
     ) => {
       this.ui.setActiveView(view);
     };
 
     // Core infrastructure
     this.persistence = new PersistenceManager(this.state);
-    this.tabs = new TabOrderingManager(this.state, scheduleProjectPersistence);
+    this.panes = new PaneManager(this.state, scheduleProjectPersistence);
+    this.tabs = new TabOrderingManager(this.state, scheduleProjectPersistence, this.panes);
     this._stateRestoration = new StateRestorationManager(this.state, this.persistence);
 
     // Project and label management
@@ -205,7 +209,7 @@ class UseDatabase {
       scheduleProjectPersistence,
       setActiveView,
     );
-    this.starterTabs = new StarterTabManager(this.state, scheduleProjectPersistence);
+    this.starterTabs = new StarterTabManager(this.state, this.tabs, scheduleProjectPersistence);
 
     // Workflow
     this.workflowState = new WorkflowState();
@@ -271,11 +275,8 @@ class UseDatabase {
       await this.connections.remove(connectionId);
     });
 
-    this.projects.setInitializeStarterTabsCallback((projectId: string) => {
-      this.starterTabs.initializeDefaults(projectId);
-    });
-
     this.projects.setSharedRepoManager(this.sharedRepos);
+    this.projects.setStarterTabManager(this.starterTabs);
     this.connections.setSharedRepoManager(this.sharedRepos);
 
     // Set up embedded explain callbacks

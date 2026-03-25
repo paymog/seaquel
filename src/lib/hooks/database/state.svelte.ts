@@ -24,7 +24,9 @@ import type {
   SharedConnection,
   ConnectionOverride,
   SharedDashboard,
+  ActiveViewType,
 } from "$lib/types";
+import type { PaneLayout } from "$lib/types";
 import type { ConnectionLabel } from "$lib/types/project";
 import type { SavedWorkflow } from "$lib/types/workflow";
 
@@ -100,6 +102,9 @@ export class DatabaseState {
   // Tab ordering state (stores ordered array of all tab IDs per project)
   tabOrderByProject = $state<Record<string, string[]>>({});
 
+  // Pane layout state (stores split pane configuration per project)
+  paneLayoutByProject = $state<Record<string, PaneLayout>>({});
+
   // === QUERY DATA STATE ===
   queryHistoryByConnection = $state<Record<string, QueryHistoryItem[]>>({});
   savedQueriesByProject = $state<Record<string, SavedQuery[]>>({});
@@ -148,6 +153,7 @@ export class DatabaseState {
     | "visualize"
     | "connection"
     | "dashboard"
+    | "starter"
   >("query");
 
   // === PROJECT DERIVED VALUES ===
@@ -365,6 +371,36 @@ export class DatabaseState {
   activeStarterTab = $derived(
     this.starterTabs.find((t) => t.id === this.activeStarterTabId) || null,
   );
+
+  // === TAB TYPE UTILITIES ===
+
+  /** Get the active tab ID for a given view type */
+  getActiveTabId(type: ActiveViewType): string | null {
+    switch (type) {
+      case "query":
+        return this.activeQueryTabId;
+      case "schema":
+        return this.activeSchemaTabId;
+      case "explain":
+        return this.activeExplainTabId;
+      case "erd":
+        return this.activeErdTabId;
+      case "statistics":
+        return this.activeStatisticsTabId;
+      case "workflow":
+        return this.activeWorkflowTabId;
+      case "visualize":
+        return this.activeVisualizeTabId;
+      case "connection":
+        return this.activeConnectionTabId;
+      case "dashboard":
+        return this.activeDashboardTabId;
+      case "starter":
+        return this.activeStarterTabId;
+      default:
+        return null;
+    }
+  }
 
   // === QUERY DATA DERIVED VALUES ===
 

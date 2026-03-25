@@ -1,121 +1,109 @@
-import type { StarterTab } from "$lib/types";
-import { DEFAULT_STARTER_TABS } from "$lib/types";
+import type { StarterTab, StarterTabType } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
+import type { TabOrderingManager } from "./tab-ordering.svelte.js";
+import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelte.js";
 
 /**
- * Manages starter tabs: shown when no connection is active.
- * Provides quick actions and migration guidance.
- * Tabs are organized per-project.
+ * Manages starter tabs using the standard BaseTabManager pattern.
+ * Starter tabs are shown when no database connection is active,
+ * providing quick actions and migration guidance.
  */
-export class StarterTabManager {
+export class StarterTabManager extends BaseTabManager<StarterTab> {
   constructor(
-    private state: DatabaseState,
-    private schedulePersistence: (projectId: string | null) => void,
-  ) {}
+    state: DatabaseState,
+    tabOrdering: TabOrderingManager,
+    schedulePersistence: (projectId: string | null) => void,
+  ) {
+    super(state, tabOrdering, schedulePersistence);
+  }
+
+  protected get accessors(): TabStateAccessors<StarterTab> {
+    return {
+      getTabs: () => this.state.starterTabsByProject,
+      setTabs: (r) => (this.state.starterTabsByProject = r),
+      getActiveId: () => this.state.activeStarterTabIdByProject,
+      setActiveId: (r) => (this.state.activeStarterTabIdByProject = r),
+    };
+  }
 
   /**
-   * Initialize default starter tabs for a project if none exist.
+   * Add a starter tab by type.
+   */
+  add(tabType?: StarterTabType): string | null {
+    if (!this.state.activeProjectId) return null;
+
+    const config: Record<StarterTabType, { id: string; name: string }> = {
+      "getting-started": { id: "getting-started", name: "Getting Started" },
+      "migration-tips": { id: "migration-tips", name: "Migration Tips" },
+    };
+
+    const type = tabType ?? "getting-started";
+    const { id, name } = config[type];
+
+    // Don't add duplicate
+    const existing = this.getProjectTabs();
+    if (existing.some((t) => t.id === id)) {
+      this.setActive(id);
+      return id;
+    }
+
+    const newTab: StarterTab = {
+      id,
+      type,
+      name,
+      closable: true,
+    };
+
+    this.appendTab(newTab);
+    return newTab.id;
+  }
+
+  /**
+   * Initialize default starter tabs for a new project.
+   * Adds both Getting Started and Migration Tips tabs.
    */
   initializeDefaults(projectId: string): void {
     const existing = this.state.starterTabsByProject[projectId];
     if (existing && existing.length > 0) return;
 
-    // Create default starter tabs
-    const tabs: StarterTab[] = DEFAULT_STARTER_TABS.map((tab) => ({ ...tab }));
+    // Temporarily set activeProjectId context if needed
+    const prevProjectId = this.state.activeProjectId;
+    this.state.activeProjectId = projectId;
 
-    this.state.starterTabsByProject = {
-      ...this.state.starterTabsByProject,
-      [projectId]: tabs,
-    };
+    this.add("getting-started");
+    this.add("migration-tips");
 
-    // Set first tab as active
-    if (tabs.length > 0) {
-      this.state.activeStarterTabIdByProject = {
-        ...this.state.activeStarterTabIdByProject,
-        [projectId]: tabs[0].id,
-      };
-    }
-
-    this.schedulePersistence(projectId);
-  }
-
-  /**
-   * Remove a starter tab by ID.
-   */
-  remove(id: string): void {
-    if (!this.state.activeProjectId) return;
-
-    const projectId = this.state.activeProjectId;
+    // Set the first tab as active
     const tabs = this.state.starterTabsByProject[projectId] ?? [];
-    const tab = tabs.find((t) => t.id === id);
-
-    if (!tab || !tab.closable) return;
-
-    const tabIndex = tabs.findIndex((t) => t.id === id);
-    const filteredTabs = tabs.filter((t) => t.id !== id);
-
-    this.state.starterTabsByProject = {
-      ...this.state.starterTabsByProject,
-      [projectId]: filteredTabs,
-    };
-
-    // Update active tab if we removed the current one
-    if (this.state.activeStarterTabIdByProject[projectId] === id) {
-      // Try to select adjacent tab
-      const newActiveIndex = Math.min(tabIndex, filteredTabs.length - 1);
-      const newActiveId = filteredTabs[newActiveIndex]?.id ?? null;
-
-      this.state.activeStarterTabIdByProject = {
-        ...this.state.activeStarterTabIdByProject,
-        [projectId]: newActiveId,
-      };
+    if (tabs.length > 0) {
+      this.setActive(tabs[0].id);
     }
 
-    this.schedulePersistence(projectId);
-  }
-
-  /**
-   * Set the active starter tab by ID.
-   */
-  setActive(id: string): void {
-    if (!this.state.activeProjectId) return;
-
-    this.state.activeStarterTabIdByProject = {
-      ...this.state.activeStarterTabIdByProject,
-      [this.state.activeProjectId]: id,
-    };
-    this.schedulePersistence(this.state.activeProjectId);
+    this.state.activeProjectId = prevProjectId;
   }
 
   /**
    * Reset to default starter tabs.
-   * Useful when user wants to restore after closing all tabs.
+   * Removes all existing starter tabs and re-adds defaults.
    */
   reset(): void {
     if (!this.state.activeProjectId) return;
-
     const projectId = this.state.activeProjectId;
-    const tabs: StarterTab[] = DEFAULT_STARTER_TABS.map((tab) => ({ ...tab }));
 
-    this.state.starterTabsByProject = {
-      ...this.state.starterTabsByProject,
-      [projectId]: tabs,
-    };
-
-    if (tabs.length > 0) {
-      this.state.activeStarterTabIdByProject = {
-        ...this.state.activeStarterTabIdByProject,
-        [projectId]: tabs[0].id,
-      };
+    // Remove existing starter tabs
+    const existing = this.getProjectTabs();
+    for (const tab of existing) {
+      this.remove(tab.id);
     }
 
-    this.schedulePersistence(projectId);
-  }
+    // Re-add defaults
+    this.add("getting-started");
+    this.add("migration-tips");
 
-  /**
-   * Check if any starter tabs exist for the current project.
-   */
-  hasStarterTabs(): boolean {
-    return this.state.starterTabs.length > 0;
+    // Set the first tab as active
+    const tabs = this.state.starterTabsByProject[projectId] ?? [];
+    if (tabs.length > 0) {
+      this.setActive(tabs[0].id);
+    }
   }
 }

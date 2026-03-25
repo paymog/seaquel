@@ -51,9 +51,19 @@ import { errorToast } from "$lib/utils/toast";
 	import type { ResultViewMode, ChartConfig } from "$lib/types";
 	import { DEFAULT_LAYOUT_OPTIONS, type QueryLayoutOptions } from "$lib/utils/query-visual-layout";
 
+	let { tabId: propTabId = undefined }: { tabId?: string } = $props();
+
 	const db = useDatabase();
 	const shortcuts = useShortcuts();
 	const sidebar = useSidebar();
+
+	// Pane-aware: resolve to a specific tab instead of global active tab
+	const activeTab = $derived(
+		propTabId
+			? db.state.queryTabs.find(t => t.id === propTabId) ?? null
+			: db.state.activeQueryTab
+	);
+	const activeTabId = $derived(propTabId ?? db.state.activeQueryTabId);
 	let showSaveDialog = $state(false);
 	let showShareDialog = $state(false);
 	let showParamsDialog = $state(false);
@@ -72,12 +82,12 @@ import { errorToast } from "$lib/utils/toast";
 	let aiInlinePromptError = $state<{ message: string; action?: { label: string; fn: () => void } } | null>(null);
 
 	// Get the active result (for multi-statement support)
-	const activeResult = $derived(db.state.activeQueryResult);
-	const activeResultIndex = $derived(db.state.activeQueryTab?.activeResultIndex ?? 0);
+	const activeResultIndex = $derived(activeTab?.activeResultIndex ?? 0);
+	const activeResult = $derived(activeTab?.results?.[activeResultIndex] ?? null);
 
 	// Get embedded explain/visualize results
-	const explainResult = $derived(db.state.activeQueryTab?.explainResult);
-	const visualizeResult = $derived(db.state.activeQueryTab?.visualizeResult);
+	const explainResult = $derived(activeTab?.explainResult);
+	const visualizeResult = $derived(activeTab?.visualizeResult);
 
 	// Chart view state (per result, keyed by tab-result combination)
 	let viewModeByResult = $state<Record<string, ResultViewMode>>({});
@@ -85,8 +95,8 @@ import { errorToast } from "$lib/utils/toast";
 
 	// Get current view mode and chart config for active result
 	const resultKey = $derived(
-		db.state.activeQueryTabId && activeResultIndex !== undefined
-			? `${db.state.activeQueryTabId}-${activeResultIndex}`
+		activeTabId && activeResultIndex !== undefined
+			? `${activeTabId}-${activeResultIndex}`
 			: null
 	);
 	const currentViewMode = $derived<ResultViewMode>(
@@ -113,7 +123,7 @@ import { errorToast } from "$lib/utils/toast";
 	// Visualize layout options state
 	let visualizeLayoutOptions = $state<QueryLayoutOptions>({ ...DEFAULT_LAYOUT_OPTIONS });
 
-	const allResults = $derived(db.state.activeQueryTab?.results ?? []);
+	const allResults = $derived(activeTab?.results ?? []);
 
 	// Visual query builder panel state
 	let visualPanelOpen = $state(false);
@@ -126,9 +136,9 @@ import { errorToast } from "$lib/utils/toast";
 
 	// Sync SQL from visual builder back to query tab when panel closes
 	function syncVisualBuilderSql() {
-		if (visualPanelGetSql && db.state.activeQueryTabId) {
+		if (visualPanelGetSql && activeTabId) {
 			const sql = visualPanelGetSql();
-			db.queryTabs.updateContent(db.state.activeQueryTabId, sql);
+			db.queryTabs.updateContent(activeTabId, sql);
 			currentQuery = sql;
 		}
 	}
@@ -143,11 +153,11 @@ import { errorToast } from "$lib/utils/toast";
 	}
 
 	// Track query content for live statement count
-	let currentQuery = $state(db.state.activeQueryTab?.query ?? '');
+	let currentQuery = $state(activeTab?.query ?? '');
 
 	// Update currentQuery when active tab changes
 	$effect(() => {
-		currentQuery = db.state.activeQueryTab?.query ?? '';
+		currentQuery = activeTab?.query ?? '';
 	});
 
 	// Check staleness for explain/visualize results
@@ -183,18 +193,18 @@ import { errorToast } from "$lib/utils/toast";
 
 	// Handle trying a sample query
 	const handleTrySampleQuery = (query: string) => {
-		if (db.state.activeQueryTabId) {
-			db.queryTabs.updateContent(db.state.activeQueryTabId, query);
+		if (activeTabId) {
+			db.queryTabs.updateContent(activeTabId, query);
 		} else {
 			db.queryTabs.add(undefined, query);
 		}
 	};
 
 	async function handleCellSave(rowIndex: number, column: string, newValue: string) {
-		if (!db.state.activeQueryTabId || !activeResult?.sourceTable) return;
+		if (!activeTabId || !activeResult?.sourceTable) return;
 
 		const result = await db.queries.updateCell(
-			db.state.activeQueryTabId,
+			activeTabId,
 			activeResultIndex,
 			rowIndex,
 			column,
@@ -215,7 +225,7 @@ import { errorToast } from "$lib/utils/toast";
 	}
 
 	async function handleDeleteRow() {
-		if (!pendingDeleteRow || !db.state.activeQueryTabId || !activeResult?.sourceTable) return;
+		if (!pendingDeleteRow || !activeTabId || !activeResult?.sourceTable) return;
 
 		deletingRowIndex = pendingDeleteRow.index;
 		showDeleteConfirm = false;
@@ -227,7 +237,7 @@ import { errorToast } from "$lib/utils/toast";
 
 		if (result.success) {
 			toast.success(m.query_row_deleted());
-			await db.queries.execute(db.state.activeQueryTabId);
+			await db.queries.execute(activeTabId);
 		} else {
 			errorToast(m.query_row_delete_failed({ error: result.error || '' }));
 		}
@@ -241,7 +251,7 @@ import { errorToast } from "$lib/utils/toast";
 	 * Uses linked saved query parameters if available, otherwise creates defaults.
 	 */
 	const getParameterDefinitions = (query: string): QueryParameter[] => {
-		const savedQueryId = db.state.activeQueryTab?.savedQueryId;
+		const savedQueryId = activeTab?.savedQueryId;
 		const savedQuery = savedQueryId
 			? db.state.projectSavedQueries.find((q) => q.id === savedQueryId)
 			: null;
@@ -256,12 +266,12 @@ import { errorToast } from "$lib/utils/toast";
 	};
 
 	const handleExecute = () => {
-		if (!db.state.activeQueryTabId || !db.state.activeQueryTab) return;
+		if (!activeTabId || !activeTab) return;
 
 		// Sync SQL from visual builder if open
 		if (visualPanelOpen) syncVisualBuilderSql();
 
-		const query = db.state.activeQueryTab.query;
+		const query = activeTab.query;
 
 		// Check if query has parameters
 		if (hasParameters(query)) {
@@ -270,17 +280,17 @@ import { errorToast } from "$lib/utils/toast";
 			showParamsDialog = true;
 		} else {
 			// No parameters, execute directly
-			db.queries.execute(db.state.activeQueryTabId);
+			db.queries.execute(activeTabId);
 		}
 	};
 
 	const handleExecuteCurrent = () => {
-		if (!db.state.activeQueryTabId || !db.state.activeQueryTab) return;
+		if (!activeTabId || !activeTab) return;
 
 		// Sync SQL from visual builder if open
 		if (visualPanelOpen) syncVisualBuilderSql();
 
-		const query = db.state.activeQueryTab.query;
+		const query = activeTab.query;
 		const cursorOffset = monacoRef?.getCursorOffset() ?? 0;
 		const dbType = db.state.activeConnection?.type ?? "postgres";
 
@@ -294,24 +304,24 @@ import { errorToast } from "$lib/utils/toast";
 			showParamsDialog = true;
 		} else {
 			// No parameters in current statement, execute directly
-			db.queries.executeCurrent(db.state.activeQueryTabId, cursorOffset);
+			db.queries.executeCurrent(activeTabId, cursorOffset);
 		}
 	};
 
 	const handleParamExecute = (values: ParameterValue[]) => {
-		if (!db.state.activeQueryTabId) return;
+		if (!activeTabId) return;
 
 		if (pendingAction === 'query') {
-			db.queries.executeWithParams(db.state.activeQueryTabId, values);
+			db.queries.executeWithParams(activeTabId, values);
 		} else if (pendingAction && typeof pendingAction === 'object' && pendingAction.type === 'query-current') {
 			db.queries.executeCurrentWithParams(
-				db.state.activeQueryTabId,
+				activeTabId,
 				pendingAction.cursorOffset,
 				values
 			);
 		} else if (pendingAction && typeof pendingAction === 'object' && pendingAction.type === 'explain') {
 			db.explainTabs.executeEmbeddedWithParams(
-				db.state.activeQueryTabId,
+				activeTabId,
 				values,
 				pendingAction.analyze,
 				pendingAction.cursorOffset
@@ -322,7 +332,7 @@ import { errorToast } from "$lib/utils/toast";
 			}
 		} else if (pendingAction && typeof pendingAction === 'object' && pendingAction.type === 'visualize') {
 			const success = db.visualizeTabs.visualizeEmbeddedWithParams(
-				db.state.activeQueryTabId,
+				activeTabId,
 				values,
 				pendingAction.cursorOffset
 			);
@@ -339,12 +349,12 @@ import { errorToast } from "$lib/utils/toast";
 	};
 
 	const handleExplain = (analyze: boolean) => {
-		if (!db.state.activeQueryTabId || !db.state.activeQueryTab) return;
+		if (!activeTabId || !activeTab) return;
 
 		// Sync SQL from visual builder if open
 		if (visualPanelOpen) syncVisualBuilderSql();
 
-		const query = db.state.activeQueryTab.query;
+		const query = activeTab.query;
 		const cursorOffset = monacoRef?.getCursorOffset() ?? 0;
 
 		// Check if query has parameters
@@ -354,7 +364,7 @@ import { errorToast } from "$lib/utils/toast";
 			showParamsDialog = true;
 		} else {
 			// No parameters, execute embedded explain
-			db.explainTabs.executeEmbedded(db.state.activeQueryTabId, analyze, cursorOffset);
+			db.explainTabs.executeEmbedded(activeTabId, analyze, cursorOffset);
 			// Switch view mode to explain
 			if (resultKey) {
 				viewModeByResult[resultKey] = 'explain';
@@ -363,12 +373,12 @@ import { errorToast } from "$lib/utils/toast";
 	};
 
 	const handleVisualize = () => {
-		if (!db.state.activeQueryTabId || !db.state.activeQueryTab) return;
+		if (!activeTabId || !activeTab) return;
 
 		// Sync SQL from visual builder if open
 		if (visualPanelOpen) syncVisualBuilderSql();
 
-		const query = db.state.activeQueryTab.query;
+		const query = activeTab.query;
 		const cursorOffset = monacoRef?.getCursorOffset() ?? 0;
 		const dbType = db.state.activeConnection?.type ?? "postgres";
 
@@ -383,7 +393,7 @@ import { errorToast } from "$lib/utils/toast";
 			showParamsDialog = true;
 		} else {
 			// No parameters, visualize directly
-			const success = db.visualizeTabs.visualizeEmbedded(db.state.activeQueryTabId, cursorOffset);
+			const success = db.visualizeTabs.visualizeEmbedded(activeTabId, cursorOffset);
 			// Switch view mode to visualize
 			if (success && resultKey) {
 				viewModeByResult[resultKey] = 'visualize';
@@ -392,9 +402,9 @@ import { errorToast } from "$lib/utils/toast";
 	};
 
 	const handleRefreshExplain = (analyze: boolean) => {
-		if (!db.state.activeQueryTabId || !db.state.activeQueryTab) return;
+		if (!activeTabId || !activeTab) return;
 
-		const query = db.state.activeQueryTab.query;
+		const query = activeTab.query;
 		const cursorOffset = monacoRef?.getCursorOffset() ?? 0;
 		const dbType = db.state.activeConnection?.type ?? "postgres";
 
@@ -409,14 +419,14 @@ import { errorToast } from "$lib/utils/toast";
 			showParamsDialog = true;
 		} else {
 			// No parameters, execute directly
-			db.explainTabs.executeEmbedded(db.state.activeQueryTabId, analyze, cursorOffset);
+			db.explainTabs.executeEmbedded(activeTabId, analyze, cursorOffset);
 		}
 	};
 
 	const handleRefreshVisualize = () => {
-		if (!db.state.activeQueryTabId || !db.state.activeQueryTab) return;
+		if (!activeTabId || !activeTab) return;
 
-		const query = db.state.activeQueryTab.query;
+		const query = activeTab.query;
 		const cursorOffset = monacoRef?.getCursorOffset() ?? 0;
 		const dbType = db.state.activeConnection?.type ?? "postgres";
 
@@ -431,13 +441,13 @@ import { errorToast } from "$lib/utils/toast";
 			showParamsDialog = true;
 		} else {
 			// No parameters, visualize directly
-			db.visualizeTabs.visualizeEmbedded(db.state.activeQueryTabId, cursorOffset);
+			db.visualizeTabs.visualizeEmbedded(activeTabId, cursorOffset);
 		}
 	};
 
 	const handleCloseExplain = () => {
-		if (!db.state.activeQueryTabId) return;
-		db.queryTabs.clearExplainResult(db.state.activeQueryTabId);
+		if (!activeTabId) return;
+		db.queryTabs.clearExplainResult(activeTabId);
 		// Switch back to table view
 		if (resultKey) {
 			viewModeByResult[resultKey] = 'table';
@@ -445,8 +455,8 @@ import { errorToast } from "$lib/utils/toast";
 	};
 
 	const handleCloseVisualize = () => {
-		if (!db.state.activeQueryTabId) return;
-		db.queryTabs.clearVisualizeResult(db.state.activeQueryTabId);
+		if (!activeTabId) return;
+		db.queryTabs.clearVisualizeResult(activeTabId);
 		// Switch back to table view
 		if (resultKey) {
 			viewModeByResult[resultKey] = 'table';
@@ -454,24 +464,24 @@ import { errorToast } from "$lib/utils/toast";
 	};
 
 	const handleSave = () => {
-		if (!db.state.activeQueryTab?.query.trim()) return;
+		if (!activeTab?.query.trim()) return;
 		showSaveDialog = true;
 	};
 
 	const handleShare = () => {
-		if (!db.state.activeQueryTab?.query.trim()) return;
+		if (!activeTab?.query.trim()) return;
 		showShareDialog = true;
 	};
 
 	const handleFormat = () => {
-		if (!db.state.activeQueryTab?.query.trim()) return;
+		if (!activeTab?.query.trim()) return;
 		try {
-			const formatted = formatSQL(db.state.activeQueryTab.query, {
+			const formatted = formatSQL(activeTab.query, {
 				language: "postgresql",
 				tabWidth: 2,
 				keywordCase: "upper"
 			});
-			db.queryTabs.updateContent(db.state.activeQueryTabId!, formatted);
+			db.queryTabs.updateContent(activeTabId!, formatted);
 		} catch {
 			errorToast(m.query_format_failed());
 		}
@@ -580,7 +590,7 @@ import { errorToast } from "$lib/utils/toast";
 
 			const sql = await generateSQL({
 				request: aiInlinePromptText,
-				existingQuery: db.state.activeQueryTab?.query ?? "",
+				existingQuery: activeTab?.query ?? "",
 				schema: db.state.activeSchema ?? [],
 				shareSchema,
 				providerId: activeProviderId,
@@ -644,12 +654,12 @@ import { errorToast } from "$lib/utils/toast";
 </script>
 
 <div class="flex flex-col h-full overflow-hidden">
-	{#if db.state.activeQueryTab}
+	{#if activeTab}
 		<div class="flex items-center justify-between border-b bg-muted/30 shrink-0">
 			<div class="flex-1">
 				<QueryToolbar
-					isExecuting={db.state.activeQueryTab.isExecuting}
-					hasQuery={!!db.state.activeQueryTab.query.trim()}
+					isExecuting={activeTab.isExecuting}
+					hasQuery={!!activeTab.query.trim()}
 					{activeResult}
 					{liveStatementCount}
 					onExecute={handleExecute}
@@ -683,11 +693,11 @@ import { errorToast } from "$lib/utils/toast";
 				{#if visualPanelOpen && queryBuilderSchema.length > 0}
 					<!-- Visual Builder (includes canvas, filter panel, and SQL editor) -->
 					<div class="h-full">
-						{#key db.state.activeQueryTabId}
+						{#key activeTabId}
 							<VisualQueryPanel
 								schema={queryBuilderSchema}
 								monacoSchema={db.state.activeSchema ?? undefined}
-								initialSql={db.state.activeQueryTab.query}
+								initialSql={activeTab.query}
 								bind:getSql={visualPanelGetSql}
 							/>
 						{/key}
@@ -695,9 +705,9 @@ import { errorToast } from "$lib/utils/toast";
 				{:else}
 					<!-- Just SQL Editor -->
 					<div class="relative h-full">
-						{#key db.state.activeQueryTabId}
+						{#key activeTabId}
 							<MonacoEditor
-								bind:value={db.state.activeQueryTab.query}
+								bind:value={activeTab.query}
 								bind:ref={monacoRef}
 								schema={db.state.activeSchema}
 								onExecute={handleExecuteCurrent}
@@ -705,8 +715,8 @@ import { errorToast } from "$lib/utils/toast";
 								onAIInlinePrompt={aiSettingsStore.settings.enabled ? handleAIInlinePrompt : undefined}
 								onChange={(newValue) => {
 									currentQuery = newValue;
-									if (db.state.activeQueryTabId) {
-										db.queryTabs.updateContent(db.state.activeQueryTabId, newValue);
+									if (activeTabId) {
+										db.queryTabs.updateContent(activeTabId, newValue);
 									}
 								}}
 							/>
@@ -792,7 +802,7 @@ import { errorToast } from "$lib/utils/toast";
 						<QueryResultTabs
 							results={allResults}
 							activeIndex={activeResultIndex}
-							onSelectResult={(i) => db.queries.setActiveResult(db.state.activeQueryTabId!, i)}
+							onSelectResult={(i) => db.queries.setActiveResult(activeTabId!, i)}
 						/>
 
 						{#if activeResult && !activeResult.isError}
@@ -905,9 +915,9 @@ import { errorToast } from "$lib/utils/toast";
 									pageSize={activeResult.pageSize}
 									totalPages={activeResult.totalPages}
 									totalRows={activeResult.totalRows}
-									isExecuting={db.state.activeQueryTab.isExecuting}
-									onGoToPage={(page) => db.queries.goToPage(db.state.activeQueryTabId!, page)}
-									onSetPageSize={(size) => db.queries.setPageSize(db.state.activeQueryTabId!, size)}
+									isExecuting={activeTab.isExecuting}
+									onGoToPage={(page) => db.queries.goToPage(activeTabId!, page)}
+									onSetPageSize={(size) => db.queries.setPageSize(activeTabId!, size)}
 								/>
 							{/if}
 						{/if}
@@ -1005,18 +1015,18 @@ import { errorToast } from "$lib/utils/toast";
 	{/if}
 </div>
 
-{#if db.state.activeQueryTab}
+{#if activeTab}
 	<SaveQueryDialog
 		bind:open={showSaveDialog}
-		query={db.state.activeQueryTab.query}
-		tabId={db.state.activeQueryTab.id}
+		query={activeTab.query}
+		tabId={activeTab.id}
 	/>
 
 	<SharedQueryEditor
 		bind:open={showShareDialog}
 		onOpenChange={(open) => showShareDialog = open}
-		query={db.state.activeQueryTab.query}
-		name={db.state.activeQueryTab.name}
+		query={activeTab.query}
+		name={activeTab.name}
 	/>
 
 	<ParameterInputDialog

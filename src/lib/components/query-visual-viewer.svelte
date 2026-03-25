@@ -42,7 +42,14 @@ import { errorToast } from "$lib/utils/toast";
 	import type { Node, Edge, NodeTypes, ColorMode } from "@xyflow/svelte";
 	import { mode } from "mode-watcher";
 
+	let { tabId: propTabId = undefined }: { tabId?: string } = $props();
+
 	const db = useDatabase();
+	const activeVisualizeTab = $derived(
+		propTabId
+			? db.state.visualizeTabs.find(t => t.id === propTabId) ?? null
+			: db.state.activeVisualizeTab
+	);
 
 	// Map mode-watcher theme to xyflow colorMode
 	const colorMode: ColorMode = $derived(mode.current === "dark" ? "dark" : "light");
@@ -63,7 +70,7 @@ import { errorToast } from "$lib/utils/toast";
 
 	// Compute flow data from active visualize tab
 	const flowData = $derived.by(() => {
-		const tab = db.state.activeVisualizeTab;
+		const tab = activeVisualizeTab;
 		if (!tab?.parsedQuery) {
 			return { nodes: [] as Node[], edges: [] as Edge[] };
 		}
@@ -109,7 +116,7 @@ import { errorToast } from "$lib/utils/toast";
 
 	// Truncate query for display
 	const queryPreview = $derived.by(() => {
-		const query = db.state.activeVisualizeTab?.sourceQuery || '';
+		const query = activeVisualizeTab?.sourceQuery || '';
 		if (query.length <= 100) return query;
 		return query.substring(0, 100) + '...';
 	});
@@ -132,8 +139,8 @@ import { errorToast } from "$lib/utils/toast";
 </script>
 
 <div class="flex flex-col h-full">
-	{#if db.state.activeVisualizeTab}
-		{#if db.state.activeVisualizeTab.parsedQuery}
+	{#if activeVisualizeTab}
+		{#if activeVisualizeTab.parsedQuery}
 			<!-- Summary Header -->
 			<div class="p-4 border-b bg-muted/30 shrink-0">
 				<div class="flex items-start justify-between mb-3">
@@ -152,7 +159,7 @@ import { errorToast } from "$lib/utils/toast";
 				<div class="flex items-center gap-2 flex-wrap">
 					<div class="flex items-center gap-2 text-xs bg-muted px-3 py-1.5 rounded-md max-w-xl">
 						<Code2Icon class="size-3 shrink-0 text-muted-foreground" />
-						<code class="font-mono truncate" title={db.state.activeVisualizeTab.sourceQuery}>
+						<code class="font-mono truncate" title={activeVisualizeTab.sourceQuery}>
 							{queryPreview}
 						</code>
 					</div>
@@ -281,16 +288,16 @@ import { errorToast } from "$lib/utils/toast";
 					</div>
 				{/if}
 			</div>
-		{:else if db.state.activeVisualizeTab.parseError}
+		{:else if activeVisualizeTab.parseError}
 			<!-- Parse error state -->
 			<div class="flex-1 flex items-center justify-center text-muted-foreground">
 				<div class="text-center max-w-md">
 					<AlertCircleIcon class="size-12 mx-auto mb-4 text-destructive opacity-50" />
 					<h3 class="text-lg font-semibold mb-2">Could not parse query</h3>
-					<p class="text-sm mb-4">{db.state.activeVisualizeTab.parseError}</p>
+					<p class="text-sm mb-4">{activeVisualizeTab.parseError}</p>
 					<div class="bg-muted p-3 rounded-md">
 						<code class="text-xs font-mono break-all text-left block">
-							{db.state.activeVisualizeTab.sourceQuery}
+							{activeVisualizeTab.sourceQuery}
 						</code>
 					</div>
 				</div>

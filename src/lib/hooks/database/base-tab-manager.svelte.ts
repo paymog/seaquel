@@ -97,10 +97,19 @@ export abstract class BaseTabManager<T extends { id: string }> {
 
   /**
    * Set the active tab by ID.
+   * Also notifies the pane manager to sync focus.
    */
   setActive(id: string): void {
     if (!this.state.activeProjectId) return;
     this.setActiveTabId(id);
+
+    if (this.tabOrdering.paneManager) {
+      const pane = this.tabOrdering.paneManager.findPaneForTab(id);
+      if (pane) {
+        this.tabOrdering.paneManager.setActiveTab(pane.id, id);
+      }
+    }
+
     this.schedulePersistence(this.state.activeProjectId);
   }
 }

@@ -4,6 +4,7 @@ import type { DatabaseState } from "./state.svelte.js";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
 import type { StateRestorationManager } from "./state-restoration.svelte.js";
 import { SEAQUEL_DIR, type SharedRepoManager } from "./shared-repo-manager.svelte.js";
+import type { StarterTabManager } from "./starter-tabs.svelte.js";
 import { MigrationManager } from "./migration.svelte.js";
 import { isTauri } from "$lib/utils/environment";
 import { log } from "$lib/utils/logger";
@@ -24,7 +25,7 @@ import { nameToFilename, serializeProjectFile } from "$lib/services/config-file-
 export class ProjectManager {
   private migration: MigrationManager;
   private removeConnection: ((connectionId: string) => Promise<void>) | null = null;
-  private initializeStarterTabs: ((projectId: string) => void) | null = null;
+  private starterTabManager: StarterTabManager | null = null;
   private sharedRepos: SharedRepoManager | null = null;
 
   constructor(
@@ -52,11 +53,11 @@ export class ProjectManager {
   }
 
   /**
-   * Set the callback for initializing starter tabs.
-   * This is called by the main database class after StarterTabManager is created.
+   * Set the starter tab manager reference.
+   * Called by the main database class after StarterTabManager is created.
    */
-  setInitializeStarterTabsCallback(callback: (projectId: string) => void): void {
-    this.initializeStarterTabs = callback;
+  setStarterTabManager(manager: StarterTabManager): void {
+    this.starterTabManager = manager;
   }
 
   /**
@@ -599,7 +600,7 @@ export class ProjectManager {
       this.state.connectionTabsByProject[projectId] = [];
       this.state.activeConnectionTabIdByProject[projectId] = null;
       // Initialize starter tabs for new projects
-      this.initializeStarterTabs?.(projectId);
+      this.starterTabManager?.initializeDefaults(projectId);
       // Load saved queries and dashboards for the project
       await this.stateRestoration.loadProjectData(projectId);
       return;
@@ -703,9 +704,17 @@ export class ProjectManager {
         closable: t.closable,
       }));
       this.state.activeStarterTabIdByProject[projectId] = persistedState.activeStarterTabId ?? null;
+      // Register restored starter tabs with tab ordering (add to tabOrder if not already present)
+      const tabOrder = this.state.tabOrderByProject[projectId] ?? [];
+      const tabOrderSet = new Set(tabOrder);
+      const newIds = persistedState.starterTabs
+        .map((t) => t.id)
+        .filter((id) => !tabOrderSet.has(id));
+      if (newIds.length > 0) {
+        this.state.tabOrderByProject[projectId] = [...newIds, ...tabOrder];
+      }
     } else {
-      // Initialize default starter tabs if none persisted
-      this.initializeStarterTabs?.(projectId);
+      this.starterTabManager?.initializeDefaults(projectId);
     }
 
     // Restore dashboard tabs
@@ -723,11 +732,36 @@ export class ProjectManager {
     this.state.starredSharedQueryIds = new Set(persistedState.starredSharedQueryIds ?? []);
     this.state.starredSharedDashboardIds = new Set(persistedState.starredSharedDashboardIds ?? []);
 
+    // Restore pane layout (if saved); otherwise it will be auto-created on first access
+    if (persistedState.paneLayout && persistedState.paneLayout.panes.length > 0) {
+      this.state.paneLayoutByProject = {
+        ...this.state.paneLayoutByProject,
+        [projectId]: persistedState.paneLayout,
+      };
+    }
+
     // Connection tabs are transient - always initialize empty
     this.state.connectionTabsByProject[projectId] = [];
     this.state.activeConnectionTabIdByProject[projectId] = null;
 
     // Load saved queries and dashboards for the project
     await this.stateRestoration.loadProjectData(projectId);
+
+    // Clear any pane layout created prematurely by $effect (before tab data was loaded)
+    if (!persistedState.paneLayout || persistedState.paneLayout.panes.length === 0) {
+      this.clearStalePaneLayout(projectId);
+    }
+  }
+
+  /**
+   * Remove a pane layout that was created before tab data was available.
+   * The $effect in pane-container.svelte will recreate it with correct tab data.
+   */
+  private clearStalePaneLayout(projectId: string): void {
+    const layout = this.state.paneLayoutByProject[projectId];
+    if (layout && layout.panes.length > 0 && layout.panes.every((p) => p.tabIds.length === 0)) {
+      const { [projectId]: _, ...rest } = this.state.paneLayoutByProject;
+      this.state.paneLayoutByProject = rest;
+    }
   }
 }

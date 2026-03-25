@@ -263,7 +263,8 @@ export class UIStateManager {
       | "workflow"
       | "visualize"
       | "connection"
-      | "dashboard",
+      | "dashboard"
+      | "starter",
   ) {
     this.state.activeView = view;
     this.schedulePersistence(this.state.activeProjectId);

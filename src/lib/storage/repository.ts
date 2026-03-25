@@ -395,6 +395,20 @@ export const projectStateRepo = {
       // Column doesn't exist yet (pre-migration)
     }
 
+    // Read pane_layout if the column exists
+    let paneLayout: PersistedProjectState["paneLayout"] | undefined;
+    try {
+      const paneRow = await db.query<{ pane_layout: string | null }>(
+        "SELECT pane_layout FROM project_state WHERE project_id = ?",
+        [projectId],
+      );
+      if (paneRow.length > 0 && paneRow[0].pane_layout) {
+        paneLayout = JSON.parse(paneRow[0].pane_layout);
+      }
+    } catch {
+      // Column doesn't exist yet (pre-v4 migration)
+    }
+
     return {
       projectId,
       queryTabs,
@@ -419,6 +433,7 @@ export const projectStateRepo = {
       activeDashboardTabId,
       starredSharedQueryIds,
       starredSharedDashboardIds,
+      paneLayout,
     };
   },
 
@@ -473,6 +488,16 @@ export const projectStateRepo = {
       );
     } catch {
       // Column may not exist yet (pre-migration)
+    }
+
+    // Save pane layout (column added by v4 migration)
+    try {
+      await db.execute(`UPDATE project_state SET pane_layout = ? WHERE project_id = ?`, [
+        state.paneLayout ? JSON.stringify(state.paneLayout) : null,
+        state.projectId,
+      ]);
+    } catch {
+      // Column doesn't exist yet (pre-v4 migration)
     }
 
     // Replace all tabs for this project

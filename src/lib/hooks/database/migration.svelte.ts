@@ -23,7 +23,7 @@ import {
  * Current storage version.
  * Increment when making breaking changes to storage format.
  */
-export const CURRENT_STORAGE_VERSION = 3;
+export const CURRENT_STORAGE_VERSION = 4;
 
 /**
  * Handles data migration between storage versions.
@@ -49,6 +49,10 @@ export class MigrationManager {
 
       if (version < 3) {
         await this.migrateToV3();
+      }
+
+      if (version < 4) {
+        await this.migrateToV4();
       }
 
       await this.persistence.setStorageVersion(CURRENT_STORAGE_VERSION);
@@ -234,6 +238,23 @@ export class MigrationManager {
     }
 
     console.log("Migration to v3 completed");
+  }
+
+  /**
+   * Migrate to v4: Add pane_layout column to project_state for split pane persistence.
+   */
+  private async migrateToV4(): Promise<void> {
+    console.log("Running migration to v4 (pane layout)...");
+
+    const db = await getDatabase();
+
+    try {
+      await db.execute(`ALTER TABLE project_state ADD COLUMN pane_layout TEXT`);
+    } catch {
+      // Column may already exist
+    }
+
+    console.log("Migration to v4 completed");
   }
 
   /**

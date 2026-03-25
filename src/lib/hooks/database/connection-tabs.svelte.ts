@@ -70,7 +70,8 @@ export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
       | "workflow"
       | "visualize"
       | "connection"
-      | "dashboard",
+      | "dashboard"
+      | "starter",
   ) => void;
 
   // Tracks the view that was active before the connection tab was opened,
@@ -91,7 +92,8 @@ export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
         | "workflow"
         | "visualize"
         | "connection"
-        | "dashboard",
+        | "dashboard"
+        | "starter",
     ) => void,
   ) {
     super(state, tabOrdering, schedulePersistence);

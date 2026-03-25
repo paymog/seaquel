@@ -3,7 +3,6 @@
     import { isMac } from "$lib/shortcuts/platform";
     import { Button } from "$lib/components/ui/button/index.js";
     import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-    import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
     import * as Dialog from "$lib/components/ui/dialog/index.js";
     import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
     import CheckIcon from "@lucide/svelte/icons/check";
@@ -142,35 +141,17 @@
                 <DropdownMenu.Content class="w-56" align="start">
                     {#each db.state.projects as project (project.id)}
                         <div class="flex items-center group">
-                            <ContextMenu.Root>
-                                <ContextMenu.Trigger class="flex-1 min-w-0">
-                                    <DropdownMenu.Item
-                                        class="flex items-center gap-2 cursor-pointer"
-                                        onclick={() => db.projects.setActive(project.id)}
-                                    >
-                                        <span class="w-4 shrink-0">
-                                            {#if db.state.activeProjectId === project.id}
-                                                <CheckIcon class="size-4" />
-                                            {/if}
-                                        </span>
-                                        <span class="flex-1 truncate">{project.name}</span>
-                                    </DropdownMenu.Item>
-                                </ContextMenu.Trigger>
-                                <ContextMenu.Content class="w-40">
-                                    <ContextMenu.Item onclick={() => openProjectSettings(project.id)}>
-                                        {m.project_settings()}
-                                    </ContextMenu.Item>
-                                    {#if project.id !== DEFAULT_PROJECT_ID && db.state.projects.length > 1}
-                                        <ContextMenu.Separator />
-                                        <ContextMenu.Item
-                                            class="text-destructive focus:text-destructive"
-                                            onclick={() => confirmRemoveProject(project.id, project.name)}
-                                        >
-                                            {m.project_delete()}
-                                        </ContextMenu.Item>
+                            <DropdownMenu.Item
+                                class="flex-1 min-w-0 flex items-center gap-2 cursor-pointer"
+                                onclick={() => db.projects.setActive(project.id)}
+                            >
+                                <span class="w-4 shrink-0">
+                                    {#if db.state.activeProjectId === project.id}
+                                        <CheckIcon class="size-4" />
                                     {/if}
-                                </ContextMenu.Content>
-                            </ContextMenu.Root>
+                                </span>
+                                <span class="flex-1 truncate">{project.name}</span>
+                            </DropdownMenu.Item>
                             <button
                                 class="size-6 flex items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent shrink-0 opacity-0 group-hover:opacity-100 me-1"
                                 onclick={() => openProjectSettings(project.id)}

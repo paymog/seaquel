@@ -8,8 +8,10 @@ import type {
   VisualizeTab,
   ConnectionTab,
   DashboardTab,
+  StarterTab,
 } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
+import type { PaneManager } from "./pane-manager.svelte.js";
 
 /**
  * Manages tab ordering across all tab types (query, schema, explain, ERD).
@@ -17,10 +19,15 @@ import type { DatabaseState } from "./state.svelte.js";
  * Provides generic tab removal logic and ordered tab computation.
  */
 export class TabOrderingManager {
+  paneManager?: PaneManager;
+
   constructor(
     private state: DatabaseState,
     private schedulePersistence: (projectId: string | null) => void,
-  ) {}
+    paneManager?: PaneManager,
+  ) {
+    this.paneManager = paneManager;
+  }
 
   /**
    * Generic tab removal helper used by all tab managers.
@@ -58,7 +65,7 @@ export class TabOrderingManager {
   }
 
   /**
-   * Add a tab ID to the ordering array.
+   * Add a tab ID to the ordering array and to the active pane.
    */
   add(tabId: string): void {
     if (!this.state.activeProjectId) return;
@@ -70,10 +77,11 @@ export class TabOrderingManager {
         [projectId]: [...order, tabId],
       };
     }
+    this.paneManager?.addTabToActivePane(tabId);
   }
 
   /**
-   * Remove a tab ID from the ordering array.
+   * Remove a tab ID from the ordering array and from its pane.
    */
   removeFromTabOrder(tabId: string): void {
     if (!this.state.activeProjectId) return;
@@ -83,6 +91,7 @@ export class TabOrderingManager {
       ...this.state.tabOrderByProject,
       [projectId]: order.filter((id: string) => id !== tabId),
     };
+    this.paneManager?.removeTabFromPane(tabId);
   }
 
   /**
@@ -95,6 +104,52 @@ export class TabOrderingManager {
       [this.state.activeProjectId]: newOrder,
     };
     this.schedulePersistence(this.state.activeProjectId);
+  }
+
+  /**
+   * Get ordered tabs for a specific pane (filtered by pane's tabIds, preserving pane order).
+   */
+  orderedForPane(paneId: string): Array<{
+    id: string;
+    type:
+      | "query"
+      | "schema"
+      | "explain"
+      | "erd"
+      | "statistics"
+      | "workflow"
+      | "visualize"
+      | "connection"
+      | "dashboard"
+      | "starter";
+    tab:
+      | QueryTab
+      | SchemaTab
+      | ExplainTab
+      | ErdTab
+      | StatisticsTab
+      | WorkflowTab
+      | VisualizeTab
+      | ConnectionTab
+      | DashboardTab
+      | StarterTab;
+  }> {
+    if (!this.state.activeProjectId) return [];
+
+    const layout = this.state.paneLayoutByProject[this.state.activeProjectId];
+    if (!layout) return this.ordered;
+
+    const pane = layout.panes.find((p) => p.id === paneId);
+    if (!pane) return [];
+
+    const paneTabIdSet = new Set(pane.tabIds);
+    const allTabs = this.ordered;
+
+    // Filter to pane tabs and sort by pane order
+    const paneTabs = allTabs.filter((t) => paneTabIdSet.has(t.id));
+    return paneTabs.sort((a, b) => {
+      return pane.tabIds.indexOf(a.id) - pane.tabIds.indexOf(b.id);
+    });
   }
 
   /**
@@ -119,7 +174,8 @@ export class TabOrderingManager {
       | "workflow"
       | "visualize"
       | "connection"
-      | "dashboard";
+      | "dashboard"
+      | "starter";
     tab:
       | QueryTab
       | SchemaTab
@@ -129,7 +185,8 @@ export class TabOrderingManager {
       | WorkflowTab
       | VisualizeTab
       | ConnectionTab
-      | DashboardTab;
+      | DashboardTab
+      | StarterTab;
   }> {
     if (!this.state.activeProjectId) return [];
 
@@ -157,7 +214,8 @@ export class TabOrderingManager {
         | "workflow"
         | "visualize"
         | "connection"
-        | "dashboard";
+        | "dashboard"
+        | "starter";
       tab:
         | QueryTab
         | SchemaTab
@@ -167,7 +225,8 @@ export class TabOrderingManager {
         | WorkflowTab
         | VisualizeTab
         | ConnectionTab
-        | DashboardTab;
+        | DashboardTab
+        | StarterTab;
     }> = [];
 
     for (const t of queryTabs) {
@@ -196,6 +255,12 @@ export class TabOrderingManager {
     }
     for (const t of dashboardTabs) {
       allTabsUnordered.push({ id: t.id, type: "dashboard", tab: t });
+    }
+
+    const starterTabs = this.state.starterTabs || [];
+
+    for (const t of starterTabs) {
+      allTabsUnordered.push({ id: t.id, type: "starter", tab: t });
     }
 
     const order = this.state.tabOrderByProject[this.state.activeProjectId] ?? [];

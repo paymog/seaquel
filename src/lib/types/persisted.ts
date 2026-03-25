@@ -232,7 +232,8 @@ export type ActiveViewType =
   | "workflow"
   | "visualize"
   | "connection"
-  | "dashboard";
+  | "dashboard"
+  | "starter";
 
 /**
  * Complete persisted state for a single connection.

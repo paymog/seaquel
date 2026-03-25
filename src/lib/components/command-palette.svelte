@@ -91,46 +91,23 @@
 		runAndClose(() => db.ui.toggleAI());
 	}
 
-	function goToTab(tabId: string, type: "query" | "schema" | "explain" | "erd" | "statistics" | "workflow" | "visualize" | "connection" | "dashboard") {
+	const tabManagerByType = {
+		query: db.queryTabs,
+		schema: db.schemaTabs,
+		explain: db.explainTabs,
+		erd: db.erdTabs,
+		statistics: db.statisticsTabs,
+		workflow: db.workflowTabs,
+		visualize: db.visualizeTabs,
+		connection: db.connectionTabs,
+		dashboard: db.dashboardTabs,
+		starter: db.starterTabs,
+	} as const;
+
+	function goToTab(tabId: string, type: import('$lib/types').ActiveViewType) {
 		runAndClose(() => {
-			switch (type) {
-				case "query":
-					db.queryTabs.setActive(tabId);
-					db.ui.setActiveView("query");
-					break;
-				case "schema":
-					db.schemaTabs.setActive(tabId);
-					db.ui.setActiveView("schema");
-					break;
-				case "explain":
-					db.explainTabs.setActive(tabId);
-					db.ui.setActiveView("explain");
-					break;
-				case "erd":
-					db.erdTabs.setActive(tabId);
-					db.ui.setActiveView("erd");
-					break;
-				case "statistics":
-					db.statisticsTabs.setActive(tabId);
-					db.ui.setActiveView("statistics");
-					break;
-				case "workflow":
-					db.workflowTabs.setActive(tabId);
-					db.ui.setActiveView("workflow");
-					break;
-				case "visualize":
-					db.visualizeTabs.setActive(tabId);
-					db.ui.setActiveView("visualize");
-					break;
-				case "connection":
-					db.connectionTabs.setActive(tabId);
-					db.ui.setActiveView("connection");
-					break;
-				case "dashboard":
-					db.dashboardTabs.setActive(tabId);
-					db.ui.setActiveView("dashboard");
-					break;
-			}
+			tabManagerByType[type].setActive(tabId);
+			db.ui.setActiveView(type);
 		});
 	}
 

@@ -76,6 +76,9 @@ export type {
   StatisticsTab,
 } from "./statistics";
 
+// Pane layout types
+export type { Pane, PaneLayout } from "./pane";
+
 // Starter tab types
 export type { StarterTabType, StarterTab } from "./starter-tabs";
 export { DEFAULT_STARTER_TABS } from "./starter-tabs";

@@ -229,6 +229,19 @@ export class PersistenceManager {
     }));
   }
 
+  serializePaneLayout(projectId: string): PersistedProjectState["paneLayout"] | undefined {
+    const layout = this.state.paneLayoutByProject[projectId];
+    if (!layout || layout.panes.length <= 1) return undefined;
+    return {
+      panes: layout.panes.map((p) => ({
+        id: p.id,
+        tabIds: p.tabIds,
+        activeTabId: p.activeTabId,
+      })),
+      activePaneId: layout.activePaneId,
+    };
+  }
+
   serializeSavedWorkflows(projectId: string): SavedWorkflow[] {
     return this.state.savedWorkflowsByProject[projectId] ?? [];
   }
@@ -348,6 +361,7 @@ export class PersistenceManager {
         activeDashboardTabId: this.state.activeDashboardTabIdByProject[projectId] ?? null,
         starredSharedQueryIds: Array.from(this.state.starredSharedQueryIds),
         starredSharedDashboardIds: Array.from(this.state.starredSharedDashboardIds),
+        paneLayout: this.serializePaneLayout(projectId),
       };
 
       await projectStateRepo.save(db, state);

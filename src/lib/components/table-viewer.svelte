@@ -8,22 +8,29 @@
 import { m } from "$lib/paraglide/messages.js";
 	import InsertRowDialog from "$lib/components/insert-row-dialog.svelte";
 
+	let { tabId: propTabId = undefined }: { tabId?: string } = $props();
+
 	const db = useDatabase();
+	const activeSchemaTab = $derived(
+		propTabId
+			? db.state.schemaTabs.find(t => t.id === propTabId) ?? null
+			: db.state.activeSchemaTab
+	);
 	let showInsertDialog = $state(false);
 
 	// Check if the table has primary keys (required for insertable rows)
 	const hasPrimaryKey = $derived(
-		db.state.activeSchemaTab?.table?.columns.some(col => col.isPrimaryKey) ?? false
+		activeSchemaTab?.table?.columns.some(col => col.isPrimaryKey) ?? false
 	);
 
 	// Only allow adding rows to tables (not views) with primary keys
 	const canAddRow = $derived(
-		db.state.activeSchemaTab?.table?.type === "table" && hasPrimaryKey
+		activeSchemaTab?.table?.type === "table" && hasPrimaryKey
 	);
 
 	const handleQueryTable = () => {
-		if (!db.state.activeSchemaTab?.table) return;
-		const tabId = db.queryTabs.add(`Query ${db.state.activeSchemaTab.table.name}`, `SELECT * FROM ${db.state.activeSchemaTab.table.schema}.${db.state.activeSchemaTab.table.name} LIMIT 100;`);
+		if (!activeSchemaTab?.table) return;
+		const tabId = db.queryTabs.add(`Query ${activeSchemaTab.table.name}`, `SELECT * FROM ${activeSchemaTab.table.schema}.${activeSchemaTab.table.name} LIMIT 100;`);
 		db.ui.setActiveView("query");
 		if (tabId) {
 			db.queries.execute(tabId);
@@ -36,7 +43,7 @@ import { m } from "$lib/paraglide/messages.js";
 </script>
 
 <div class="flex flex-col h-full">
-	{#if db.state.activeSchemaTab?.table}
+	{#if activeSchemaTab?.table}
 		<div class="flex-1 overflow-auto p-4">
 			<Card>
 				<CardHeader>
@@ -44,10 +51,10 @@ import { m } from "$lib/paraglide/messages.js";
 						<div>
 							<CardTitle class="flex items-center gap-2">
 								<DatabaseIcon class="size-5" />
-								{db.state.activeSchemaTab.table.name}
+								{activeSchemaTab.table.name}
 							</CardTitle>
 							<CardDescription>
-								{db.state.activeSchemaTab.table.type === "table" ? m.table_viewer_table() : m.table_viewer_view()} • {m.table_viewer_schema({ schema: db.state.activeSchemaTab.table.schema })} • {m.table_viewer_rows({ count: db.state.activeSchemaTab.table.rowCount?.toLocaleString() ?? "0" })}
+								{activeSchemaTab.table.type === "table" ? m.table_viewer_table() : m.table_viewer_view()} • {m.table_viewer_schema({ schema: activeSchemaTab.table.schema })} • {m.table_viewer_rows({ count: activeSchemaTab.table.rowCount?.toLocaleString() ?? "0" })}
 							</CardDescription>
 						</div>
 						<div class="flex items-center gap-2">
@@ -65,7 +72,7 @@ import { m } from "$lib/paraglide/messages.js";
 					<div>
 						<h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
 							<ListIcon class="size-4" />
-							{m.table_viewer_columns({ count: db.state.activeSchemaTab.table.columns.length })}
+							{m.table_viewer_columns({ count: activeSchemaTab.table.columns.length })}
 						</h3>
 						<div class="border rounded-lg overflow-hidden">
 							<table class="w-full text-sm">
@@ -79,7 +86,7 @@ import { m } from "$lib/paraglide/messages.js";
 									</tr>
 								</thead>
 								<tbody>
-									{#each db.state.activeSchemaTab.table.columns as column, i}
+									{#each activeSchemaTab.table.columns as column, i}
 										<tr class={["border-t hover:bg-muted/50", i % 2 === 0 && "bg-muted/20"]}>
 											<td class="px-4 py-2 font-mono">{column.name}</td>
 											<td class="px-4 py-2">
@@ -117,7 +124,7 @@ import { m } from "$lib/paraglide/messages.js";
 					<div>
 						<h3 class="text-sm font-semibold mb-3 flex items-center gap-2">
 							<KeyIcon class="size-4" />
-							{m.table_viewer_indexes({ count: db.state.activeSchemaTab.table.indexes.length })}
+							{m.table_viewer_indexes({ count: activeSchemaTab.table.indexes.length })}
 						</h3>
 						<div class="border rounded-lg overflow-hidden">
 							<table class="w-full text-sm">
@@ -130,7 +137,7 @@ import { m } from "$lib/paraglide/messages.js";
 									</tr>
 								</thead>
 								<tbody>
-									{#each db.state.activeSchemaTab.table.indexes as index, i}
+									{#each activeSchemaTab.table.indexes as index, i}
 										<tr class={["border-t hover:bg-muted/50", i % 2 === 0 && "bg-muted/20"]}>
 											<td class="px-4 py-2 font-mono">{index.name}</td>
 											<td class="px-4 py-2 font-mono text-xs">{index.columns.join(", ")}</td>
@@ -164,8 +171,8 @@ import { m } from "$lib/paraglide/messages.js";
 </div>
 
 <!-- Insert Row Dialog -->
-{#if db.state.activeSchemaTab?.table && canAddRow}
-	{@const table = db.state.activeSchemaTab.table}
+{#if activeSchemaTab?.table && canAddRow}
+	{@const table = activeSchemaTab.table}
 	{@const primaryKeys = table.columns.filter(c => c.isPrimaryKey).map(c => c.name)}
 	<InsertRowDialog
 		bind:open={showInsertDialog}

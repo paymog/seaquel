@@ -1,6 +1,5 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { flip } from "svelte/animate";
     import { dndzone } from "svelte-dnd-action";
     import { page } from "$app/state";
     import { resolve } from "$app/paths";
@@ -17,20 +16,37 @@
     import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
     import BatchUnsavedDialog from "$lib/components/batch-unsaved-dialog.svelte";
     import SaveQueryDialog from "$lib/components/save-query-dialog.svelte";
-    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, WorkflowTab, VisualizeTab, ConnectionTab, DashboardTab } from "$lib/types";
+    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, WorkflowTab, VisualizeTab, ConnectionTab, DashboardTab, ActiveViewType } from "$lib/types";
+    import type { Pane } from "$lib/types";
+    import { usePaneDragState } from "$lib/components/pane-drag-context.svelte.js";
+
+    let { paneId = undefined, pane = undefined }: { paneId?: string; pane?: Pane } = $props();
 
     const db = useDatabase();
     const shortcuts = useShortcuts();
+    const paneDragState = usePaneDragState();
 
-    // Route-aware: only render on manage page
+    let tabBarEl = $state<HTMLElement | null>(null);
+    $effect(() => {
+        if (tabBarEl && paneDragState && paneId) {
+            paneDragState.registerTabBar(paneId, tabBarEl);
+        }
+    });
+    onDestroy(() => {
+        if (paneId) paneDragState?.unregisterTabBar(paneId);
+    });
+
     const isManagePage = $derived(
         page.url.pathname === resolve("/manage") || page.url.pathname === resolve("/")
     );
 
-    // Track which type of tab is active
     let activeTabType = $derived(db.state.activeView);
 
-    // For editing query tab names
+    const isTabActive = (id: string, type: string): boolean => {
+        if (pane) return pane.activeTabId === id;
+        return activeTabType === type && db.state.getActiveTabId(type as ActiveViewType) === id;
+    };
+
     let editingTabId = $state<string | null>(null);
     let editingTabName = $state("");
     let editingInitialWidth = $state(0);
@@ -143,111 +159,114 @@
         db.ui.setActiveView("dashboard");
     };
 
-    // Get ordered tabs from db (uses custom order with timestamp fallback)
+    const handleStarterTabClick = (tabId: string) => {
+        db.starterTabs.setActive(tabId);
+        db.ui.setActiveView("starter");
+    };
+
     const allTabs = $derived.by(() => {
+        if (paneId) {
+            const ordered = db.tabs.orderedForPane(paneId);
+            return Array.isArray(ordered) ? [...ordered] : [];
+        }
         const ordered = db.tabs.ordered;
         return Array.isArray(ordered) ? [...ordered] : [];
     });
 
-    // Drag and drop configuration
-    const flipDurationMs = 150;
-    type TabType = 'query' | 'schema' | 'explain' | 'erd' | 'statistics' | 'workflow' | 'visualize' | 'connection' | 'dashboard';
-    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | WorkflowTab | VisualizeTab | import('$lib/types').ConnectionTab | DashboardTab };
+    type TabType = ActiveViewType;
+    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | WorkflowTab | VisualizeTab | ConnectionTab | DashboardTab | import('$lib/types').StarterTab };
 
-    // State for dragging
     let draggedItems = $state<DndItem[]>([]);
     let isDragging = $state(false);
 
     const displayTabs = $derived(isDragging ? draggedItems : allTabs);
 
-    function handleDndConsider(e: CustomEvent<{ items: DndItem[] }>) {
+    function handleDndConsider(e: CustomEvent<{ items: DndItem[]; info: { id: string } }>) {
         isDragging = true;
         draggedItems = e.detail.items;
+
+        if (paneDragState && paneId && e.detail.info?.id) {
+            if (!paneDragState.isDragging) {
+                paneDragState.startDrag(e.detail.info.id, paneId);
+            }
+        }
     }
 
     function handleDndFinalize(e: CustomEvent<{ items: DndItem[] }>) {
         isDragging = false;
         draggedItems = [];
+
+        const dragResult = paneDragState?.endDrag();
+        if (dragResult) {
+            const { tabId, sourcePaneId, splitTarget, moveTarget } = dragResult;
+            if (splitTarget) {
+                if (splitTarget.direction === "left") {
+                    db.panes.splitLeft(splitTarget.paneId, tabId, sourcePaneId);
+                } else {
+                    db.panes.splitRight(splitTarget.paneId, tabId, sourcePaneId);
+                }
+            } else if (moveTarget) {
+                db.panes.moveTab(tabId, sourcePaneId, moveTarget.paneId, moveTarget.index);
+            }
+            return;
+        }
+
         const newOrder = e.detail.items.map(item => item.id);
-        db.tabs.reorder(newOrder);
+        if (paneId) {
+            db.panes.reorderPane(paneId, newOrder);
+        } else {
+            db.tabs.reorder(newOrder);
+        }
     }
 
     const currentTabIndex = $derived(() => {
-        if (db.state.activeView === 'query' && db.state.activeQueryTabId) {
-            return allTabs.findIndex(t => t.type === 'query' && t.id === db.state.activeQueryTabId);
-        }
-        if (db.state.activeView === 'schema' && db.state.activeSchemaTabId) {
-            return allTabs.findIndex(t => t.type === 'schema' && t.id === db.state.activeSchemaTabId);
-        }
-        if (db.state.activeView === 'explain' && db.state.activeExplainTabId) {
-            return allTabs.findIndex(t => t.type === 'explain' && t.id === db.state.activeExplainTabId);
-        }
-        if (db.state.activeView === 'erd' && db.state.activeErdTabId) {
-            return allTabs.findIndex(t => t.type === 'erd' && t.id === db.state.activeErdTabId);
-        }
-        if (db.state.activeView === 'statistics' && db.state.activeStatisticsTabId) {
-            return allTabs.findIndex(t => t.type === 'statistics' && t.id === db.state.activeStatisticsTabId);
-        }
-        if (db.state.activeView === 'workflow' && db.state.activeWorkflowTabId) {
-            return allTabs.findIndex(t => t.type === 'workflow' && t.id === db.state.activeWorkflowTabId);
-        }
-        if (db.state.activeView === 'visualize' && db.state.activeVisualizeTabId) {
-            return allTabs.findIndex(t => t.type === 'visualize' && t.id === db.state.activeVisualizeTabId);
-        }
-        if (db.state.activeView === 'connection' && db.state.activeConnectionTabId) {
-            return allTabs.findIndex(t => t.type === 'connection' && t.id === db.state.activeConnectionTabId);
-        }
-        if (db.state.activeView === 'dashboard' && db.state.activeDashboardTabId) {
-            return allTabs.findIndex(t => t.type === 'dashboard' && t.id === db.state.activeDashboardTabId);
-        }
-        return -1;
+        const activeId = db.state.getActiveTabId(db.state.activeView);
+        if (!activeId) return -1;
+        return allTabs.findIndex(t => t.type === db.state.activeView && t.id === activeId);
     });
+
+    const tabClickHandlers: Record<TabType, (id: string) => void> = {
+        query: handleQueryTabClick,
+        schema: handleSchemaTabClick,
+        explain: handleExplainTabClick,
+        erd: handleErdTabClick,
+        statistics: handleStatisticsTabClick,
+        workflow: handleWorkflowTabClick,
+        visualize: handleVisualizeTabClick,
+        connection: handleConnectionTabClick,
+        dashboard: handleDashboardTabClick,
+        starter: handleStarterTabClick,
+    };
 
     const switchToTab = (index: number) => {
         if (index < 0 || index >= allTabs.length) return;
         const tab = allTabs[index];
-        if (tab.type === 'query') {
-            handleQueryTabClick(tab.id);
-        } else if (tab.type === 'schema') {
-            handleSchemaTabClick(tab.id);
-        } else if (tab.type === 'explain') {
-            handleExplainTabClick(tab.id);
-        } else if (tab.type === 'erd') {
-            handleErdTabClick(tab.id);
-        } else if (tab.type === 'statistics') {
-            handleStatisticsTabClick(tab.id);
-        } else if (tab.type === 'workflow') {
-            handleWorkflowTabClick(tab.id);
-        } else if (tab.type === 'visualize') {
-            handleVisualizeTabClick(tab.id);
-        } else if (tab.type === 'connection') {
-            db.connectionTabs.setActive(tab.id);
-            db.ui.setActiveView('connection');
-        } else if (tab.type === 'dashboard') {
-            handleDashboardTabClick(tab.id);
-        }
+        tabClickHandlers[tab.type](tab.id);
     };
 
-    // Unsaved changes dialog state
     let pendingCloseTabId = $state<string | null>(null);
     let showUnsavedDialog = $state(false);
     let showSaveDialogForClose = $state(false);
 
-    // Batch close dialog state
     let pendingBatchCloseTabs = $state<{id: string, type: TabType}[]>([]);
     let unsavedTabsInBatch = $state<string[]>([]);
     let showBatchUnsavedDialog = $state(false);
 
+    const tabRemovers: Record<TabType, { remove: (id: string) => void }> = {
+        query: db.queryTabs,
+        schema: db.schemaTabs,
+        explain: db.explainTabs,
+        erd: db.erdTabs,
+        statistics: db.statisticsTabs,
+        workflow: db.workflowTabs,
+        visualize: db.visualizeTabs,
+        connection: db.connectionTabs,
+        dashboard: db.dashboardTabs,
+        starter: db.starterTabs,
+    };
+
     const closeTabDirect = (id: string, type: TabType) => {
-        if (type === 'query') db.queryTabs.remove(id);
-        else if (type === 'schema') db.schemaTabs.remove(id);
-        else if (type === 'explain') db.explainTabs.remove(id);
-        else if (type === 'erd') db.erdTabs.remove(id);
-        else if (type === 'statistics') db.statisticsTabs.remove(id);
-        else if (type === 'workflow') db.workflowTabs.remove(id);
-        else if (type === 'visualize') db.visualizeTabs.remove(id);
-        else if (type === 'connection') db.connectionTabs.remove(id);
-        else if (type === 'dashboard') db.dashboardTabs.remove(id);
+        tabRemovers[type].remove(id);
     };
 
     const tryCloseQueryTab = (tabId: string) => {
@@ -308,37 +327,14 @@
     };
 
     const closeCurrentTab = () => {
-        if (db.state.activeView === 'query' && db.state.activeQueryTabId) {
-            tryCloseQueryTab(db.state.activeQueryTabId);
-        } else if (db.state.activeView === 'schema' && db.state.activeSchemaTabId) {
-            db.schemaTabs.remove(db.state.activeSchemaTabId);
-        } else if (db.state.activeView === 'explain' && db.state.activeExplainTabId) {
-            db.explainTabs.remove(db.state.activeExplainTabId);
-        } else if (db.state.activeView === 'erd' && db.state.activeErdTabId) {
-            db.erdTabs.remove(db.state.activeErdTabId);
-        } else if (db.state.activeView === 'statistics' && db.state.activeStatisticsTabId) {
-            db.statisticsTabs.remove(db.state.activeStatisticsTabId);
-        } else if (db.state.activeView === 'workflow' && db.state.activeWorkflowTabId) {
-            db.workflowTabs.remove(db.state.activeWorkflowTabId);
-        } else if (db.state.activeView === 'visualize' && db.state.activeVisualizeTabId) {
-            db.visualizeTabs.remove(db.state.activeVisualizeTabId);
-        } else if (db.state.activeView === 'connection' && db.state.activeConnectionTabId) {
-            db.connectionTabs.remove(db.state.activeConnectionTabId);
-        } else if (db.state.activeView === 'dashboard' && db.state.activeDashboardTabId) {
-            db.dashboardTabs.remove(db.state.activeDashboardTabId);
-        }
+        const activeId = db.state.getActiveTabId(db.state.activeView);
+        if (!activeId) return;
+        closeTab(activeId, db.state.activeView);
     };
 
     const closeTab = (id: string, type: TabType) => {
         if (type === 'query') tryCloseQueryTab(id);
-        else if (type === 'schema') db.schemaTabs.remove(id);
-        else if (type === 'explain') db.explainTabs.remove(id);
-        else if (type === 'erd') db.erdTabs.remove(id);
-        else if (type === 'statistics') db.statisticsTabs.remove(id);
-        else if (type === 'workflow') db.workflowTabs.remove(id);
-        else if (type === 'visualize') db.visualizeTabs.remove(id);
-        else if (type === 'connection') db.connectionTabs.remove(id);
-        else if (type === 'dashboard') db.dashboardTabs.remove(id);
+        else closeTabDirect(id, type);
     };
 
     const closeOtherTabs = (id: string) => {
@@ -360,7 +356,6 @@
         tryBatchClose([...allTabs]);
     };
 
-    // Register keyboard shortcuts
     onMount(() => {
         shortcuts.registerHandler('newTab', () => {
             db.queryTabs.add();
@@ -414,16 +409,15 @@
 {#if isManagePage}
     {#if db.state.connectionsLoading || db.state.projectsLoading}
         <!-- Loading state - show nothing -->
-    {:else if db.state.activeProjectId && db.state.projectConnections.length > 0}
+    {:else if db.state.activeProjectId}
         <!-- Regular tabs (project has connections) -->
         <div class="flex items-center gap-1 h-full min-w-0">
-            <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide h-full">
+            <div bind:this={tabBarEl} class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide h-full">
                 <div
                     class="flex items-end gap-2 w-max h-full"
                     use:dndzone={{
                         items: displayTabs,
-                        flipDurationMs,
-                        type: 'tabs',
+                        type: paneId ? `tabs-${paneId}` : 'tabs',
                         dropTargetStyle: {},
                         dragDisabled: editingTabId !== null
                     }}
@@ -431,7 +425,7 @@
                     onfinalize={handleDndFinalize}
                 >
                     {#each displayTabs as { id, type, tab } (id)}
-                        <div animate:flip={{ duration: flipDurationMs }}>
+                        <div>
                         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                         {#if type === 'query'}
                             {@const queryTab = tab as import('$lib/types').QueryTab}
@@ -440,7 +434,7 @@
                                     <div
                                         class={[
                                             "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            activeTabType === "query" && db.state.activeQueryTabId === id
+                                            isTabActive(id, 'query')
                                                 ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
                                                 : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
@@ -489,6 +483,11 @@
                                         <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
                                         <ContextMenu.Separator />
                                         <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                        {#if paneId}
+                                            <ContextMenu.Separator />
+                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
+                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
+                                        {/if}
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
@@ -499,7 +498,7 @@
                                     <div
                                         class={[
                                             "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            activeTabType === "schema" && db.state.activeSchemaTabId === id
+                                            isTabActive(id, 'schema')
                                                 ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
                                                 : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
@@ -528,6 +527,11 @@
                                         <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
                                         <ContextMenu.Separator />
                                         <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                        {#if paneId}
+                                            <ContextMenu.Separator />
+                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
+                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
+                                        {/if}
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
@@ -538,7 +542,7 @@
                                     <div
                                         class={[
                                             "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            activeTabType === "explain" && db.state.activeExplainTabId === id
+                                            isTabActive(id, 'explain')
                                                 ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
                                                 : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
@@ -567,6 +571,11 @@
                                         <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
                                         <ContextMenu.Separator />
                                         <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                        {#if paneId}
+                                            <ContextMenu.Separator />
+                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
+                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
+                                        {/if}
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
@@ -577,7 +586,7 @@
                                     <div
                                         class={[
                                             "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            activeTabType === "erd" && db.state.activeErdTabId === id
+                                            isTabActive(id, 'erd')
                                                 ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
                                                 : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
@@ -606,6 +615,11 @@
                                         <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
                                         <ContextMenu.Separator />
                                         <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                        {#if paneId}
+                                            <ContextMenu.Separator />
+                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
+                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
+                                        {/if}
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
@@ -616,7 +630,7 @@
                                     <div
                                         class={[
                                             "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            activeTabType === "statistics" && db.state.activeStatisticsTabId === id
+                                            isTabActive(id, 'statistics')
                                                 ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
                                                 : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
@@ -645,6 +659,11 @@
                                         <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
                                         <ContextMenu.Separator />
                                         <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                        {#if paneId}
+                                            <ContextMenu.Separator />
+                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
+                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
+                                        {/if}
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
@@ -655,7 +674,7 @@
                                     <div
                                         class={[
                                             "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            activeTabType === "workflow" && db.state.activeWorkflowTabId === id
+                                            isTabActive(id, 'workflow')
                                                 ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
                                                 : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
@@ -684,6 +703,11 @@
                                         <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
                                         <ContextMenu.Separator />
                                         <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                        {#if paneId}
+                                            <ContextMenu.Separator />
+                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
+                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
+                                        {/if}
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
@@ -694,7 +718,7 @@
                                     <div
                                         class={[
                                             "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            activeTabType === "visualize" && db.state.activeVisualizeTabId === id
+                                            isTabActive(id, 'visualize')
                                                 ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
                                                 : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
@@ -723,6 +747,11 @@
                                         <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
                                         <ContextMenu.Separator />
                                         <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                        {#if paneId}
+                                            <ContextMenu.Separator />
+                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
+                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
+                                        {/if}
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
@@ -733,7 +762,7 @@
                                     <div
                                         class={[
                                             "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            activeTabType === "connection" && db.state.activeConnectionTabId === id
+                                            isTabActive(id, 'connection')
                                                 ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
                                                 : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
@@ -762,6 +791,11 @@
                                         <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
                                         <ContextMenu.Separator />
                                         <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                        {#if paneId}
+                                            <ContextMenu.Separator />
+                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
+                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
+                                        {/if}
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
@@ -772,7 +806,7 @@
                                     <div
                                         class={[
                                             "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            activeTabType === "dashboard" && db.state.activeDashboardTabId === id
+                                            isTabActive(id, 'dashboard')
                                                 ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
                                                 : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
@@ -821,6 +855,57 @@
                                         <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
                                         <ContextMenu.Separator />
                                         <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                        {#if paneId}
+                                            <ContextMenu.Separator />
+                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
+                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
+                                        {/if}
+                                    </ContextMenu.Content>
+                                </ContextMenu.Portal>
+                            </ContextMenu.Root>
+                        {:else if type === 'starter'}
+                            {@const starterTab = tab as import('$lib/types').StarterTab}
+                            <ContextMenu.Root>
+                                <ContextMenu.Trigger>
+                                    <div
+                                        class={[
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors cursor-pointer",
+                                            isTabActive(id, 'starter')
+                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
+                                        ]}
+                                        onclick={() => handleStarterTabClick(id)}
+                                    >
+                                        <RocketIcon class="size-3 text-muted-foreground" />
+                                        <span class="pr-4">{starterTab.name}</span>
+                                        {#if starterTab.closable}
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
+                                                onclick={(e) => {
+                                                    e.stopPropagation();
+                                                    db.starterTabs.remove(id);
+                                                }}
+                                            >
+                                                <XIcon />
+                                            </Button>
+                                        {/if}
+                                    </div>
+                                </ContextMenu.Trigger>
+                                <ContextMenu.Portal>
+                                    <ContextMenu.Content class="w-40">
+                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
+                                        <ContextMenu.Separator />
+                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                        {#if paneId}
+                                            <ContextMenu.Separator />
+                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
+                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
+                                        {/if}
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
@@ -854,71 +939,6 @@
                     </span>
                 </Tooltip.Content>
             </Tooltip.Root>
-        </div>
-    {:else}
-        <!-- New project with no connections - show starter tabs + any connection tabs -->
-        <div class="flex items-center gap-1 h-full min-w-0">
-            <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide h-full">
-                <div class="flex items-end gap-1 w-max h-full">
-                    {#each db.state.starterTabs as starterTab (starterTab.id)}
-                        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-                        <div
-                            class={[
-                                "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors cursor-pointer",
-                                db.state.activeView !== "connection" && db.state.activeStarterTabId === starterTab.id
-                                    ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                    : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                            ]}
-                            onclick={() => {
-                                db.starterTabs.setActive(starterTab.id);
-                                db.ui.setActiveView("query");
-                            }}
-                        >
-                            <RocketIcon class="size-3 text-muted-foreground" />
-                            <span class="pr-4">{starterTab.name}</span>
-                            {#if starterTab.closable}
-                                <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                    onclick={(e) => {
-                                        e.stopPropagation();
-                                        db.starterTabs.remove(starterTab.id);
-                                    }}
-                                >
-                                    <XIcon />
-                                </Button>
-                            {/if}
-                        </div>
-                    {/each}
-                    {#each db.state.connectionTabs as connectionTab (connectionTab.id)}
-                        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-                        <div
-                            class={[
-                                "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors cursor-pointer",
-                                db.state.activeView === "connection" && db.state.activeConnectionTabId === connectionTab.id
-                                    ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                    : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                            ]}
-                            onclick={() => handleConnectionTabClick(connectionTab.id)}
-                        >
-                            <CableIcon class="size-3 text-muted-foreground" />
-                            <span class="pr-4">{connectionTab.name}</span>
-                            <Button
-                                size="icon"
-                                variant="ghost"
-                                class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                onclick={(e) => {
-                                    e.stopPropagation();
-                                    db.connectionTabs.remove(connectionTab.id);
-                                }}
-                            >
-                                <XIcon />
-                            </Button>
-                        </div>
-                    {/each}
-                </div>
-            </div>
         </div>
     {/if}
 {/if}

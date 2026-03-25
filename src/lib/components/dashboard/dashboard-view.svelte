@@ -10,9 +10,15 @@
 	import { ChartBarIcon, GaugeIcon, TypeIcon } from '@lucide/svelte';
 	import { isTauri } from '$lib/utils/environment';
 
+	let { tabId: propTabId = undefined }: { tabId?: string } = $props();
+
 	const db = useDatabase();
 
-	const tab = $derived(db.state.activeDashboardTab);
+	const tab = $derived(
+		propTabId
+			? db.state.dashboardTabs.find(t => t.id === propTabId) ?? null
+			: db.state.activeDashboardTab
+	);
 
 	const dashboard = $derived(
 		tab ? db.dashboards.getDashboard(tab.dashboardId) : undefined

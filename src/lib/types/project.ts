@@ -144,4 +144,9 @@ export interface PersistedProjectState {
   starredSharedQueryIds?: string[];
   /** IDs of shared dashboards that are starred */
   starredSharedDashboardIds?: string[];
+  /** Split pane layout */
+  paneLayout?: {
+    panes: { id: string; tabIds: string[]; activeTabId: string | null }[];
+    activePaneId: string;
+  };
 }
