@@ -29,11 +29,12 @@
     let tabBarEl = $state<HTMLElement | null>(null);
     $effect(() => {
         if (tabBarEl && paneDragState && paneId) {
-            paneDragState.registerTabBar(paneId, tabBarEl);
+            const id = paneId;
+            paneDragState.registerTabBar(id, tabBarEl);
+            return () => {
+                paneDragState.unregisterTabBar(id);
+            };
         }
-    });
-    onDestroy(() => {
-        if (paneId) paneDragState?.unregisterTabBar(paneId);
     });
 
     const isManagePage = $derived(

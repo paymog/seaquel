@@ -10,7 +10,7 @@
 		columns: string[];
 		rows: Record<string, unknown>[];
 		isEditable?: boolean;
-		onCellSave?: (rowIndex: number, column: string, newValue: string) => Promise<void>;
+		onCellSave?: (rowIndex: number, column: string, newValue: string | null) => Promise<void>;
 		onRowDelete?: (rowIndex: number, row: Record<string, unknown>) => void;
 		deletingRowIndex?: number | null;
 		onCopyCell?: () => void;

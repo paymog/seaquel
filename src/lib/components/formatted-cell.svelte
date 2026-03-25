@@ -17,7 +17,7 @@
 		value: unknown;
 		columnType: CellType;
 		isEditable?: boolean;
-		onSave?: (newValue: string) => Promise<void>;
+		onSave?: (newValue: string | null) => Promise<void>;
 	}
 
 	let { value, columnType, isEditable = false, onSave }: Props = $props();

@@ -200,7 +200,7 @@ import { errorToast } from "$lib/utils/toast";
 		}
 	};
 
-	async function handleCellSave(rowIndex: number, column: string, newValue: string) {
+	async function handleCellSave(rowIndex: number, column: string, newValue: string | null) {
 		if (!activeTabId || !activeResult?.sourceTable) return;
 
 		const result = await db.queries.updateCell(

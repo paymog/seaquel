@@ -8,7 +8,7 @@
 		value: unknown;
 		isEditable?: boolean;
 		columnType?: CellType;
-		onSave: (newValue: string) => Promise<void>;
+		onSave: (newValue: string | null) => Promise<void>;
 	}
 
 	let { value, isEditable = false, columnType = 'text', onSave }: Props = $props();
@@ -48,6 +48,20 @@
 		}
 	}
 
+	async function handleSetNull() {
+		if (value === null) {
+			isEditing = false;
+			return;
+		}
+		isSaving = true;
+		try {
+			await onSave(null);
+			isEditing = false;
+		} finally {
+			isSaving = false;
+		}
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
 			e.preventDefault();
@@ -75,6 +89,14 @@
 			disabled={isSaving}
 			class="h-6 text-xs py-0 px-1"
 		/>
+		<button
+			type="button"
+			class="shrink-0 text-[10px] font-mono text-muted-foreground hover:text-foreground px-1 h-6 rounded border border-transparent hover:border-border"
+			onmousedown={(e) => { e.preventDefault(); handleSetNull(); }}
+			disabled={isSaving}
+		>
+			NULL
+		</button>
 		{#if isSaving}
 			<LoaderIcon class="size-3 animate-spin shrink-0" />
 		{/if}
@@ -82,7 +104,7 @@
 {:else}
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<span
-		class={[isEditable ? "cursor-pointer hover:bg-muted rounded px-1 -mx-1" : "", (columnType === 'integer' || columnType === 'float') && "w-full text-right"]}
+		class={[isEditable ? "cursor-pointer hover:bg-muted rounded px-1 -mx-1 w-full min-h-5 inline-flex items-center" : "", (columnType === 'integer' || columnType === 'float') && "w-full text-right"]}
 		ondblclick={startEditing}
 		role={isEditable ? "button" : undefined}
 		tabindex={isEditable ? 0 : undefined}

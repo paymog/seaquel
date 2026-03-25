@@ -15,7 +15,6 @@
     import QueryVisualViewer from "$lib/components/query-visual-viewer.svelte";
     import ConnectionTabView from "$lib/components/connection-tab-view.svelte";
     import { DashboardView } from "$lib/components/dashboard";
-    import { onMount, onDestroy } from "svelte";
     import DragSplitOverlay from "$lib/components/drag-split-overlay.svelte";
     import { usePaneDragState } from "$lib/components/pane-drag-context.svelte.js";
 
@@ -28,11 +27,12 @@
     let paneEl = $state<HTMLElement | null>(null);
     $effect(() => {
         if (paneEl && dragState) {
-            dragState.registerPane(pane.id, paneEl);
+            const id = pane.id;
+            dragState.registerPane(id, paneEl);
+            return () => {
+                dragState.unregisterPane(id);
+            };
         }
-    });
-    onDestroy(() => {
-        dragState?.unregisterPane(pane.id);
     });
 
     // Determine active view type for this pane's active tab
@@ -82,7 +82,9 @@
 
     {#if pane.tabIds.length === 0}
         <div class="flex-1 min-h-0 flex flex-col">
-            <GettingStartedContent />
+            {#if totalPanes <= 1}
+                <GettingStartedContent />
+            {/if}
         </div>
     {:else if paneViewType === "starter" && activeStarterTab}
         <div class="flex-1 min-h-0 flex flex-col">
