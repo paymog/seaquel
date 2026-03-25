@@ -9,12 +9,13 @@ import {
   isSelectQuery,
   extractTableFromSelect,
 } from "$lib/db/query-utils";
-import { splitSqlStatements, getStatementAtOffset } from "$lib/db/sql-parser";
+import { splitSqlStatements } from "$lib/db/sql-parser";
 import { substituteParameters } from "$lib/db/query-params";
 import { m } from "$lib/paraglide/messages.js";
 import type { ProviderRegistry } from "$lib/providers";
 import { extractErrorMessage } from "$lib/errors";
 import { log } from "$lib/utils/logger";
+import { resolveQuery } from "./resolve-query.js";
 
 /**
  * Manages query execution, pagination, and CRUD operations.
@@ -48,6 +49,31 @@ export class QueryExecutionManager {
     this.state.queryTabsByProject = {
       ...this.state.queryTabsByProject,
       [projectId]: updatedTabs,
+    };
+  }
+
+  /**
+   * Create a standardized error result for failed statement execution.
+   */
+  private createErrorResult(
+    statementSql: string,
+    error: unknown,
+    statementIndex: number,
+    pageSize: number = 1,
+  ): StatementResult {
+    return {
+      columns: ["Error"],
+      rows: [{ Error: extractErrorMessage(error) }],
+      rowCount: 1,
+      totalRows: 1,
+      executionTime: 0,
+      page: 1,
+      pageSize,
+      totalPages: 1,
+      statementIndex,
+      statementSql,
+      error: extractErrorMessage(error),
+      isError: true,
     };
   }
 
@@ -305,16 +331,8 @@ export class QueryExecutionManager {
       return;
     }
 
-    const tabs = this.state.queryTabsByProject[this.state.activeProjectId] ?? [];
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab) return;
-
-    // Get database type for parsing
-    const dbType = connection.type ?? "postgres";
-
-    // Get the statement at cursor position
-    const statement = getStatementAtOffset(tab.query, cursorOffset, dbType);
-    if (!statement) {
+    const resolved = resolveQuery(this.state, tabId, cursorOffset, parameterValues);
+    if (!resolved) {
       toast.info(m.query_no_executable_statements());
       return;
     }
@@ -323,24 +341,19 @@ export class QueryExecutionManager {
     this.updateQueryTabState(tabId, { isExecuting: true });
 
     // Get effective page size
-    const effectivePageSize = pageSize ?? tab.results?.[0]?.pageSize ?? this.DEFAULT_PAGE_SIZE;
+    const effectivePageSize =
+      pageSize ?? resolved.tab.results?.[0]?.pageSize ?? this.DEFAULT_PAGE_SIZE;
+
+    // Keep original SQL (before parameter substitution) for display
+    const originalSql = resolveQuery(this.state, tabId, cursorOffset)?.query ?? resolved.query;
 
     try {
-      // Substitute parameters if provided
-      let sql = statement.sql;
-      let bindValues: unknown[] | undefined;
-      if (parameterValues) {
-        const substituted = substituteParameters(statement.sql, parameterValues, dbType);
-        sql = substituted.sql;
-        bindValues = substituted.bindValues;
-      }
-
       const result = await this.executeStatement(
-        sql,
+        resolved.query,
         page,
         effectivePageSize,
         connection,
-        bindValues,
+        resolved.bindValues,
       );
       void log.info(
         `Query executed on ${connection.id}: ${result.rowCount} rows in ${result.executionTime}ms`,
@@ -349,7 +362,7 @@ export class QueryExecutionManager {
         {
           ...result,
           statementIndex: 0,
-          statementSql: statement.sql, // Keep original SQL for display
+          statementSql: originalSql,
           isError: false,
         },
       ];
@@ -362,29 +375,12 @@ export class QueryExecutionManager {
 
       // Add to history
       if (page === 1) {
-        this.queryHistory.addToHistory(statement.sql, results[0]);
+        this.queryHistory.addToHistory(originalSql, results[0]);
       }
     } catch (error) {
       void log.error(`Query execution failed on ${connection.id}`);
-      const results: StatementResult[] = [
-        {
-          columns: ["Error"],
-          rows: [{ Error: extractErrorMessage(error) }],
-          rowCount: 1,
-          totalRows: 1,
-          executionTime: 0,
-          page: 1,
-          pageSize: 1,
-          totalPages: 1,
-          statementIndex: 0,
-          statementSql: statement.sql,
-          error: extractErrorMessage(error),
-          isError: true,
-        },
-      ];
-
       this.updateQueryTabState(tabId, {
-        results,
+        results: [this.createErrorResult(originalSql, error, 0)],
         activeResultIndex: 0,
         isExecuting: false,
       });
@@ -481,20 +477,7 @@ export class QueryExecutionManager {
         });
       } catch (error) {
         // Continue on error - add error result
-        allResults.push({
-          columns: ["Error"],
-          rows: [{ Error: extractErrorMessage(error) }],
-          rowCount: 1,
-          totalRows: 1,
-          executionTime: 0,
-          page: 1,
-          pageSize: effectivePageSize,
-          totalPages: 1,
-          statementIndex: i,
-          statementSql: stmt.sql,
-          error: extractErrorMessage(error),
-          isError: true,
-        });
+        allResults.push(this.createErrorResult(stmt.sql, error, i, effectivePageSize));
       }
 
       // Update UI incrementally after each statement completes

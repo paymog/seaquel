@@ -120,9 +120,11 @@ export class UIStateManager {
   }
 
   private _updateMessage(chatId: string, messageId: string, updater: (m: AIMessage) => AIMessage) {
+    const messages = this.state.aiMessagesByChat[chatId];
+    if (!messages) return; // Chat was deleted mid-stream
     this._setMessages(
       chatId,
-      this._getMessages(chatId).map((m) => (m.id === messageId ? updater(m) : m)),
+      messages.map((m) => (m.id === messageId ? updater(m) : m)),
     );
   }
 

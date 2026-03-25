@@ -1,19 +1,12 @@
 import type { ActiveViewType } from "$lib/types/persisted";
 import { withErrorHandling } from "$lib/errors";
-import type {
-  ExplainTab,
-  ExplainResult,
-  ExplainPlanNode,
-  ParameterValue,
-  QueryTab,
-} from "$lib/types";
+import type { ExplainTab, ExplainResult, ExplainPlanNode, ParameterValue } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
 import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelte.js";
 import { getAdapter, type ExplainNode } from "$lib/db";
-import { getStatementAtOffset } from "$lib/db/sql-parser";
-import { substituteParameters } from "$lib/db/query-params";
 import type { ProviderRegistry } from "$lib/providers";
+import { resolveQuery } from "./resolve-query.js";
 
 /**
  * Callback for setting explain result on a query tab.
@@ -72,33 +65,8 @@ export class ExplainTabManager extends BaseTabManager<ExplainTab> {
     this.setExplainExecuting = setExecuting;
   }
 
-  /**
-   * Resolve query text from a query tab, optionally extracting the statement at cursor
-   * and substituting parameters.
-   */
-  private resolveQuery(
-    tabId: string,
-    cursorOffset?: number,
-    parameterValues?: ParameterValue[],
-  ): { tab: QueryTab; query: string; bindValues?: unknown[] } | null {
-    const projectId = this.state.activeProjectId;
-    const tabs = this.state.queryTabsByProject[projectId!] ?? [];
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab || !tab.query.trim()) return null;
-
-    const dbType = this.state.activeConnection!.type;
-    let query = tab.query;
-    if (cursorOffset !== undefined) {
-      const statement = getStatementAtOffset(tab.query, cursorOffset, dbType);
-      if (statement) query = statement.sql;
-    }
-    if (!query.trim()) return null;
-
-    if (parameterValues) {
-      const { sql, bindValues } = substituteParameters(query, parameterValues, dbType);
-      return { tab, query: sql, bindValues };
-    }
-    return { tab, query };
+  private resolveQuery(tabId: string, cursorOffset?: number, parameterValues?: ParameterValue[]) {
+    return resolveQuery(this.state, tabId, cursorOffset, parameterValues);
   }
 
   /**

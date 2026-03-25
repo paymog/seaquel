@@ -64,10 +64,11 @@
 	}
 
 	$effect(() => {
+		// Subscribe to message content and streaming state to trigger auto-scroll
 		const msgs = db.state.aiMessages;
 		const lastMsg = msgs.at(-1);
-		const _content = lastMsg?.content;
-		const _streaming = db.state.isAIStreaming;
+		void lastMsg?.content;
+		void db.state.isAIStreaming;
 
 		if (!scrollRef || userScrolledUp) return;
 
@@ -107,7 +108,7 @@
 		// Find the last @ before cursor
 		const before = val.slice(0, cursor);
 		const atIndex = before.lastIndexOf("@");
-		if (atIndex === -1 || (atIndex > 0 && before[atIndex - 1] !== " " && before[atIndex - 1] !== "\n" && atIndex !== 0)) {
+		if (atIndex === -1 || (atIndex > 0 && before[atIndex - 1] !== " " && before[atIndex - 1] !== "\n")) {
 			mentionActive = false;
 			return;
 		}

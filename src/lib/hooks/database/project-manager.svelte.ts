@@ -714,7 +714,17 @@ export class ProjectManager {
         this.state.tabOrderByProject[projectId] = [...newIds, ...tabOrder];
       }
     } else {
-      this.starterTabManager?.initializeDefaults(projectId);
+      // Only show starter tabs if the project has no other open tabs
+      const hasOtherTabs =
+        (this.state.queryTabsByProject[projectId]?.length ?? 0) > 0 ||
+        (this.state.schemaTabsByProject[projectId]?.length ?? 0) > 0 ||
+        (this.state.connectionTabsByProject[projectId]?.length ?? 0) > 0 ||
+        (this.state.explainTabsByProject[projectId]?.length ?? 0) > 0 ||
+        (this.state.erdTabsByProject[projectId]?.length ?? 0) > 0 ||
+        (this.state.dashboardTabsByProject[projectId]?.length ?? 0) > 0;
+      if (!hasOtherTabs) {
+        this.starterTabManager?.initializeDefaults(projectId);
+      }
     }
 
     // Restore dashboard tabs

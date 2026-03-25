@@ -81,29 +81,34 @@ class AISettingsStore {
     await this.persistSettings(db, { ...this.settings, ...patch });
   }
 
+  /**
+   * Fetch the /models endpoint for a provider, handling auth headers for both
+   * Anthropic and OpenAI-compatible providers.
+   */
+  private async fetchProviderModels(config: AIProvider, apiKey: string): Promise<Response | null> {
+    if (config.type === "anthropic") {
+      return fetch("https://api.anthropic.com/v1/models", {
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": ANTHROPIC_API_VERSION,
+        },
+      });
+    }
+    const baseUrl = (config.baseUrl ?? "").replace(/\/$/, "");
+    if (!baseUrl) return null;
+    const headers: Record<string, string> = {};
+    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+    return fetch(`${baseUrl}/models`, { headers });
+  }
+
   async testConnection(providerId: string): Promise<boolean> {
     const config = this.settings.providers.find((p) => p.id === providerId);
     if (!config) return false;
     const apiKey = (await getKeyringService().getAIApiKeyForProvider(config.id)) ?? "";
-    // Anthropic always requires a key; openai-compatible providers (e.g. Ollama) may not
     if (config.type === "anthropic" && !apiKey) return false;
     try {
-      if (config.type === "anthropic") {
-        const res = await fetch("https://api.anthropic.com/v1/models", {
-          headers: {
-            "x-api-key": apiKey,
-            "anthropic-version": ANTHROPIC_API_VERSION,
-          },
-        });
-        return res.ok;
-      } else {
-        const baseUrl = (config.baseUrl ?? "").replace(/\/$/, "");
-        if (!baseUrl) return false;
-        const headers: Record<string, string> = {};
-        if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-        const res = await fetch(`${baseUrl}/models`, { headers });
-        return res.ok;
-      }
+      const res = await this.fetchProviderModels(config, apiKey);
+      return res?.ok ?? false;
     } catch (err) {
       void log.error("[AI] testConnection error:", err);
       return false;
@@ -114,26 +119,12 @@ class AISettingsStore {
     const config = this.settings.providers.find((p) => p.id === providerId);
     if (!config) return [];
     const apiKey = (await getKeyringService().getAIApiKeyForProvider(config.id)) ?? "";
-    // Anthropic always requires a key; openai-compatible providers (e.g. Ollama) may not
     if (config.type === "anthropic" && !apiKey) return [];
     try {
-      if (config.type === "anthropic") {
-        const res = await fetch("https://api.anthropic.com/v1/models", {
-          headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_API_VERSION },
-        });
-        if (!res.ok) return [];
-        const data = await res.json();
-        return (data.data as Array<{ id: string }>).map((e) => e.id);
-      } else {
-        const baseUrl = (config.baseUrl ?? "").replace(/\/$/, "");
-        if (!baseUrl) return [];
-        const headers: Record<string, string> = {};
-        if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-        const res = await fetch(`${baseUrl}/models`, { headers });
-        if (!res.ok) return [];
-        const data = await res.json();
-        return (data.data as Array<{ id: string }>).map((e) => e.id);
-      }
+      const res = await this.fetchProviderModels(config, apiKey);
+      if (!res?.ok) return [];
+      const data = await res.json();
+      return (data.data as Array<{ id: string }>).map((e) => e.id);
     } catch (err) {
       void log.error("[AI] fetchModels error:", err);
       return [];

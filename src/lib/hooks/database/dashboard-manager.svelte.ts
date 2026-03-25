@@ -189,12 +189,15 @@ export class DashboardManager {
 
     if (!query) return;
 
-    // Inject date filter placeholders (escape single quotes to prevent SQL injection)
+    // Inject date filter placeholders (validate and escape to prevent SQL injection)
     if (dashboard.dateFilter) {
+      const isValidDate = (val: string) => /^[\d\-T:.Z ]+$/.test(val);
       const escapeDate = (val: string) => `'${val.replace(/'/g, "''")}'`;
-      query = query
-        .replace(/\{\{start_date\}\}/g, escapeDate(dashboard.dateFilter.start))
-        .replace(/\{\{end_date\}\}/g, escapeDate(dashboard.dateFilter.end));
+      if (isValidDate(dashboard.dateFilter.start) && isValidDate(dashboard.dateFilter.end)) {
+        query = query
+          .replace(/\{\{start_date\}\}/g, escapeDate(dashboard.dateFilter.start))
+          .replace(/\{\{end_date\}\}/g, escapeDate(dashboard.dateFilter.end));
+      }
     }
 
     // Set loading state
