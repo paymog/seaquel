@@ -81,14 +81,9 @@
 
 {#if isEditing && isEditable}
 	<div class="flex items-center gap-1">
-		<Input
-			bind:ref={inputRef}
-			bind:value={editValue}
-			onblur={handleBlur}
-			onkeydown={handleKeydown}
-			disabled={isSaving}
-			class="h-6 text-xs py-0 px-1"
-		/>
+		{#if isSaving}
+			<LoaderIcon class="size-3 animate-spin shrink-0" />
+		{/if}
 		<button
 			type="button"
 			class="shrink-0 text-[10px] font-mono text-muted-foreground hover:text-foreground px-1 h-6 rounded border border-transparent hover:border-border"
@@ -97,9 +92,14 @@
 		>
 			NULL
 		</button>
-		{#if isSaving}
-			<LoaderIcon class="size-3 animate-spin shrink-0" />
-		{/if}
+		<Input
+			bind:ref={inputRef}
+			bind:value={editValue}
+			onblur={handleBlur}
+			onkeydown={handleKeydown}
+			disabled={isSaving}
+			class="h-6 text-xs py-0 px-1 text-end"
+		/>
 	</div>
 {:else}
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
