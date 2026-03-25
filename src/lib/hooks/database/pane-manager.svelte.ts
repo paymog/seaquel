@@ -1,17 +1,6 @@
+import type { ActiveViewType } from "$lib/types/persisted";
 import type { Pane, PaneLayout } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
-
-type ViewType =
-  | "query"
-  | "schema"
-  | "explain"
-  | "erd"
-  | "statistics"
-  | "workflow"
-  | "visualize"
-  | "connection"
-  | "dashboard"
-  | "starter";
 
 /**
  * Manages split pane layouts for the tab area.
@@ -287,7 +276,7 @@ export class PaneManager {
   /**
    * Resolve a tab ID to its view type by checking which tab collection it belongs to.
    */
-  getTabViewType(tabId: string): ViewType | null {
+  getTabViewType(tabId: string): ActiveViewType | null {
     const projectId = this.state.activeProjectId;
     if (!projectId) return null;
 
@@ -445,7 +434,7 @@ export class PaneManager {
     this.state.activeView = viewType;
 
     // Update the corresponding per-type active ID
-    const setters: Record<ViewType, (id: string) => void> = {
+    const setters: Record<ActiveViewType, (id: string) => void> = {
       query: (id) => {
         this.state.activeQueryTabIdByProject = {
           ...this.state.activeQueryTabIdByProject,
@@ -530,7 +519,7 @@ export class PaneManager {
     if (!projectId) return null;
 
     const view = this.state.activeView;
-    const idMap: Record<ViewType, string | null> = {
+    const idMap: Record<ActiveViewType, string | null> = {
       query: this.state.activeQueryTabIdByProject[projectId] ?? null,
       schema: this.state.activeSchemaTabIdByProject[projectId] ?? null,
       explain: this.state.activeExplainTabIdByProject[projectId] ?? null,

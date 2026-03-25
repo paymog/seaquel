@@ -37,33 +37,43 @@ export interface DashboardCallbacks {
 // --- Config parsing helpers (shared between add_widget and update_widget) ---
 
 function parseChartConfig(raw: unknown): ChartConfig {
-  const cc = raw as Record<string, unknown>;
+  const cc = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const VALID_CHART_TYPES: ChartConfig["type"][] = ["bar", "line", "pie", "scatter", "area"];
+  const rawType = typeof cc.type === "string" ? cc.type : "";
   return {
-    type: (cc.type as ChartConfig["type"]) ?? "bar",
-    xAxis: (cc.xAxis as string) ?? null,
-    yAxis: (cc.yAxis as string[]) ?? [],
+    type: VALID_CHART_TYPES.includes(rawType as ChartConfig["type"])
+      ? (rawType as ChartConfig["type"])
+      : "bar",
+    xAxis: typeof cc.xAxis === "string" ? cc.xAxis : null,
+    yAxis: Array.isArray(cc.yAxis)
+      ? cc.yAxis.filter((v): v is string => typeof v === "string")
+      : [],
     dataScope: "all",
-    colors: cc.colors as Record<string, string> | undefined,
+    colors:
+      typeof cc.colors === "object" && cc.colors !== null && !Array.isArray(cc.colors)
+        ? (cc.colors as Record<string, string>)
+        : undefined,
   };
 }
 
 function parseKpiConfig(raw: unknown): KpiConfig {
-  const kc = raw as Record<string, unknown>;
+  const kc = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const VALID_FORMATS: KpiConfig["format"][] = ["number", "percentage"];
+  const rawFormat = typeof kc.format === "string" ? kc.format : "";
   return {
-    // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-    label: String(kc.label ?? ""),
-    // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-    valueColumn: String(kc.valueColumn ?? ""),
-    format: kc.format as KpiConfig["format"],
-    prefix: kc.prefix as string | undefined,
-    suffix: kc.suffix as string | undefined,
+    label: typeof kc.label === "string" ? kc.label : "",
+    valueColumn: typeof kc.valueColumn === "string" ? kc.valueColumn : "",
+    format: VALID_FORMATS.includes(rawFormat as KpiConfig["format"])
+      ? (rawFormat as KpiConfig["format"])
+      : undefined,
+    prefix: typeof kc.prefix === "string" ? kc.prefix : undefined,
+    suffix: typeof kc.suffix === "string" ? kc.suffix : undefined,
   };
 }
 
 function parseTextConfig(raw: unknown): TextConfig {
-  const tc = raw as Record<string, unknown>;
-  // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-  return { content: String(tc.content ?? "") };
+  const tc = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  return { content: typeof tc.content === "string" ? tc.content : "" };
 }
 
 // --- Dashboard tool handler ---
@@ -84,7 +94,13 @@ export async function handleDashboardToolCall(
       case "add_widget": {
         // oxlint-disable-next-line typescript-eslint(no-base-to-string)
         const dashboardId = String(input.dashboard_id ?? "");
-        const widgetType = (input.widget_type as "chart" | "kpi" | "text") ?? "chart";
+        const rawWidgetType = typeof input.widget_type === "string" ? input.widget_type : "";
+        const VALID_WIDGET_TYPES = ["chart", "kpi", "text"] as const;
+        const widgetType: "chart" | "kpi" | "text" = VALID_WIDGET_TYPES.includes(
+          rawWidgetType as "chart" | "kpi" | "text",
+        )
+          ? (rawWidgetType as "chart" | "kpi" | "text")
+          : "chart";
         const widget: Omit<
           DashboardWidget,
           "id" | "result" | "isLoading" | "error" | "lastRefreshed"
@@ -132,8 +148,12 @@ export async function handleDashboardToolCall(
         if (input.y !== undefined) updates.y = Number(input.y);
         if (input.width !== undefined) updates.width = Number(input.width);
         if (input.height !== undefined) updates.height = Number(input.height);
-        if (input.widget_type !== undefined)
-          updates.widgetType = input.widget_type as DashboardWidget["widgetType"];
+        if (input.widget_type !== undefined) {
+          const wt = typeof input.widget_type === "string" ? input.widget_type : "";
+          if (["chart", "kpi", "text"].includes(wt)) {
+            updates.widgetType = wt as DashboardWidget["widgetType"];
+          }
+        }
         // oxlint-disable-next-line typescript-eslint(no-base-to-string)
         if (input.query !== undefined) updates.query = String(input.query);
         if (input.chart_config !== undefined)

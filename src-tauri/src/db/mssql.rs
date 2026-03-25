@@ -156,8 +156,11 @@ impl Driver for MssqlDriver {
     async fn query(
         &self,
         sql: &str,
-        _params: Vec<serde_json::Value>,
+        params: Vec<serde_json::Value>,
     ) -> Result<QueryResult, DbError> {
+        if !params.is_empty() {
+            return Err(DbError::execute_error("Parameter binding is not supported for the MSSQL driver. Use inline values instead."));
+        }
         let mut client = self.client.lock().await;
 
         let rows = client.query_rows(sql).await.map_err(|e| {
@@ -188,8 +191,11 @@ impl Driver for MssqlDriver {
     async fn execute(
         &self,
         sql: &str,
-        _params: Vec<serde_json::Value>,
+        params: Vec<serde_json::Value>,
     ) -> Result<ExecuteResult, DbError> {
+        if !params.is_empty() {
+            return Err(DbError::execute_error("Parameter binding is not supported for the MSSQL driver. Use inline values instead."));
+        }
         let mut client = self.client.lock().await;
 
         let result = client.execute_sql(sql).await.map_err(|e| {

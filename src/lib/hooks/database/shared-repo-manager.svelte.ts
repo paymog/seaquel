@@ -34,6 +34,7 @@ import {
   stat,
 } from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
+import { log } from "$lib/utils/logger";
 
 export const SEAQUEL_DIR = ".seaquel";
 
@@ -451,7 +452,7 @@ export class SharedRepoManager {
       // Also load shared configs from .seaquel/ directory
       await this.loadSharedConfigs(repoId);
     } catch (error) {
-      console.error("Failed to load queries from repo:", error);
+      void log.error("Failed to load queries from repo:", error);
     }
   }
 
@@ -473,7 +474,7 @@ export class SharedRepoManager {
       // Parse projects
       await this.loadSharedProjects(repoId, seaquelDir);
     } catch (error) {
-      console.warn("Failed to load shared configs:", error);
+      void log.warn("Failed to load shared configs:", error);
     }
   }
 
@@ -503,7 +504,7 @@ export class SharedRepoManager {
         [repoId]: parsed.labels,
       };
     } catch (error) {
-      console.warn("Failed to load shared labels:", error);
+      void log.warn("Failed to load shared labels:", error);
     }
   }
 
@@ -533,7 +534,7 @@ export class SharedRepoManager {
         [repoId]: projects,
       };
     } catch (error) {
-      console.warn("Failed to load shared projects:", error);
+      void log.warn("Failed to load shared projects:", error);
     }
   }
 
@@ -581,7 +582,7 @@ export class SharedRepoManager {
 
       return project;
     } catch (error) {
-      console.warn(`Failed to load project ${dirName}:`, error);
+      void log.warn(`Failed to load project ${dirName}:`, error);
       return null;
     }
   }
@@ -620,7 +621,7 @@ export class SharedRepoManager {
         }
       }
     } catch (error) {
-      console.warn("Failed to load project connections:", error);
+      void log.warn("Failed to load project connections:", error);
     }
 
     return connections;
@@ -672,7 +673,7 @@ export class SharedRepoManager {
       }
     } catch (error) {
       // Directory might not exist yet
-      console.warn(`Failed to scan directory ${fullPath}:`, error);
+      void log.warn(`Failed to scan directory ${fullPath}:`, error);
     }
   }
 
@@ -716,7 +717,7 @@ export class SharedRepoManager {
         }
       }
     } catch (error) {
-      console.warn(`Failed to scan dashboard directory ${fullPath}:`, error);
+      void log.warn(`Failed to scan dashboard directory ${fullPath}:`, error);
     }
   }
 
@@ -806,7 +807,7 @@ export class SharedRepoManager {
 
       return sharedProject;
     } catch (error) {
-      console.error("Failed to export project:", error);
+      void log.error("Failed to export project:", error);
       throw error;
     }
   }
@@ -862,7 +863,7 @@ export class SharedRepoManager {
       await this.loadSharedConfigs(repoId);
       await this.refreshRepoStatus(repoId);
     } catch (error) {
-      console.error("Failed to share connection:", error);
+      void log.error("Failed to share connection:", error);
       throw error;
     }
   }
@@ -911,7 +912,7 @@ export class SharedRepoManager {
       await this.loadSharedConfigs(repoId);
       await this.refreshRepoStatus(repoId);
     } catch (error) {
-      console.error("Failed to update shared connection:", error);
+      void log.error("Failed to update shared connection:", error);
       throw error;
     }
   }
@@ -948,7 +949,7 @@ export class SharedRepoManager {
       await this.loadSharedConfigs(repoId);
       await this.refreshRepoStatus(repoId);
     } catch (error) {
-      console.error("Failed to unshare connection:", error);
+      void log.error("Failed to unshare connection:", error);
       throw error;
     }
   }
@@ -1051,7 +1052,7 @@ export class SharedRepoManager {
             await this.loadQueriesFromRepo(repo.id);
           }
         } catch (error) {
-          console.warn(`Failed to refresh status for ${repo.name}:`, error);
+          void log.warn(`Failed to refresh status for ${repo.name}:`, error);
         }
       }),
     );

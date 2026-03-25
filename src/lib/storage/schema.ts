@@ -51,7 +51,11 @@ const DDL_STATEMENTS = [
     save_ssh_password INTEGER NOT NULL DEFAULT 0,
     save_ssh_key_passphrase INTEGER NOT NULL DEFAULT 0,
     is_local_only INTEGER NOT NULL DEFAULT 0,
-    shared_connection_id TEXT
+    shared_connection_id TEXT,
+    ai_share_schema INTEGER,
+    ai_share_data INTEGER,
+    active_ai_provider_id TEXT,
+    active_ai_model TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_connections_project ON connections(project_id)`,
 
@@ -77,7 +81,8 @@ const DDL_STATEMENTS = [
     active_dashboard_tab_id TEXT,
     tab_order TEXT NOT NULL DEFAULT '[]',
     starred_shared_query_ids TEXT NOT NULL DEFAULT '[]',
-    starred_shared_dashboard_ids TEXT NOT NULL DEFAULT '[]'
+    starred_shared_dashboard_ids TEXT NOT NULL DEFAULT '[]',
+    pane_layout TEXT
   )`,
 
   // All tab types (discriminated by tab_type)
@@ -310,6 +315,21 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
       table: "connections",
       column: "ai_share_data",
       sql: "ALTER TABLE connections ADD COLUMN ai_share_data INTEGER",
+    },
+    {
+      table: "connections",
+      column: "active_ai_provider_id",
+      sql: "ALTER TABLE connections ADD COLUMN active_ai_provider_id TEXT",
+    },
+    {
+      table: "connections",
+      column: "active_ai_model",
+      sql: "ALTER TABLE connections ADD COLUMN active_ai_model TEXT",
+    },
+    {
+      table: "project_state",
+      column: "pane_layout",
+      sql: "ALTER TABLE project_state ADD COLUMN pane_layout TEXT",
     },
   ];
 

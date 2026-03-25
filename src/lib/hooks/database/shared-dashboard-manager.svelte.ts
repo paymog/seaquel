@@ -1,6 +1,7 @@
 import type { SharedDashboard, Dashboard } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import { SEAQUEL_DIR, type SharedRepoManager } from "./shared-repo-manager.svelte.js";
+import { stripWidgetRuntimeState } from "./dashboard-manager.svelte.js";
 import {
   serializeDashboardFile,
   dashboardNameToFilename,
@@ -110,9 +111,7 @@ export class SharedDashboardManager {
 
   async shareDashboard(dashboard: Dashboard): Promise<string | null> {
     // Strip runtime state from widgets
-    const widgets = dashboard.widgets.map(
-      ({ result: _, isLoading: __, error: ___, lastRefreshed: ____, ...rest }) => rest,
-    );
+    const widgets = dashboard.widgets.map(stripWidgetRuntimeState);
     return this.createDashboard(dashboard.name, widgets, dashboard.viewport, {
       dateFilter: dashboard.dateFilter,
     });

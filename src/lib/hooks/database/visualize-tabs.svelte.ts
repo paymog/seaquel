@@ -1,3 +1,4 @@
+import type { ActiveViewType } from "$lib/types/persisted";
 import { errorToast } from "$lib/utils/toast";
 import type { VisualizeTab, ParsedQueryVisual, ParameterValue } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
@@ -23,20 +24,14 @@ export type SetVisualizeResultCallback = (
  */
 export class VisualizeTabManager extends BaseTabManager<VisualizeTab> {
   private setVisualizeResult?: SetVisualizeResultCallback;
-  private setActiveView: (
-    view: "query" | "schema" | "explain" | "erd" | "statistics" | "workflow" | "visualize",
-  ) => void;
 
   constructor(
     state: DatabaseState,
     tabOrdering: TabOrderingManager,
     schedulePersistence: (projectId: string | null) => void,
-    setActiveView: (
-      view: "query" | "schema" | "explain" | "erd" | "statistics" | "workflow" | "visualize",
-    ) => void,
+    setActiveView: (view: ActiveViewType) => void,
   ) {
-    super(state, tabOrdering, schedulePersistence);
-    this.setActiveView = setActiveView;
+    super(state, tabOrdering, schedulePersistence, setActiveView);
   }
 
   protected get accessors(): TabStateAccessors<VisualizeTab> {
@@ -232,7 +227,7 @@ export class VisualizeTabManager extends BaseTabManager<VisualizeTab> {
     });
 
     this.appendTab(newVisualizeTab);
-    this.setActiveView("visualize");
+    this.viewFallbackFn!("visualize");
 
     if (parseError) {
       errorToast(`Parse warning: ${parseError}`);
@@ -287,21 +282,10 @@ export class VisualizeTabManager extends BaseTabManager<VisualizeTab> {
     });
 
     this.appendTab(newVisualizeTab);
-    this.setActiveView("visualize");
+    this.viewFallbackFn!("visualize");
 
     if (parseError) {
       errorToast(`Parse warning: ${parseError}`);
-    }
-  }
-
-  /**
-   * Remove a visualize tab by ID.
-   */
-  override remove(id: string): void {
-    super.remove(id);
-    // Switch to query view if no visualize tabs left
-    if (this.state.activeProjectId && this.state.visualizeTabs.length === 0) {
-      this.setActiveView("query");
     }
   }
 }

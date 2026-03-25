@@ -7,8 +7,18 @@ export function validateReadOnlyQuery(query: string): string | null {
   if (!/^(SELECT|WITH)\b/.test(upper)) {
     return "Only read-only SELECT queries are permitted";
   }
-  const dml = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE)\b/;
-  if (dml.test(upper)) {
+  // Check each statement (split on semicolons) for DML/DDL keywords at the start
+  const statements = upper
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const stmt of statements) {
+    if (/^(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|EXEC)\b/.test(stmt)) {
+      return "Only read-only SELECT queries are permitted";
+    }
+  }
+  // Block SELECT ... INTO (creates a table)
+  if (/\bSELECT\b[^;]*\bINTO\b/i.test(trimmed)) {
     return "Only read-only SELECT queries are permitted";
   }
   return null;

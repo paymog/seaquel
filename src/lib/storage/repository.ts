@@ -11,6 +11,15 @@ import type {
 import type { PersistedConnection } from "$lib/hooks/database/types";
 import type { SavedWorkflow } from "$lib/types/workflow";
 
+function safeJsonParse<T>(json: string | null | undefined, fallback: T): T {
+  if (!json) return fallback;
+  try {
+    return JSON.parse(json);
+  } catch {
+    return fallback;
+  }
+}
+
 // === Projects ===
 
 export const projectsRepo = {
@@ -135,6 +144,8 @@ export const connectionsRepo = {
       shared_connection_id: string | null;
       ai_share_schema: number | null;
       ai_share_data: number | null;
+      active_ai_provider_id: string | null;
+      active_ai_model: string | null;
     }>("SELECT * FROM connections");
 
     const connections: PersistedConnection[] = [];
@@ -156,7 +167,7 @@ export const connectionsRepo = {
         sslMode: row.ssl_mode ?? undefined,
         connectionString: row.connection_string ?? undefined,
         lastConnected: row.last_connected ? new Date(row.last_connected) : undefined,
-        sshTunnel: row.ssh_tunnel ? JSON.parse(row.ssh_tunnel) : undefined,
+        sshTunnel: safeJsonParse(row.ssh_tunnel, undefined),
         savePassword: row.save_password === 1,
         saveSshPassword: row.save_ssh_password === 1,
         saveSshKeyPassphrase: row.save_ssh_key_passphrase === 1,
@@ -171,6 +182,8 @@ export const connectionsRepo = {
           row.ai_share_data === null || row.ai_share_data === undefined
             ? undefined
             : Boolean(row.ai_share_data),
+        activeAIProviderId: row.active_ai_provider_id ?? undefined,
+        activeAIModel: row.active_ai_model ?? undefined,
       });
     }
     return connections;
@@ -181,8 +194,9 @@ export const connectionsRepo = {
       `INSERT INTO connections
        (id, project_id, name, type, host, port, database_name, username, ssl_mode,
         connection_string, last_connected, ssh_tunnel, save_password, save_ssh_password,
-        save_ssh_key_passphrase, is_local_only, shared_connection_id, ai_share_schema, ai_share_data)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        save_ssh_key_passphrase, is_local_only, shared_connection_id, ai_share_schema, ai_share_data,
+        active_ai_provider_id, active_ai_model)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          project_id = excluded.project_id,
          name = excluded.name,
@@ -201,7 +215,9 @@ export const connectionsRepo = {
          is_local_only = excluded.is_local_only,
          shared_connection_id = excluded.shared_connection_id,
          ai_share_schema = excluded.ai_share_schema,
-         ai_share_data = excluded.ai_share_data`,
+         ai_share_data = excluded.ai_share_data,
+         active_ai_provider_id = excluded.active_ai_provider_id,
+         active_ai_model = excluded.active_ai_model`,
       [
         conn.id,
         conn.projectId,
@@ -224,6 +240,8 @@ export const connectionsRepo = {
         conn.sharedConnectionId ?? null,
         conn.aiShareSchema === undefined ? null : conn.aiShareSchema ? 1 : 0,
         conn.aiShareData === undefined ? null : conn.aiShareData ? 1 : 0,
+        conn.activeAIProviderId ?? null,
+        conn.activeAIModel ?? null,
       ],
     );
 
@@ -351,7 +369,9 @@ export const projectStateRepo = {
       "SELECT id, data FROM saved_canvases WHERE project_id = ?",
       [projectId],
     );
-    const savedWorkflows: SavedWorkflow[] = workflowRows.map((r) => JSON.parse(r.data));
+    const savedWorkflows: SavedWorkflow[] = workflowRows
+      .map((r) => safeJsonParse<SavedWorkflow | null>(r.data, null))
+      .filter((w): w is SavedWorkflow => w !== null);
 
     // Read active_dashboard_tab_id if the column exists
     let activeDashboardTabId: string | null = null;
@@ -375,7 +395,7 @@ export const projectStateRepo = {
         [projectId],
       );
       if (starredRow.length > 0) {
-        starredSharedQueryIds = JSON.parse(starredRow[0].starred_shared_query_ids);
+        starredSharedQueryIds = safeJsonParse(starredRow[0].starred_shared_query_ids, []);
       }
     } catch {
       // Column doesn't exist yet (pre-migration)
@@ -389,7 +409,10 @@ export const projectStateRepo = {
         [projectId],
       );
       if (starredDashRow.length > 0) {
-        starredSharedDashboardIds = JSON.parse(starredDashRow[0].starred_shared_dashboard_ids);
+        starredSharedDashboardIds = safeJsonParse(
+          starredDashRow[0].starred_shared_dashboard_ids,
+          [],
+        );
       }
     } catch {
       // Column doesn't exist yet (pre-migration)
@@ -403,7 +426,7 @@ export const projectStateRepo = {
         [projectId],
       );
       if (paneRow.length > 0 && paneRow[0].pane_layout) {
-        paneLayout = JSON.parse(paneRow[0].pane_layout);
+        paneLayout = safeJsonParse(paneRow[0].pane_layout, undefined);
       }
     } catch {
       // Column doesn't exist yet (pre-v4 migration)
@@ -417,7 +440,7 @@ export const projectStateRepo = {
       erdTabs,
       statisticsTabs,
       workflowTabs,
-      tabOrder: JSON.parse(state.tab_order),
+      tabOrder: safeJsonParse(state.tab_order, []),
       activeQueryTabId: state.active_query_tab_id,
       activeSchemaTabId: state.active_schema_tab_id,
       activeExplainTabId: state.active_explain_tab_id,
@@ -611,7 +634,7 @@ export const savedQueriesRepo = {
       projectId: r.project_id,
       name: r.name,
       query: r.query,
-      parameters: r.parameters ? JSON.parse(r.parameters) : undefined,
+      parameters: safeJsonParse(r.parameters, undefined),
       starred: !!(r as Record<string, unknown>).starred,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
@@ -676,9 +699,7 @@ export const queryHistoryRepo = {
       executionTime: r.execution_time,
       rowCount: r.row_count,
       favorite: r.favorite === 1,
-      connectionLabelsSnapshot: r.connection_labels_snapshot
-        ? JSON.parse(r.connection_labels_snapshot)
-        : [],
+      connectionLabelsSnapshot: safeJsonParse(r.connection_labels_snapshot, []),
       connectionNameSnapshot: r.connection_name_snapshot,
     }));
   },
@@ -723,7 +744,9 @@ export const sharedReposRepo = {
     activeRepoId: string | null;
   }> {
     const rows = await db.query<{ id: string; data: string }>("SELECT id, data FROM shared_repos");
-    const repos: PersistedSharedQueryRepo[] = rows.map((r) => JSON.parse(r.data));
+    const repos: PersistedSharedQueryRepo[] = rows
+      .map((r) => safeJsonParse<PersistedSharedQueryRepo | null>(r.data, null))
+      .filter((r): r is PersistedSharedQueryRepo => r !== null);
     const activeRepoId = await appStateRepo.get(db, "activeRepoId");
     return { repos, activeRepoId };
   },
@@ -771,7 +794,9 @@ export const themeRepo = {
 
   async loadUserThemes(db: SqliteDatabase): Promise<unknown[]> {
     const rows = await db.query<{ id: string; data: string }>("SELECT id, data FROM user_themes");
-    return rows.map((r) => JSON.parse(r.data));
+    return rows
+      .map((r) => safeJsonParse<unknown>(r.data, null))
+      .filter((t): t is NonNullable<typeof t> => t !== null);
   },
 
   async saveUserThemes(db: SqliteDatabase, themes: unknown[]): Promise<void> {
@@ -792,7 +817,7 @@ export const licenseRepo = {
   async load(db: SqliteDatabase): Promise<unknown> {
     const rows = await db.query<{ data: string }>("SELECT data FROM license_state WHERE id = 1");
     if (rows.length === 0) return null;
-    return JSON.parse(rows[0].data);
+    return safeJsonParse(rows[0].data, null);
   },
 
   async save(db: SqliteDatabase, data: unknown): Promise<void> {
@@ -808,7 +833,7 @@ export const onboardingRepo = {
   async load(db: SqliteDatabase): Promise<unknown> {
     const rows = await db.query<{ data: string }>("SELECT data FROM onboarding_state WHERE id = 1");
     if (rows.length === 0) return null;
-    return JSON.parse(rows[0].data);
+    return safeJsonParse(rows[0].data, null);
   },
 
   async save(db: SqliteDatabase, data: unknown): Promise<void> {

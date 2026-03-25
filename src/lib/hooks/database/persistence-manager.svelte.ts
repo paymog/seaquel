@@ -47,7 +47,7 @@ import { log } from "$lib/utils/logger";
 export class PersistenceManager {
   private persistenceTimer: ReturnType<typeof setTimeout> | null = null;
   private sharedReposTimer: ReturnType<typeof setTimeout> | null = null;
-  private aiChatTimer: ReturnType<typeof setTimeout> | null = null;
+  private aiChatTimers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly PERSISTENCE_DEBOUNCE_MS = 500;
   readonly MAX_HISTORY_ITEMS = 500;
 
@@ -118,10 +118,10 @@ export class PersistenceManager {
       clearTimeout(this.sharedReposTimer);
       this.sharedReposTimer = null;
     }
-    if (this.aiChatTimer) {
-      clearTimeout(this.aiChatTimer);
-      this.aiChatTimer = null;
+    for (const timer of this.aiChatTimers.values()) {
+      clearTimeout(timer);
     }
+    this.aiChatTimers.clear();
     // Persist all projects that have data
     for (const projectId of Object.keys(this.state.queryTabsByProject)) {
       await this.persistProjectState(projectId);
@@ -215,11 +215,6 @@ export class PersistenceManager {
     }));
   }
 
-  serializeConnectionTabs(_projectId: string): [] {
-    // Connection tabs are transient and not persisted (they contain passwords)
-    return [];
-  }
-
   serializeDashboardTabs(projectId: string): PersistedDashboardTab[] {
     const tabs = this.state.dashboardTabsByProject[projectId] ?? [];
     return tabs.map((tab) => ({
@@ -293,7 +288,7 @@ export class PersistenceManager {
 
       await projectsRepo.saveAll(db, projects);
     } catch (error) {
-      console.error("Failed to persist projects:", error);
+      void log.error("Failed to persist projects:", error);
     }
   }
 
@@ -302,7 +297,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       return await projectsRepo.loadAll(db);
     } catch (error) {
-      console.error("Failed to load projects:", error);
+      void log.error("Failed to load projects:", error);
       return [];
     }
   }
@@ -314,7 +309,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       await appStateRepo.set(db, "lastActiveProjectId", this.state.activeProjectId);
     } catch (error) {
-      console.error("Failed to persist app state:", error);
+      void log.error("Failed to persist app state:", error);
     }
   }
 
@@ -323,7 +318,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       return await appStateRepo.get(db, "lastActiveProjectId");
     } catch (error) {
-      console.error("Failed to load last active project:", error);
+      void log.error("Failed to load last active project:", error);
       return null;
     }
   }
@@ -370,7 +365,7 @@ export class PersistenceManager {
       await savedQueriesRepo.saveAll(db, projectId, this.serializeSavedQueries(projectId));
     } catch (error) {
       void log.error(`Persistence failed: ${projectId}`);
-      console.error(`Failed to persist state for project ${projectId}:`, error);
+      void log.error(`Failed to persist state for project ${projectId}:`, error);
     }
   }
 
@@ -379,7 +374,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       return await projectStateRepo.load(db, projectId);
     } catch (error) {
-      console.error(`Failed to load persisted state for project ${projectId}:`, error);
+      void log.error(`Failed to load persisted state for project ${projectId}:`, error);
       return null;
     }
   }
@@ -389,7 +384,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       await projectStateRepo.remove(db, projectId);
     } catch (error) {
-      console.error(`Failed to remove persisted state for project ${projectId}:`, error);
+      void log.error(`Failed to remove persisted state for project ${projectId}:`, error);
     }
   }
 
@@ -398,7 +393,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       await projectsRepo.remove(db, projectId);
     } catch (error) {
-      console.error(`Failed to remove project ${projectId}:`, error);
+      void log.error(`Failed to remove project ${projectId}:`, error);
     }
   }
 
@@ -411,7 +406,7 @@ export class PersistenceManager {
       await queryHistoryRepo.replaceAll(db, connectionId, this.serializeQueryHistory(connectionId));
     } catch (error) {
       void log.error(`Persistence failed: ${connectionId}`);
-      console.error(`Failed to persist data for connection ${connectionId}:`, error);
+      void log.error(`Failed to persist data for connection ${connectionId}:`, error);
     }
   }
 
@@ -424,7 +419,7 @@ export class PersistenceManager {
         queryHistory: await queryHistoryRepo.loadByConnection(db, connectionId),
       };
     } catch (error) {
-      console.error(`Failed to load data for connection ${connectionId}:`, error);
+      void log.error(`Failed to load data for connection ${connectionId}:`, error);
       return { queryHistory: [] };
     }
   }
@@ -434,7 +429,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       return await savedQueriesRepo.loadByProject(db, projectId);
     } catch (error) {
-      console.error(`Failed to load saved queries for project ${projectId}:`, error);
+      void log.error(`Failed to load saved queries for project ${projectId}:`, error);
       return [];
     }
   }
@@ -446,7 +441,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       return await dashboardsRepo.loadByProject(db, projectId);
     } catch (error) {
-      console.error(`Failed to load dashboards for project ${projectId}:`, error);
+      void log.error(`Failed to load dashboards for project ${projectId}:`, error);
       return [];
     }
   }
@@ -457,7 +452,7 @@ export class PersistenceManager {
       await queryHistoryRepo.removeByConnection(db, connectionId);
       await aiChatsRepo.removeByConnection(db, connectionId);
     } catch (error) {
-      console.error(`Failed to remove data for connection ${connectionId}:`, error);
+      void log.error(`Failed to remove data for connection ${connectionId}:`, error);
     }
   }
 
@@ -465,11 +460,15 @@ export class PersistenceManager {
 
   scheduleAIChats(connectionId: string | null): void {
     if (!connectionId) return;
-    if (this.aiChatTimer) clearTimeout(this.aiChatTimer);
-    this.aiChatTimer = setTimeout(() => {
-      void this.persistAIChats(connectionId);
-      this.aiChatTimer = null;
-    }, this.PERSISTENCE_DEBOUNCE_MS);
+    const existing = this.aiChatTimers.get(connectionId);
+    if (existing) clearTimeout(existing);
+    this.aiChatTimers.set(
+      connectionId,
+      setTimeout(() => {
+        void this.persistAIChats(connectionId);
+        this.aiChatTimers.delete(connectionId);
+      }, this.PERSISTENCE_DEBOUNCE_MS),
+    );
   }
 
   async persistAIChats(connectionId: string): Promise<void> {
@@ -486,7 +485,7 @@ export class PersistenceManager {
         });
       }
     } catch (error) {
-      console.error(`Failed to persist AI chats for connection ${connectionId}:`, error);
+      void log.error(`Failed to persist AI chats for connection ${connectionId}:`, error);
     }
   }
 
@@ -525,7 +524,7 @@ export class PersistenceManager {
         })),
       );
     } catch (error) {
-      console.error(`Failed to persist AI chat messages for chat ${chatId}:`, error);
+      void log.error(`Failed to persist AI chat messages for chat ${chatId}:`, error);
     }
   }
 
@@ -534,7 +533,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       return await aiChatsRepo.loadByConnection(db, connectionId);
     } catch (error) {
-      console.error(`Failed to load AI chats for connection ${connectionId}:`, error);
+      void log.error(`Failed to load AI chats for connection ${connectionId}:`, error);
       return [];
     }
   }
@@ -544,7 +543,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       return await aiChatsRepo.loadMessages(db, chatId);
     } catch (error) {
-      console.error(`Failed to load AI chat messages for chat ${chatId}:`, error);
+      void log.error(`Failed to load AI chat messages for chat ${chatId}:`, error);
       return [];
     }
   }
@@ -554,7 +553,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       await aiChatsRepo.removeChat(db, chatId);
     } catch (error) {
-      console.error(`Failed to remove AI chat ${chatId}:`, error);
+      void log.error(`Failed to remove AI chat ${chatId}:`, error);
     }
   }
 
@@ -727,7 +726,7 @@ export class PersistenceManager {
           try {
             await keyring.deleteAllForConnection(connectionId);
           } catch (error) {
-            console.warn("Failed to delete credentials from keyring:", error);
+            void log.warn("Failed to delete credentials from keyring:", error);
           }
         }
 
@@ -744,7 +743,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       return await connectionsRepo.loadAll(db);
     } catch (error) {
-      console.error("Failed to load persisted connections:", error);
+      void log.error("Failed to load persisted connections:", error);
       return [];
     }
   }
@@ -757,7 +756,7 @@ export class PersistenceManager {
       const repos: PersistedSharedQueryRepo[] = this.state.sharedRepos.map(serializeRepo);
       await sharedReposRepo.saveAll(db, repos, this.state.activeRepoId);
     } catch (error) {
-      console.error("Failed to persist shared repos:", error);
+      void log.error("Failed to persist shared repos:", error);
     }
   }
 
@@ -769,7 +768,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       return await sharedReposRepo.loadAll(db);
     } catch (error) {
-      console.error("Failed to load shared repos:", error);
+      void log.error("Failed to load shared repos:", error);
       return { repos: [], activeRepoId: null };
     }
   }
@@ -789,7 +788,7 @@ export class PersistenceManager {
         saveSshKeyPassphrase: override.saveSshKeyPassphrase,
       });
     } catch (error) {
-      console.error("Failed to persist connection override:", error);
+      void log.error("Failed to persist connection override:", error);
     }
   }
 
@@ -811,7 +810,7 @@ export class PersistenceManager {
       }
       return result;
     } catch (error) {
-      console.error("Failed to load connection overrides:", error);
+      void log.error("Failed to load connection overrides:", error);
       return {};
     }
   }
@@ -821,7 +820,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       await connectionOverridesRepo.remove(db, sharedConnectionId);
     } catch (error) {
-      console.error("Failed to remove connection override:", error);
+      void log.error("Failed to remove connection override:", error);
     }
   }
 
@@ -844,7 +843,7 @@ export class PersistenceManager {
       const db = await getDatabase();
       await db.execute("INSERT INTO schema_version (version) VALUES (?)", [version]);
     } catch (error) {
-      console.error("Failed to set storage version:", error);
+      void log.error("Failed to set storage version:", error);
     }
   }
 }

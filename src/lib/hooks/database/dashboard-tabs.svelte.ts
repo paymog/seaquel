@@ -1,3 +1,4 @@
+import type { ActiveViewType } from "$lib/types/persisted";
 import type { DashboardTab } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
@@ -8,38 +9,13 @@ import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelt
  * Tabs are organized per-project.
  */
 export class DashboardTabManager extends BaseTabManager<DashboardTab> {
-  private setActiveView: (
-    view:
-      | "query"
-      | "schema"
-      | "explain"
-      | "erd"
-      | "statistics"
-      | "workflow"
-      | "visualize"
-      | "connection"
-      | "dashboard",
-  ) => void;
-
   constructor(
     state: DatabaseState,
     tabOrdering: TabOrderingManager,
     schedulePersistence: (projectId: string | null) => void,
-    setActiveView: (
-      view:
-        | "query"
-        | "schema"
-        | "explain"
-        | "erd"
-        | "statistics"
-        | "workflow"
-        | "visualize"
-        | "connection"
-        | "dashboard",
-    ) => void,
+    setActiveView: (view: ActiveViewType) => void,
   ) {
-    super(state, tabOrdering, schedulePersistence);
-    this.setActiveView = setActiveView;
+    super(state, tabOrdering, schedulePersistence, setActiveView);
   }
 
   protected get accessors(): TabStateAccessors<DashboardTab> {
@@ -64,7 +40,7 @@ export class DashboardTabManager extends BaseTabManager<DashboardTab> {
       const existingTab = tabs.find((t) => t.dashboardId === dashboardId);
       if (existingTab) {
         this.setActiveTabId(existingTab.id);
-        this.setActiveView("dashboard");
+        this.viewFallbackFn!("dashboard");
         return existingTab.id;
       }
     }
@@ -76,21 +52,9 @@ export class DashboardTabManager extends BaseTabManager<DashboardTab> {
     };
 
     this.appendTab(newTab);
-    this.setActiveView("dashboard");
+    this.viewFallbackFn!("dashboard");
 
     return newTab.id;
-  }
-
-  /**
-   * Remove a dashboard tab. If none left, switch back to query view.
-   */
-  override remove(id: string): void {
-    super.remove(id);
-
-    const remainingTabs = this.state.dashboardTabsByProject[this.state.activeProjectId!] ?? [];
-    if (remainingTabs.length === 0) {
-      this.setActiveView("query");
-    }
   }
 
   /**

@@ -1,3 +1,4 @@
+import type { ActiveViewType } from "$lib/types/persisted";
 import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
 
@@ -23,11 +24,17 @@ export interface TabStateAccessors<T extends { id: string }> {
  * Subclasses provide their own add() and domain-specific methods.
  */
 export abstract class BaseTabManager<T extends { id: string }> {
+  protected viewFallbackFn?: (view: ActiveViewType) => void;
+  protected fallbackView: ActiveViewType = "query";
+
   constructor(
     protected state: DatabaseState,
     protected tabOrdering: TabOrderingManager,
     protected schedulePersistence: (projectId: string | null) => void,
-  ) {}
+    setActiveView?: (view: ActiveViewType) => void,
+  ) {
+    this.viewFallbackFn = setActiveView;
+  }
 
   /**
    * Subclasses must define how their tab data maps to DatabaseState.
@@ -88,11 +95,16 @@ export abstract class BaseTabManager<T extends { id: string }> {
   /**
    * Remove a tab by ID. Delegates to TabOrderingManager for proper
    * active tab selection after removal.
+   * If no tabs remain and setActiveView is configured, falls back to fallbackView.
    */
   remove(id: string): void {
     const { getTabs, setTabs, getActiveId, setActiveId } = this.accessors;
     this.tabOrdering.removeTabGeneric(getTabs, setTabs, getActiveId, setActiveId, id);
     this.schedulePersistence(this.state.activeProjectId);
+
+    if (this.viewFallbackFn && this.state.activeProjectId && this.getProjectTabs().length === 0) {
+      this.viewFallbackFn(this.fallbackView);
+    }
   }
 
   /**

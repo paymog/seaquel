@@ -274,13 +274,14 @@ export class QueryExecutionManager {
   }
 
   /**
-   * Execute only the statement at the cursor position.
+   * Execute only the statement at the cursor position, with optional parameter substitution.
    */
   async executeCurrent(
     tabId: string,
     cursorOffset: number,
     page: number = 1,
     pageSize?: number,
+    parameterValues?: ParameterValue[],
   ): Promise<void> {
     if (!this.state.activeProjectId) return;
 
@@ -312,103 +313,14 @@ export class QueryExecutionManager {
     const effectivePageSize = pageSize ?? tab.results?.[0]?.pageSize ?? this.DEFAULT_PAGE_SIZE;
 
     try {
-      const result = await this.executeStatement(
-        statement.sql,
-        page,
-        effectivePageSize,
-        connection,
-      );
-      void log.info(
-        `Query executed on ${connection.id}: ${result.rowCount} rows in ${result.executionTime}ms`,
-      );
-      const results: StatementResult[] = [
-        {
-          ...result,
-          statementIndex: 0,
-          statementSql: statement.sql,
-          isError: false,
-        },
-      ];
-
-      this.updateQueryTabState(tabId, {
-        results,
-        activeResultIndex: 0,
-        isExecuting: false,
-      });
-
-      // Add to history
-      if (page === 1) {
-        this.queryHistory.addToHistory(statement.sql, results[0]);
+      // Substitute parameters if provided
+      let sql = statement.sql;
+      let bindValues: unknown[] | undefined;
+      if (parameterValues) {
+        const substituted = substituteParameters(statement.sql, parameterValues, dbType);
+        sql = substituted.sql;
+        bindValues = substituted.bindValues;
       }
-    } catch (error) {
-      void log.error(`Query execution failed on ${connection.id}`);
-      const results: StatementResult[] = [
-        {
-          columns: ["Error"],
-          rows: [{ Error: extractErrorMessage(error) }],
-          rowCount: 1,
-          totalRows: 1,
-          executionTime: 0,
-          page: 1,
-          pageSize: 1,
-          totalPages: 1,
-          statementIndex: 0,
-          statementSql: statement.sql,
-          error: extractErrorMessage(error),
-          isError: true,
-        },
-      ];
-
-      this.updateQueryTabState(tabId, {
-        results,
-        activeResultIndex: 0,
-        isExecuting: false,
-      });
-    }
-  }
-
-  /**
-   * Execute only the statement at cursor position with parameters.
-   */
-  async executeCurrentWithParams(
-    tabId: string,
-    cursorOffset: number,
-    parameterValues: ParameterValue[],
-    page: number = 1,
-    pageSize?: number,
-  ): Promise<void> {
-    if (!this.state.activeProjectId) return;
-
-    const connection = this.state.activeConnection;
-    const isConnected = !!connection?.providerConnectionId;
-    if (!connection || !isConnected) {
-      errorToast("Not connected to database. Please reconnect.");
-      return;
-    }
-
-    const tabs = this.state.queryTabsByProject[this.state.activeProjectId] ?? [];
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab) return;
-
-    // Get database type for parsing
-    const dbType = connection.type ?? "postgres";
-
-    // Get the statement at cursor position
-    const statement = getStatementAtOffset(tab.query, cursorOffset, dbType);
-    if (!statement) {
-      toast.info(m.query_no_executable_statements());
-      return;
-    }
-
-    // Mark as executing
-    this.updateQueryTabState(tabId, { isExecuting: true });
-
-    // Get effective page size
-    const effectivePageSize = pageSize ?? tab.results?.[0]?.pageSize ?? this.DEFAULT_PAGE_SIZE;
-
-    try {
-      // Substitute parameters
-      const { sql, bindValues } = substituteParameters(statement.sql, parameterValues, dbType);
 
       const result = await this.executeStatement(
         sql,
@@ -466,10 +378,26 @@ export class QueryExecutionManager {
     }
   }
 
+  /** @deprecated Use executeCurrent with parameterValues param */
+  executeCurrentWithParams(
+    tabId: string,
+    cursorOffset: number,
+    parameterValues: ParameterValue[],
+    page?: number,
+    pageSize?: number,
+  ) {
+    return this.executeCurrent(tabId, cursorOffset, page, pageSize, parameterValues);
+  }
+
   /**
-   * Execute all statements in a query tab.
+   * Execute all statements in a query tab, with optional parameter substitution.
    */
-  async execute(tabId: string, page: number = 1, pageSize?: number): Promise<void> {
+  async execute(
+    tabId: string,
+    page: number = 1,
+    pageSize?: number,
+    parameterValues?: ParameterValue[],
+  ): Promise<void> {
     if (!this.state.activeProjectId) return;
 
     const connection = this.state.activeConnection;
@@ -516,11 +444,26 @@ export class QueryExecutionManager {
     for (let i = 0; i < statements.length; i++) {
       const stmt = statements[i];
       try {
-        const result = await this.executeStatement(stmt.sql, page, effectivePageSize, connection);
+        // Substitute parameters if provided
+        let sql = stmt.sql;
+        let bindValues: unknown[] | undefined;
+        if (parameterValues) {
+          const substituted = substituteParameters(stmt.sql, parameterValues, dbType);
+          sql = substituted.sql;
+          bindValues = substituted.bindValues;
+        }
+
+        const result = await this.executeStatement(
+          sql,
+          page,
+          effectivePageSize,
+          connection,
+          bindValues,
+        );
         allResults.push({
           ...result,
           statementIndex: i,
-          statementSql: stmt.sql,
+          statementSql: stmt.sql, // Keep original SQL for display
           isError: false,
         });
       } catch (error) {
@@ -575,126 +518,14 @@ export class QueryExecutionManager {
     }
   }
 
-  /**
-   * Execute a parameterized query with user-provided values.
-   * Substitutes {{param}} placeholders with values before execution.
-   */
-  async executeWithParams(
+  /** @deprecated Use execute with parameterValues param */
+  executeWithParams(
     tabId: string,
     parameterValues: ParameterValue[],
-    page: number = 1,
+    page?: number,
     pageSize?: number,
-  ): Promise<void> {
-    if (!this.state.activeProjectId) return;
-
-    const connection = this.state.activeConnection;
-    const isConnected = !!connection?.providerConnectionId;
-    if (!connection || !isConnected) {
-      errorToast("Not connected to database. Please reconnect.");
-      return;
-    }
-
-    const tabs = this.state.queryTabsByProject[this.state.activeProjectId] ?? [];
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab) return;
-
-    // Mark as executing
-    this.updateQueryTabState(tabId, { isExecuting: true });
-
-    // Get effective page size: use the first SELECT-type result's pageSize from previous execution, or default.
-    const previousSelectResult = tab.results?.find(
-      (r) => !r.isError && !r.isUtility && r.queryType === "select",
-    );
-    const effectivePageSize = pageSize ?? previousSelectResult?.pageSize ?? this.DEFAULT_PAGE_SIZE;
-
-    // Get database type
-    const dbType = connection.type ?? "postgres";
-
-    // Parse SQL into individual statements
-    const statements = splitSqlStatements(tab.query, dbType);
-
-    // Handle case where all statements are comments
-    if (statements.length === 0) {
-      this.updateQueryTabState(tabId, {
-        results: [],
-        activeResultIndex: 0,
-        isExecuting: false,
-      });
-      toast.info(m.query_no_executable_statements());
-      return;
-    }
-
-    const allResults: StatementResult[] = [];
-
-    // Execute each statement with parameter substitution, updating the UI incrementally
-    for (let i = 0; i < statements.length; i++) {
-      const stmt = statements[i];
-      try {
-        // Substitute parameters for this statement
-        const { sql, bindValues } = substituteParameters(stmt.sql, parameterValues, dbType);
-
-        const result = await this.executeStatement(
-          sql,
-          page,
-          effectivePageSize,
-          connection,
-          bindValues,
-        );
-        allResults.push({
-          ...result,
-          statementIndex: i,
-          statementSql: stmt.sql, // Keep original SQL with {{}} for display
-          isError: false,
-        });
-      } catch (error) {
-        allResults.push({
-          columns: ["Error"],
-          rows: [{ Error: extractErrorMessage(error) }],
-          rowCount: 1,
-          totalRows: 1,
-          executionTime: 0,
-          page: 1,
-          pageSize: effectivePageSize,
-          totalPages: 1,
-          statementIndex: i,
-          statementSql: stmt.sql,
-          error: extractErrorMessage(error),
-          isError: true,
-        });
-      }
-
-      // Update UI incrementally after each statement completes
-      this.updateQueryTabState(tabId, {
-        results: this.filterAndIndexResults(allResults),
-        activeResultIndex: 0,
-      });
-    }
-
-    // Log summary for all statements
-    const totalTimeP = allResults.reduce((sum, r) => sum + (r.executionTime ?? 0), 0);
-    const totalRowsP = allResults.reduce((sum, r) => sum + (r.isError ? 0 : r.rowCount), 0);
-    const errorCountP = allResults.filter((r) => r.isError).length;
-    if (errorCountP > 0) {
-      void log.warn(
-        `Query batch on ${connection.id}: ${allResults.length} statements, ${errorCountP} failed, ${totalRowsP} rows in ${Math.round(totalTimeP * 100) / 100}ms`,
-      );
-    } else {
-      void log.info(
-        `Query batch on ${connection.id}: ${allResults.length} statements, ${totalRowsP} rows in ${Math.round(totalTimeP * 100) / 100}ms`,
-      );
-    }
-
-    // Mark execution as complete
-    this.updateQueryTabState(tabId, {
-      isExecuting: false,
-    });
-
-    // Add to history (only on first page, use first meaningful result)
-    const indexedResults = this.filterAndIndexResults(allResults);
-    if (page === 1 && indexedResults.length > 0) {
-      const historyResult = indexedResults.find((r) => !r.isUtility) ?? indexedResults[0];
-      this.queryHistory.addToHistory(tab.query, historyResult);
-    }
+  ) {
+    return this.execute(tabId, page, pageSize, parameterValues);
   }
 
   /**

@@ -2,6 +2,17 @@ import type { Dashboard, DashboardWidget } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import { getDatabase, dashboardsRepo } from "$lib/storage";
 import type { PersistedDashboard } from "$lib/storage/repository";
+import { log } from "$lib/utils/logger";
+
+/**
+ * Strip runtime-only state from a dashboard widget before persistence or serialization.
+ */
+export function stripWidgetRuntimeState(
+  widget: DashboardWidget,
+): Omit<DashboardWidget, "result" | "isLoading" | "error" | "lastRefreshed"> {
+  const { result: _r, isLoading: _l, error: _e, lastRefreshed: _lr, ...rest } = widget;
+  return rest;
+}
 
 /**
  * Manages dashboard CRUD operations, widget execution, and auto-refresh.
@@ -66,7 +77,7 @@ export class DashboardManager {
       const db = await getDatabase();
       await dashboardsRepo.remove(db, id);
     } catch (error) {
-      console.error("Failed to delete dashboard:", error);
+      void log.error("Failed to delete dashboard:", error);
     }
   }
 
@@ -289,7 +300,7 @@ export class DashboardManager {
         [projectId]: dashboards,
       };
     } catch (error) {
-      console.error("Failed to load dashboards:", error);
+      void log.error("Failed to load dashboards:", error);
     }
   }
 
@@ -377,9 +388,7 @@ export class DashboardManager {
     try {
       const db = await getDatabase();
       // Strip runtime state from widgets before persisting
-      const widgetsForStorage = dashboard.widgets.map(
-        ({ result: _, isLoading: __, error: ___, lastRefreshed: ____, ...rest }) => rest,
-      );
+      const widgetsForStorage = dashboard.widgets.map(stripWidgetRuntimeState);
 
       const persisted: PersistedDashboard = {
         id: dashboard.id,
@@ -395,7 +404,7 @@ export class DashboardManager {
 
       await dashboardsRepo.save(db, persisted);
     } catch (error) {
-      console.error("Failed to persist dashboard:", error);
+      void log.error("Failed to persist dashboard:", error);
     }
   }
 }

@@ -336,7 +336,7 @@ export class ProjectManager {
   async remove(id: string): Promise<boolean> {
     // Cannot delete the last project
     if (this.state.projects.length <= 1) {
-      console.warn("Cannot delete the last project");
+      void log.warn("Cannot delete the last project");
       return false;
     }
 

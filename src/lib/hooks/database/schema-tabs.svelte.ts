@@ -3,7 +3,7 @@ import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
 import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelte.js";
 import { getAdapter, type DatabaseAdapter } from "$lib/db";
-import type { ProviderRegistry } from "$lib/providers";
+import type { ProviderRegistry, DatabaseProvider } from "$lib/providers";
 import { handleError, createError } from "$lib/errors";
 import { log } from "$lib/utils/logger";
 
@@ -32,26 +32,15 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
   }
 
   /**
-   * Add a schema tab for the specified table.
-   * Fetches table metadata (columns, indexes, foreign keys).
+   * Fetch columns, indexes, and foreign keys for a single table.
+   * Returns an updated SchemaTable with metadata populated.
    */
-  async add(table: SchemaTable): Promise<string | null> {
-    if (
-      !this.state.activeProjectId ||
-      !this.state.activeConnectionId ||
-      !this.state.activeConnection
-    )
-      return null;
-
-    const projectId = this.state.activeProjectId;
-    const connectionId = this.state.activeConnectionId;
-    const tabs = this.getProjectTabs();
-    const adapter = getAdapter(this.state.activeConnection.type);
-    const providerConnectionId = this.state.activeConnection.providerConnectionId;
-    if (!providerConnectionId) return null;
-
-    // Fetch table metadata - query columns and indexes
-    const provider = await this.providers.getForType(this.state.activeConnection.type);
+  private async fetchTableMetadata(
+    provider: DatabaseProvider,
+    providerConnectionId: string,
+    adapter: DatabaseAdapter,
+    table: SchemaTable,
+  ): Promise<SchemaTable> {
     const columnsResult = await provider.select(
       providerConnectionId,
       adapter.getColumnsQuery(table.name, table.schema),
@@ -70,12 +59,39 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
       );
     }
 
-    // Update table with fetched columns and indexes
-    const updatedTable: SchemaTable = {
+    return {
       ...table,
       columns: adapter.parseColumnsResult(columnsResult || [], foreignKeysResult),
       indexes: adapter.parseIndexesResult(indexesResult || []),
     };
+  }
+
+  /**
+   * Add a schema tab for the specified table.
+   * Fetches table metadata (columns, indexes, foreign keys).
+   */
+  async add(table: SchemaTable): Promise<string | null> {
+    if (
+      !this.state.activeProjectId ||
+      !this.state.activeConnectionId ||
+      !this.state.activeConnection
+    )
+      return null;
+
+    const projectId = this.state.activeProjectId;
+    const connectionId = this.state.activeConnectionId;
+    const tabs = this.getProjectTabs();
+    const adapter = getAdapter(this.state.activeConnection.type);
+    const providerConnectionId = this.state.activeConnection.providerConnectionId;
+    if (!providerConnectionId) return null;
+
+    const provider = await this.providers.getForType(this.state.activeConnection.type);
+    const updatedTable = await this.fetchTableMetadata(
+      provider,
+      providerConnectionId,
+      adapter,
+      table,
+    );
 
     // Update this.state.schemas with the refreshed table metadata
     const connectionSchemas = [...(this.state.schemas[connectionId] ?? [])];
@@ -131,29 +147,12 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
     // Process tables in parallel but update state as each completes
     const promises = tables.map(async (table, index) => {
       try {
-        const columnsResult = await provider.select(
+        const updatedTable = await this.fetchTableMetadata(
+          provider,
           providerConnectionId,
-          adapter.getColumnsQuery(table.name, table.schema),
+          adapter,
+          table,
         );
-
-        const indexesResult = await provider.select(
-          providerConnectionId,
-          adapter.getIndexesQuery(table.name, table.schema),
-        );
-
-        let foreignKeysResult: unknown[] | undefined;
-        if (adapter.getForeignKeysQuery) {
-          foreignKeysResult = await provider.select(
-            providerConnectionId,
-            adapter.getForeignKeysQuery(table.name, table.schema),
-          );
-        }
-
-        const updatedTable: SchemaTable = {
-          ...table,
-          columns: adapter.parseColumnsResult(columnsResult || [], foreignKeysResult),
-          indexes: adapter.parseIndexesResult(indexesResult || []),
-        };
 
         // Update the schema state with the new table metadata
         const currentSchemas = this.state.schemas[connectionId];

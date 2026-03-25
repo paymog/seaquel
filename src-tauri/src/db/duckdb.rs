@@ -67,8 +67,11 @@ impl Driver for DuckdbDriver {
     async fn query(
         &self,
         sql: &str,
-        _params: Vec<serde_json::Value>,
+        params: Vec<serde_json::Value>,
     ) -> Result<QueryResult, DbError> {
+        if !params.is_empty() {
+            return Err(DbError::execute_error("Parameter binding is not supported for the DuckDB driver. Use inline values instead."));
+        }
         let sql = sql.to_string();
 
         // DuckDB is synchronous — we can't hold a MutexGuard across await,
@@ -112,8 +115,11 @@ impl Driver for DuckdbDriver {
     async fn execute(
         &self,
         sql: &str,
-        _params: Vec<serde_json::Value>,
+        params: Vec<serde_json::Value>,
     ) -> Result<ExecuteResult, DbError> {
+        if !params.is_empty() {
+            return Err(DbError::execute_error("Parameter binding is not supported for the DuckDB driver. Use inline values instead."));
+        }
         let conn = self.connection.lock().map_err(|e| DbError {
             message: format!("Failed to lock connection: {}", e),
             code: "LOCK_ERROR".to_string(),

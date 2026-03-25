@@ -77,7 +77,7 @@ export class ConnectionManager {
               password = savedPassword;
             }
           } catch (error) {
-            console.warn("Failed to load password from keyring:", error);
+            void log.warn("Failed to load password from keyring:", error);
           }
         }
 
@@ -128,7 +128,7 @@ export class ConnectionManager {
         await this.stateRestoration.loadConnectionData(connection.id);
       }
     } catch (error) {
-      console.error("Failed to load persisted connections:", error);
+      void log.error("Failed to load persisted connections:", error);
       // Silently fail - app will continue with no persisted connections
     } finally {
       this.state.connectionsLoading = false;
@@ -199,100 +199,105 @@ export class ConnectionManager {
   async add(connection: ConnectionInput): Promise<string> {
     void log.info(`Adding connection: type=${connection.type}`);
     const connectionId = `conn-${crypto.randomUUID()}`;
+    this.connectingIds.add(connectionId);
 
-    const { effectiveConnectionString, tunnelLocalPort } = await this.setupSshTunnel(
-      connection,
-      {
-        sshPassword: connection.sshPassword,
-        sshKeyPath: connection.sshKeyPath,
-        sshKeyPassphrase: connection.sshKeyPassphrase,
-      },
-      connectionId,
-    );
-
-    // Connect to database via unified provider
-    const provider = await this.providers.getForType(connection.type);
-    const providerConnectionId = await provider.connect({
-      type: connection.type,
-      host: tunnelLocalPort ? "127.0.0.1" : connection.host,
-      port: tunnelLocalPort || connection.port,
-      databaseName: connection.databaseName,
-      username: connection.username,
-      password: connection.password,
-      sslMode: connection.sslMode,
-      connectionString: effectiveConnectionString,
-    });
-
-    const projectId = connection.projectId || this.state.activeProjectId || DEFAULT_PROJECT_ID;
-    const newConnection: DatabaseConnection = {
-      ...connection,
-      id: connectionId,
-      projectId,
-      isLocalOnly: connection.isLocalOnly ?? true,
-      labelIds: connection.labelIds || [],
-      lastConnected: new Date(),
-      tunnelLocalPort,
-      providerConnectionId,
-    };
-
-    if (!this.state.connections.find((c) => c.id === newConnection.id)) {
-      this.state.connections.push(newConnection);
-    }
-
-    this.stateRestoration.initializeConnectionMaps(newConnection.id);
-
-    // Load schema - wrap in try-catch to handle failures gracefully
-    const adapter = getAdapter(newConnection.type);
-    let schemasWithTables: SchemaTable[];
     try {
-      const schemaProvider = await this.providers.getForType(newConnection.type);
-      const schemasWithTablesDbResult = await schemaProvider.select(
-        providerConnectionId,
-        adapter.getSchemaQuery(),
+      const { effectiveConnectionString, tunnelLocalPort } = await this.setupSshTunnel(
+        connection,
+        {
+          sshPassword: connection.sshPassword,
+          sshKeyPath: connection.sshKeyPath,
+          sshKeyPassphrase: connection.sshKeyPassphrase,
+        },
+        connectionId,
       );
-      schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
-    } catch (error) {
-      // Cleanup: remove the connection we just added
-      this.state.connections = this.state.connections.filter((c) => c.id !== newConnection.id);
-      this.stateRestoration.cleanupConnectionMaps(newConnection.id);
-      const cleanupProvider = await this.providers.getForType(newConnection.type);
-      await cleanupProvider.disconnect(providerConnectionId).catch(() => {});
-      throw new Error(`Failed to load database schema: ${String(error)}`);
+
+      // Connect to database via unified provider
+      const provider = await this.providers.getForType(connection.type);
+      const providerConnectionId = await provider.connect({
+        type: connection.type,
+        host: tunnelLocalPort ? "127.0.0.1" : connection.host,
+        port: tunnelLocalPort || connection.port,
+        databaseName: connection.databaseName,
+        username: connection.username,
+        password: connection.password,
+        sslMode: connection.sslMode,
+        connectionString: effectiveConnectionString,
+      });
+
+      const projectId = connection.projectId || this.state.activeProjectId || DEFAULT_PROJECT_ID;
+      const newConnection: DatabaseConnection = {
+        ...connection,
+        id: connectionId,
+        projectId,
+        isLocalOnly: connection.isLocalOnly ?? true,
+        labelIds: connection.labelIds || [],
+        lastConnected: new Date(),
+        tunnelLocalPort,
+        providerConnectionId,
+      };
+
+      if (!this.state.connections.find((c) => c.id === newConnection.id)) {
+        this.state.connections.push(newConnection);
+      }
+
+      this.stateRestoration.initializeConnectionMaps(newConnection.id);
+
+      // Load schema - wrap in try-catch to handle failures gracefully
+      const adapter = getAdapter(newConnection.type);
+      let schemasWithTables: SchemaTable[];
+      try {
+        const schemaProvider = await this.providers.getForType(newConnection.type);
+        const schemasWithTablesDbResult = await schemaProvider.select(
+          providerConnectionId,
+          adapter.getSchemaQuery(),
+        );
+        schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
+      } catch (error) {
+        // Cleanup: remove the connection we just added
+        this.state.connections = this.state.connections.filter((c) => c.id !== newConnection.id);
+        this.stateRestoration.cleanupConnectionMaps(newConnection.id);
+        const cleanupProvider = await this.providers.getForType(newConnection.type);
+        await cleanupProvider.disconnect(providerConnectionId).catch(() => {});
+        throw new Error(`Failed to load database schema: ${String(error)}`);
+      }
+
+      // Only set active connection after schema loading succeeds
+      this.setActiveForProject(newConnection.id, projectId);
+
+      // Store tables immediately (without column metadata) so UI is responsive
+      this.state.schemas = {
+        ...this.state.schemas,
+        [newConnection.id]: schemasWithTables,
+      };
+
+      // Load column metadata asynchronously in the background
+      this.onSchemaLoaded(
+        newConnection.id,
+        schemasWithTables,
+        adapter,
+        newConnection.providerConnectionId,
+      );
+
+      void log.info(`Schema loaded for ${newConnection.id}: ${schemasWithTables.length} tables`);
+
+      // Create initial query tab for new connection
+      this.onCreateInitialTab();
+
+      // Persist the connection to store (password saved to keyring if enabled)
+      await this.persistence.persistConnection(newConnection, {
+        savePassword: connection.savePassword,
+        saveSshPassword: connection.saveSshPassword,
+        saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
+        sshPassword: connection.sshPassword,
+        sshKeyPassphrase: connection.sshKeyPassphrase,
+      });
+
+      void log.info(`Connection established: ${newConnection.id}`);
+      return newConnection.id;
+    } finally {
+      this.connectingIds.delete(connectionId);
     }
-
-    // Only set active connection after schema loading succeeds
-    this.setActiveForProject(newConnection.id, projectId);
-
-    // Store tables immediately (without column metadata) so UI is responsive
-    this.state.schemas = {
-      ...this.state.schemas,
-      [newConnection.id]: schemasWithTables,
-    };
-
-    // Load column metadata asynchronously in the background
-    this.onSchemaLoaded(
-      newConnection.id,
-      schemasWithTables,
-      adapter,
-      newConnection.providerConnectionId,
-    );
-
-    void log.info(`Schema loaded for ${newConnection.id}: ${schemasWithTables.length} tables`);
-
-    // Create initial query tab for new connection
-    this.onCreateInitialTab();
-
-    // Persist the connection to store (password saved to keyring if enabled)
-    await this.persistence.persistConnection(newConnection, {
-      savePassword: connection.savePassword,
-      saveSshPassword: connection.saveSshPassword,
-      saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
-      sshPassword: connection.sshPassword,
-      sshKeyPassphrase: connection.sshKeyPassphrase,
-    });
-
-    void log.info(`Connection established: ${newConnection.id}`);
-    return newConnection.id;
   }
 
   /**
@@ -305,131 +310,136 @@ export class ConnectionManager {
       throw new Error(`Connection with id ${connectionId} not found`);
     }
 
-    // Close existing tunnel if any
-    const existingTunnelId = this.tunnelIds.get(connectionId);
-    if (existingTunnelId) {
-      try {
-        await closeSshTunnel(existingTunnelId);
-      } catch {
-        // Ignore cleanup errors
-      }
-      this.tunnelIds.delete(connectionId);
-    }
-
-    const { effectiveConnectionString: rawConnectionString, tunnelLocalPort } =
-      await this.setupSshTunnel(
-        connection,
-        {
-          sshPassword: connection.sshPassword,
-          sshKeyPath: connection.sshKeyPath,
-          sshKeyPassphrase: connection.sshKeyPassphrase,
-        },
-        connectionId,
-      );
-
-    // Inject password into connection string if provided separately
-    let effectiveConnectionString = rawConnectionString;
-    if (effectiveConnectionString && connection.password) {
-      try {
-        const url = new URL(effectiveConnectionString.replace("postgresql://", "postgres://"));
-        url.password = encodeURIComponent(connection.password);
-        effectiveConnectionString = url.toString();
-      } catch {
-        // Not a URL-based connection string (e.g., file path), skip
-      }
-    }
-
-    // Close existing connection
-    if (existingConnection.providerConnectionId) {
-      const oldProvider = await this.providers.getForType(existingConnection.type);
-      await oldProvider.disconnect(existingConnection.providerConnectionId).catch(() => {});
-    }
-
-    // Connect to database via unified provider
-    const provider = await this.providers.getForType(connection.type);
-    const providerConnectionId = await provider.connect({
-      type: connection.type,
-      host: tunnelLocalPort ? "127.0.0.1" : connection.host,
-      port: tunnelLocalPort || connection.port,
-      databaseName: connection.databaseName,
-      username: connection.username,
-      password: connection.password,
-      sslMode: connection.sslMode,
-      connectionString: effectiveConnectionString,
-    });
-
-    // Create updated connection object to ensure Svelte reactivity sees the change
-    const updatedConnection: DatabaseConnection = {
-      ...existingConnection,
-      providerConnectionId,
-      lastConnected: new Date(),
-      username: connection.username,
-      password: connection.password,
-      sslMode: connection.sslMode,
-      connectionString: connection.connectionString,
-      tunnelLocalPort,
-      sshTunnel: connection.sshTunnel,
-      savePassword: connection.savePassword,
-      saveSshPassword: connection.saveSshPassword,
-      saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
-    };
-
-    // Replace the old connection with the updated one in the connections array
-    this.state.connections = this.state.connections.map((c) =>
-      c.id === connectionId ? updatedConnection : c,
-    );
-
-    this.stateRestoration.ensureConnectionMapsExist(connectionId);
-
-    // Fetch schemas - wrap in try-catch to handle failures gracefully
-    const adapter = getAdapter(existingConnection.type);
-    let schemasWithTables: SchemaTable[];
+    this.connectingIds.add(connectionId);
     try {
-      const schemaProvider = await this.providers.getForType(existingConnection.type);
-      const schemasWithTablesDbResult = await schemaProvider.select(
+      // Close existing tunnel if any
+      const existingTunnelId = this.tunnelIds.get(connectionId);
+      if (existingTunnelId) {
+        try {
+          await closeSshTunnel(existingTunnelId);
+        } catch {
+          // Ignore cleanup errors
+        }
+        this.tunnelIds.delete(connectionId);
+      }
+
+      const { effectiveConnectionString: rawConnectionString, tunnelLocalPort } =
+        await this.setupSshTunnel(
+          connection,
+          {
+            sshPassword: connection.sshPassword,
+            sshKeyPath: connection.sshKeyPath,
+            sshKeyPassphrase: connection.sshKeyPassphrase,
+          },
+          connectionId,
+        );
+
+      // Inject password into connection string if provided separately
+      let effectiveConnectionString = rawConnectionString;
+      if (effectiveConnectionString && connection.password) {
+        try {
+          const url = new URL(effectiveConnectionString.replace("postgresql://", "postgres://"));
+          url.password = encodeURIComponent(connection.password);
+          effectiveConnectionString = url.toString();
+        } catch {
+          // Not a URL-based connection string (e.g., file path), skip
+        }
+      }
+
+      // Close existing connection
+      if (existingConnection.providerConnectionId) {
+        const oldProvider = await this.providers.getForType(existingConnection.type);
+        await oldProvider.disconnect(existingConnection.providerConnectionId).catch(() => {});
+      }
+
+      // Connect to database via unified provider
+      const provider = await this.providers.getForType(connection.type);
+      const providerConnectionId = await provider.connect({
+        type: connection.type,
+        host: tunnelLocalPort ? "127.0.0.1" : connection.host,
+        port: tunnelLocalPort || connection.port,
+        databaseName: connection.databaseName,
+        username: connection.username,
+        password: connection.password,
+        sslMode: connection.sslMode,
+        connectionString: effectiveConnectionString,
+      });
+
+      // Create updated connection object to ensure Svelte reactivity sees the change
+      const updatedConnection: DatabaseConnection = {
+        ...existingConnection,
         providerConnectionId,
-        adapter.getSchemaQuery(),
-      );
-      schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
-    } catch (error) {
-      // Revert: set providerConnectionId back to undefined on the connection
+        lastConnected: new Date(),
+        username: connection.username,
+        password: connection.password,
+        sslMode: connection.sslMode,
+        connectionString: connection.connectionString,
+        tunnelLocalPort,
+        sshTunnel: connection.sshTunnel,
+        savePassword: connection.savePassword,
+        saveSshPassword: connection.saveSshPassword,
+        saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
+      };
+
+      // Replace the old connection with the updated one in the connections array
       this.state.connections = this.state.connections.map((c) =>
-        c.id === connectionId ? { ...c, providerConnectionId: undefined } : c,
+        c.id === connectionId ? updatedConnection : c,
       );
-      const cleanupProvider = await this.providers.getForType(existingConnection.type);
-      await cleanupProvider.disconnect(providerConnectionId).catch(() => {});
-      throw new Error(`Failed to load database schema: ${String(error)}`);
+
+      this.stateRestoration.ensureConnectionMapsExist(connectionId);
+
+      // Fetch schemas - wrap in try-catch to handle failures gracefully
+      const adapter = getAdapter(existingConnection.type);
+      let schemasWithTables: SchemaTable[];
+      try {
+        const schemaProvider = await this.providers.getForType(existingConnection.type);
+        const schemasWithTablesDbResult = await schemaProvider.select(
+          providerConnectionId,
+          adapter.getSchemaQuery(),
+        );
+        schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
+      } catch (error) {
+        // Revert: set providerConnectionId back to undefined on the connection
+        this.state.connections = this.state.connections.map((c) =>
+          c.id === connectionId ? { ...c, providerConnectionId: undefined } : c,
+        );
+        const cleanupProvider = await this.providers.getForType(existingConnection.type);
+        await cleanupProvider.disconnect(providerConnectionId).catch(() => {});
+        throw new Error(`Failed to load database schema: ${String(error)}`);
+      }
+
+      // Store tables immediately (without column metadata) so UI is responsive
+      this.state.schemas = {
+        ...this.state.schemas,
+        [connectionId]: schemasWithTables,
+      };
+
+      // Load column metadata asynchronously in the background
+      this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
+
+      // Set this as the active connection (only after schema loading succeeds)
+      this.setActiveForProject(connectionId, existingConnection.projectId);
+
+      // Create initial query tab if no tabs exist for the project
+      const projectId = existingConnection.projectId;
+      const tabs = this.state.queryTabsByProject[projectId] ?? [];
+      if (tabs.length === 0) {
+        this.onCreateInitialTab();
+      }
+
+      // Persist the connection to store (password saved to keyring if enabled)
+      await this.persistence.persistConnection(updatedConnection, {
+        savePassword: connection.savePassword,
+        saveSshPassword: connection.saveSshPassword,
+        saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
+        sshPassword: connection.sshPassword,
+        sshKeyPassphrase: connection.sshKeyPassphrase,
+      });
+
+      return connectionId;
+    } finally {
+      this.connectingIds.delete(connectionId);
     }
-
-    // Store tables immediately (without column metadata) so UI is responsive
-    this.state.schemas = {
-      ...this.state.schemas,
-      [connectionId]: schemasWithTables,
-    };
-
-    // Load column metadata asynchronously in the background
-    this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
-
-    // Set this as the active connection (only after schema loading succeeds)
-    this.setActiveForProject(connectionId, existingConnection.projectId);
-
-    // Create initial query tab if no tabs exist for the project
-    const projectId = existingConnection.projectId;
-    const tabs = this.state.queryTabsByProject[projectId] ?? [];
-    if (tabs.length === 0) {
-      this.onCreateInitialTab();
-    }
-
-    // Persist the connection to store (password saved to keyring if enabled)
-    await this.persistence.persistConnection(updatedConnection, {
-      savePassword: connection.savePassword,
-      saveSshPassword: connection.saveSshPassword,
-      saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
-      sshPassword: connection.sshPassword,
-      sshKeyPassphrase: connection.sshKeyPassphrase,
-    });
-
-    return connectionId;
   }
 
   /**
@@ -559,14 +569,14 @@ export class ConnectionManager {
     // Close provider connection if exists
     if (connection?.providerConnectionId) {
       await this.providers.getForType(connection.type).then((provider) => {
-        provider.disconnect(connection.providerConnectionId!).catch(console.error);
+        provider.disconnect(connection.providerConnectionId!).catch((e) => void log.error(e));
       });
     }
 
     // Close SSH tunnel if exists
     const tunnelId = this.tunnelIds.get(id);
     if (tunnelId) {
-      closeSshTunnel(tunnelId).catch(console.error);
+      closeSshTunnel(tunnelId).catch((e) => void log.error(e));
       this.tunnelIds.delete(id);
     }
 
@@ -875,7 +885,7 @@ export class ConnectionManager {
       // Disconnect provider connection if connected
       if (connection.providerConnectionId) {
         await this.providers.getForType(connection.type).then((provider) => {
-          provider.disconnect(connection.providerConnectionId!).catch(console.error);
+          provider.disconnect(connection.providerConnectionId!).catch((e) => void log.error(e));
         });
         connection.providerConnectionId = undefined;
       }

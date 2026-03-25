@@ -3,6 +3,8 @@
  */
 import type { SharedDashboard } from "$lib/types";
 import type { DashboardWidget } from "$lib/types/dashboard";
+import { log } from "$lib/utils/logger";
+import { stripWidgetRuntimeState } from "$lib/hooks/database/dashboard-manager.svelte.js";
 
 interface DashboardFileContent {
   name: string;
@@ -29,9 +31,7 @@ export function parseDashboardFile(
     }
 
     // Strip runtime state from widgets
-    const widgets = (data.widgets ?? []).map(
-      ({ result: _, isLoading: __, error: ___, lastRefreshed: ____, ...rest }) => rest,
-    ) as DashboardWidget[];
+    const widgets = (data.widgets ?? []).map(stripWidgetRuntimeState) as DashboardWidget[];
 
     return {
       id: `${repoId}:${filePath}`,
@@ -44,7 +44,7 @@ export function parseDashboardFile(
       dateFilter: data.dateFilter ?? null,
     };
   } catch {
-    console.warn(`Failed to parse dashboard file: ${filePath}`);
+    void log.warn(`Failed to parse dashboard file: ${filePath}`);
     return null;
   }
 }
@@ -54,9 +54,7 @@ export function parseDashboardFile(
  */
 export function serializeDashboardFile(dashboard: SharedDashboard): string {
   // Strip runtime state from widgets
-  const widgets = dashboard.widgets.map(
-    ({ result: _, isLoading: __, error: ___, lastRefreshed: ____, ...rest }) => rest,
-  );
+  const widgets = dashboard.widgets.map(stripWidgetRuntimeState);
 
   const content: DashboardFileContent = {
     name: dashboard.name,

@@ -372,7 +372,7 @@ pub fn run() {
                 .targets([
                     Target::new(TargetKind::Stdout),
                     Target::new(TargetKind::LogDir { file_name: Some("seaquel".into()) }),
-                    Target::new(TargetKind::Webview),
+                    Target::new(TargetKind::Webview).filter(|metadata| metadata.level() <= log::Level::Info),
                 ])
                 .level(log::LevelFilter::Info)
                 .level_for("seaquel_lib", log::LevelFilter::Trace)

@@ -1,3 +1,4 @@
+import type { ActiveViewType } from "$lib/types/persisted";
 import type { StatisticsTab, DatabaseStatistics } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
@@ -9,40 +10,16 @@ import { getAdapter } from "$lib/db/index.js";
  * Tabs are organized per-project.
  */
 export class StatisticsTabManager extends BaseTabManager<StatisticsTab> {
-  private setActiveView: (
-    view:
-      | "query"
-      | "schema"
-      | "explain"
-      | "erd"
-      | "statistics"
-      | "workflow"
-      | "visualize"
-      | "connection"
-      | "dashboard",
-  ) => void;
   private executeQuery: (query: string) => Promise<Record<string, unknown>[]>;
 
   constructor(
     state: DatabaseState,
     tabOrdering: TabOrderingManager,
     schedulePersistence: (projectId: string | null) => void,
-    setActiveView: (
-      view:
-        | "query"
-        | "schema"
-        | "explain"
-        | "erd"
-        | "statistics"
-        | "workflow"
-        | "visualize"
-        | "connection"
-        | "dashboard",
-    ) => void,
+    setActiveView: (view: ActiveViewType) => void,
     executeQuery: (query: string) => Promise<Record<string, unknown>[]>,
   ) {
-    super(state, tabOrdering, schedulePersistence);
-    this.setActiveView = setActiveView;
+    super(state, tabOrdering, schedulePersistence, setActiveView);
     this.executeQuery = executeQuery;
   }
 
@@ -74,7 +51,7 @@ export class StatisticsTabManager extends BaseTabManager<StatisticsTab> {
     if (existingTab) {
       // Just switch to the existing tab
       this.setActiveTabId(existingTab.id);
-      this.setActiveView("statistics");
+      this.viewFallbackFn!("statistics");
       // Refresh the data
       await this.refresh(existingTab.id);
       return existingTab.id;
@@ -88,25 +65,12 @@ export class StatisticsTabManager extends BaseTabManager<StatisticsTab> {
     };
 
     this.appendTab(newTab);
-    this.setActiveView("statistics");
+    this.viewFallbackFn!("statistics");
 
     // Load the statistics data
     await this.loadStatistics(newTab.id);
 
     return newTab.id;
-  }
-
-  /**
-   * Remove a Statistics tab by ID.
-   */
-  override remove(id: string): void {
-    super.remove(id);
-
-    // If no more statistics tabs, switch back to query view
-    const remainingTabs = this.state.statisticsTabsByProject[this.state.activeProjectId!] ?? [];
-    if (remainingTabs.length === 0) {
-      this.setActiveView("query");
-    }
   }
 
   /**

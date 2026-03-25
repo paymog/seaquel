@@ -1,3 +1,4 @@
+import type { ActiveViewType } from "$lib/types/persisted";
 import type { WorkflowTab } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
@@ -8,20 +9,13 @@ import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelt
  * Tabs are organized per-project.
  */
 export class WorkflowTabManager extends BaseTabManager<WorkflowTab> {
-  private setActiveView: (
-    view: "query" | "schema" | "explain" | "erd" | "statistics" | "workflow",
-  ) => void;
-
   constructor(
     state: DatabaseState,
     tabOrdering: TabOrderingManager,
     schedulePersistence: (projectId: string | null) => void,
-    setActiveView: (
-      view: "query" | "schema" | "explain" | "erd" | "statistics" | "workflow",
-    ) => void,
+    setActiveView: (view: ActiveViewType) => void,
   ) {
-    super(state, tabOrdering, schedulePersistence);
-    this.setActiveView = setActiveView;
+    super(state, tabOrdering, schedulePersistence, setActiveView);
   }
 
   protected get accessors(): TabStateAccessors<WorkflowTab> {
@@ -52,7 +46,7 @@ export class WorkflowTabManager extends BaseTabManager<WorkflowTab> {
     if (existingTab) {
       // Just switch to the existing tab
       this.setActiveTabId(existingTab.id);
-      this.setActiveView("workflow");
+      this.viewFallbackFn!("workflow");
       return existingTab.id;
     }
 
@@ -63,21 +57,8 @@ export class WorkflowTabManager extends BaseTabManager<WorkflowTab> {
     };
 
     this.appendTab(newWorkflowTab);
-    this.setActiveView("workflow");
+    this.viewFallbackFn!("workflow");
 
     return newWorkflowTab.id;
-  }
-
-  /**
-   * Remove a workflow tab by ID.
-   */
-  override remove(id: string): void {
-    super.remove(id);
-
-    // If no more workflow tabs, switch back to query view
-    const remainingTabs = this.state.workflowTabsByProject[this.state.activeProjectId!] ?? [];
-    if (remainingTabs.length === 0) {
-      this.setActiveView("query");
-    }
   }
 }

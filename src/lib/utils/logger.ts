@@ -26,25 +26,31 @@ async function ensureLog() {
   return _logFns;
 }
 
+function formatMessage(message: string, error?: unknown): string {
+  if (error === undefined) return message;
+  const detail = error instanceof Error ? error.message : JSON.stringify(error);
+  return `${message} ${detail}`;
+}
+
 export const log = {
-  async info(message: string): Promise<void> {
+  async info(message: string, error?: unknown): Promise<void> {
     const fns = await ensureLog();
-    void fns.info(message);
+    void fns.info(formatMessage(message, error));
   },
-  async warn(message: string): Promise<void> {
+  async warn(message: string, error?: unknown): Promise<void> {
     const fns = await ensureLog();
-    void fns.warn(message);
+    void fns.warn(formatMessage(message, error));
   },
-  async error(message: string): Promise<void> {
+  async error(message: string, error?: unknown): Promise<void> {
     const fns = await ensureLog();
-    void fns.error(message);
+    void fns.error(formatMessage(message, error));
   },
-  async debug(message: string): Promise<void> {
+  async debug(message: string, error?: unknown): Promise<void> {
     const fns = await ensureLog();
-    void fns.debug(message);
+    void fns.debug(formatMessage(message, error));
   },
-  async trace(message: string): Promise<void> {
+  async trace(message: string, error?: unknown): Promise<void> {
     const fns = await ensureLog();
-    void fns.trace(message);
+    void fns.trace(formatMessage(message, error));
   },
 };

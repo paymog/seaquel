@@ -1,4 +1,5 @@
 import type { AIMessage, DashboardWidget } from "$lib/types";
+import type { ActiveViewType } from "$lib/types/persisted";
 import type { DatabaseState } from "./state.svelte.js";
 import type { AIChatManager } from "./ai-chat-manager.svelte.js";
 import type { DashboardManager } from "./dashboard-manager.svelte.js";
@@ -6,6 +7,11 @@ import type { DashboardTabManager } from "./dashboard-tabs.svelte.js";
 import { sendAIMessage as sendAIMessageService } from "$lib/services/ai";
 import { resolveMentions } from "$lib/services/ai-mentions";
 import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
+
+function stripWidgetRuntimeState(w: DashboardWidget) {
+  const { result: _r, isLoading: _l, error: _e, lastRefreshed: _lr, ...rest } = w;
+  return rest;
+}
 
 /**
  * Manages UI state: AI panel, view switching.
@@ -106,7 +112,7 @@ export class UIStateManager {
     );
   }
 
-  private _dispatchToAI(content: string, chatId: string, enrichedContent?: string) {
+  private _resolveAISettings() {
     const settings = aiSettingsStore.settings;
     const activeConn = this.state.activeConnection;
     const shareSchema =
@@ -115,9 +121,84 @@ export class UIStateManager {
         : settings.shareSchemaGlobally;
     const shareData =
       activeConn?.aiShareData !== undefined ? activeConn.aiShareData : settings.shareDataGlobally;
-
     const activeProviderId = activeConn?.activeAIProviderId ?? null;
     const activeModel = activeConn?.activeAIModel ?? null;
+    return { shareSchema, shareData, activeProviderId, activeModel };
+  }
+
+  private _buildMessagesForApi(
+    chatId: string,
+    assistantMessageId: string,
+    enrichedContent?: string,
+  ): AIMessage[] {
+    const rawMessages = this._getMessages(chatId).filter(
+      (m) => m.id !== assistantMessageId && !m.pendingModelSelection,
+    );
+    if (!enrichedContent) return rawMessages;
+    return rawMessages.map((msg, i) => {
+      if (i === rawMessages.length - 1 && msg.role === "user") {
+        return { ...msg, content: enrichedContent };
+      }
+      return msg;
+    });
+  }
+
+  private _formatAIError(err: string): string {
+    if (err === "no_provider")
+      return "No AI provider configured. Please add one in **Settings → AI**.";
+    if (err === "no_api_key")
+      return "No API key configured. Please add your key in **Settings → AI**.";
+    if (err === "rate_limit") return "Rate limit reached. Please wait a moment and try again.";
+    return `Error: ${err}`;
+  }
+
+  private _createDashboardCallbacks() {
+    return {
+      onCreateDashboard: async (name: string) => {
+        const dashboard = await this.dashboardManager.createDashboard(name);
+        if (!dashboard) return null;
+        this.dashboardTabs.add(dashboard.id, name);
+        return { dashboardId: dashboard.id };
+      },
+      onAddWidget: async (
+        dashboardId: string,
+        widget: Omit<DashboardWidget, "id" | "result" | "isLoading" | "error" | "lastRefreshed">,
+      ) => {
+        const widgetId = `widget-${crypto.randomUUID()}`;
+        const fullWidget = { ...widget, id: widgetId } as DashboardWidget;
+        await this.dashboardManager.addWidget(dashboardId, fullWidget);
+        await this.dashboardManager.executeWidget(dashboardId, widgetId);
+        return { widgetId };
+      },
+      onGetDashboard: (dashboardId: string) => {
+        const dashboard = this.dashboardManager.getDashboard(dashboardId);
+        if (!dashboard) return null;
+        return {
+          id: dashboard.id,
+          name: dashboard.name,
+          widgets: dashboard.widgets.map(stripWidgetRuntimeState),
+        };
+      },
+      onUpdateWidget: async (
+        dashboardId: string,
+        widgetId: string,
+        updates: Partial<DashboardWidget>,
+      ) => {
+        const queryChanged = updates.query !== undefined;
+        await this.dashboardManager.updateWidget(dashboardId, widgetId, updates);
+        if (queryChanged) {
+          await this.dashboardManager.executeWidget(dashboardId, widgetId);
+        }
+      },
+      onRemoveWidget: async (dashboardId: string, widgetId: string) => {
+        await this.dashboardManager.removeWidget(dashboardId, widgetId);
+      },
+    };
+  }
+
+  private _dispatchToAI(content: string, chatId: string, enrichedContent?: string) {
+    const { shareSchema, shareData, activeProviderId, activeModel } = this._resolveAISettings();
+    const activeConn = this.state.activeConnection;
 
     if (!activeProviderId || !activeModel) {
       const noModelMsg: AIMessage = {
@@ -147,17 +228,7 @@ export class UIStateManager {
     this.aiAbortController = new AbortController();
     const { signal } = this.aiAbortController;
 
-    const rawMessages = this._getMessages(chatId).filter(
-      (m) => m.id !== assistantMessageId && !m.pendingModelSelection,
-    );
-    const messagesForApi = enrichedContent
-      ? rawMessages.map((msg, i) => {
-          if (i === rawMessages.length - 1 && msg.role === "user") {
-            return { ...msg, content: enrichedContent };
-          }
-          return msg;
-        })
-      : rawMessages;
+    const messagesForApi = this._buildMessagesForApi(chatId, assistantMessageId, enrichedContent);
 
     void sendAIMessageService({
       messages: messagesForApi,
@@ -194,78 +265,18 @@ export class UIStateManager {
       },
       onError: (err: string) => {
         this.state.isAIStreaming = false;
-        const errorContent =
-          err === "no_provider"
-            ? "No AI provider configured. Please add one in **Settings → AI**."
-            : err === "no_api_key"
-              ? "No API key configured. Please add your key in **Settings → AI**."
-              : err === "rate_limit"
-                ? "Rate limit reached. Please wait a moment and try again."
-                : `Error: ${err}`;
         this._updateMessage(chatId, assistantMessageId, (m) => ({
           ...m,
-          content: errorContent,
+          content: this._formatAIError(err),
           pendingApproval: null,
         }));
         void this.persistAIChatMessages(chatId);
       },
-      onCreateDashboard: async (name: string) => {
-        const dashboard = await this.dashboardManager.createDashboard(name);
-        if (!dashboard) return null;
-        this.dashboardTabs.add(dashboard.id, name);
-        return { dashboardId: dashboard.id };
-      },
-      onAddWidget: async (
-        dashboardId: string,
-        widget: Omit<DashboardWidget, "id" | "result" | "isLoading" | "error" | "lastRefreshed">,
-      ) => {
-        const widgetId = `widget-${crypto.randomUUID()}`;
-        const fullWidget = { ...widget, id: widgetId } as DashboardWidget;
-        await this.dashboardManager.addWidget(dashboardId, fullWidget);
-        await this.dashboardManager.executeWidget(dashboardId, widgetId);
-        return { widgetId };
-      },
-      onGetDashboard: (dashboardId: string) => {
-        const dashboard = this.dashboardManager.getDashboard(dashboardId);
-        if (!dashboard) return null;
-        return {
-          id: dashboard.id,
-          name: dashboard.name,
-          widgets: dashboard.widgets.map(
-            ({ result: _, isLoading: __, error: ___, lastRefreshed: ____, ...rest }) => rest,
-          ),
-        };
-      },
-      onUpdateWidget: async (
-        dashboardId: string,
-        widgetId: string,
-        updates: Partial<DashboardWidget>,
-      ) => {
-        const queryChanged = updates.query !== undefined;
-        await this.dashboardManager.updateWidget(dashboardId, widgetId, updates);
-        if (queryChanged) {
-          await this.dashboardManager.executeWidget(dashboardId, widgetId);
-        }
-      },
-      onRemoveWidget: async (dashboardId: string, widgetId: string) => {
-        await this.dashboardManager.removeWidget(dashboardId, widgetId);
-      },
+      ...this._createDashboardCallbacks(),
     });
   }
 
-  setActiveView(
-    view:
-      | "query"
-      | "schema"
-      | "explain"
-      | "erd"
-      | "statistics"
-      | "workflow"
-      | "visualize"
-      | "connection"
-      | "dashboard"
-      | "starter",
-  ) {
+  setActiveView(view: ActiveViewType) {
     this.state.activeView = view;
     this.schedulePersistence(this.state.activeProjectId);
   }

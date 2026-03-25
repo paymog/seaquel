@@ -7,6 +7,17 @@ use super::{
     DriverType, ExecuteResult, QueryResult,
 };
 
+async fn connect_driver(config: &ConnectConfig) -> Result<Box<dyn Driver>, DbError> {
+    let driver: Box<dyn Driver> = match config.driver {
+        DriverType::Postgres => Box::new(PostgresDriver::connect(config).await?),
+        DriverType::Mysql => Box::new(MysqlDriver::connect(config).await?),
+        DriverType::Sqlite => Box::new(SqliteDriver::connect(config).await?),
+        DriverType::Mssql => Box::new(MssqlDriver::connect(config).await?),
+        DriverType::Duckdb => Box::new(DuckdbDriver::connect(config)?),
+    };
+    Ok(driver)
+}
+
 #[command]
 pub async fn db_connect(
     config: ConnectConfig,
@@ -21,13 +32,7 @@ pub async fn db_connect(
         uuid::Uuid::new_v4()
     );
 
-    let driver: Box<dyn Driver> = match config.driver {
-        DriverType::Postgres => Box::new(PostgresDriver::connect(&config).await?),
-        DriverType::Mysql => Box::new(MysqlDriver::connect(&config).await?),
-        DriverType::Sqlite => Box::new(SqliteDriver::connect(&config).await?),
-        DriverType::Mssql => Box::new(MssqlDriver::connect(&config).await?),
-        DriverType::Duckdb => Box::new(DuckdbDriver::connect(&config)?),
-    };
+    let driver = connect_driver(&config).await?;
 
     manager
         .connections
@@ -85,12 +90,6 @@ pub async fn db_disconnect(
 #[command]
 pub async fn db_test(config: ConnectConfig) -> Result<(), DbError> {
     debug!("db_test: driver={:?}", config.driver);
-    let driver: Box<dyn Driver> = match config.driver {
-        DriverType::Postgres => Box::new(PostgresDriver::connect(&config).await?),
-        DriverType::Mysql => Box::new(MysqlDriver::connect(&config).await?),
-        DriverType::Sqlite => Box::new(SqliteDriver::connect(&config).await?),
-        DriverType::Mssql => Box::new(MssqlDriver::connect(&config).await?),
-        DriverType::Duckdb => Box::new(DuckdbDriver::connect(&config)?),
-    };
+    let driver = connect_driver(&config).await?;
     driver.close().await
 }
