@@ -17,14 +17,11 @@ import {
   projectStateRepo,
   savedQueriesRepo,
   queryHistoryRepo,
+  CURRENT_STORAGE_VERSION,
 } from "$lib/storage";
 import { log } from "$lib/utils/logger";
 
-/**
- * Current storage version.
- * Increment when making breaking changes to storage format.
- */
-export const CURRENT_STORAGE_VERSION = 4;
+export { CURRENT_STORAGE_VERSION };
 
 /**
  * Handles data migration between storage versions.

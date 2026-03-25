@@ -484,6 +484,52 @@ export class SharedRepoManager {
   }
 
   /**
+   * Scan a folder for shared projects without modifying state.
+   * Used by the import flow to preview available projects before committing.
+   */
+  async scanForSharedProjects(folderPath: string): Promise<SharedProject[]> {
+    const projects: SharedProject[] = [];
+
+    try {
+      const seaquelDir = await join(folderPath, SEAQUEL_DIR);
+      if (!(await exists(seaquelDir))) return projects;
+
+      const projectsDir = await join(seaquelDir, "projects");
+      if (!(await exists(projectsDir))) return projects;
+
+      const entries = await readDir(projectsDir);
+      const tempRepoId = "scan-preview";
+
+      for (const entry of entries) {
+        if (!entry.isDirectory || entry.name.startsWith(".")) continue;
+
+        const projectDir = await join(projectsDir, entry.name);
+
+        try {
+          let content = await this.readYamlFile(projectDir, "project");
+          if (!content) content = `name: ${entry.name}`;
+
+          const project = parseProjectFile(content, tempRepoId, entry.name);
+          const connections = await this.loadProjectConnections(
+            tempRepoId,
+            project.id,
+            projectDir,
+            entry.name,
+          );
+          project.connections = connections;
+          projects.push(project);
+        } catch (error) {
+          void log.warn(`Failed to scan project ${entry.name}:`, error);
+        }
+      }
+    } catch (error) {
+      void log.warn("Failed to scan for shared projects:", error);
+    }
+
+    return projects;
+  }
+
+  /**
    * Try to read a YAML file, falling back from .yaml to .yml extension.
    */
   private async readYamlFile(dir: string, basename: string): Promise<string | null> {

@@ -550,6 +550,41 @@
   "starter_no_tabs": "열린 탭 없음",
   "starter_show_getting_started": "시작하기 표시",
 
+  "shared_import_title": "Import Shared Projects",
+  "shared_import_description": "Select which projects to import from this repository.",
+  "shared_import_from_repo": "Import from Git repo",
+  "shared_import_found": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Found {count} shared project",
+        "countPlural=other": "Found {count} shared projects"
+      }
+    }
+  ],
+  "shared_import_none_found": "No shared projects found in this folder.",
+  "shared_import_button": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Import {count} project",
+        "countPlural=other": "Import {count} projects"
+      }
+    }
+  ],
+  "shared_import_success": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Successfully imported {count} project",
+        "countPlural=other": "Successfully imported {count} projects"
+      }
+    }
+  ],
+
   "settings_license": "라이선스",
   "settings_license_description": "Seaquel 라이선스 관리",
   "license_status_personal": "개인 사용",

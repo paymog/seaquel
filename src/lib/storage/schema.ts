@@ -2,6 +2,14 @@ import type { SqliteDatabase } from "./sqlite-types";
 
 const SCHEMA_VERSION = 1;
 
+/**
+ * Current storage/data-migration version.
+ * Increment when adding new data migrations in MigrationManager.
+ * On a fresh database the DDL is already up-to-date, so this version
+ * is recorded directly to skip all data migrations.
+ */
+export const CURRENT_STORAGE_VERSION = 4;
+
 const DDL_STATEMENTS = [
   // Version tracking
   `CREATE TABLE IF NOT EXISTS schema_version (

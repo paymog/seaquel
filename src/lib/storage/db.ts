@@ -1,6 +1,6 @@
 import type { SqliteDatabase } from "./sqlite-types";
 import { isTauri } from "$lib/utils/environment";
-import { initializeSchema, SCHEMA_VERSION } from "./schema";
+import { initializeSchema, CURRENT_STORAGE_VERSION } from "./schema";
 
 let instance: SqliteDatabase | null = null;
 let initPromise: Promise<SqliteDatabase> | null = null;
@@ -36,8 +36,10 @@ export async function getDatabase(): Promise<SqliteDatabase> {
       const { migrateJsonToSqlite } = await import("./json-migration");
       await migrateJsonToSqlite(db);
 
-      // Record schema version after migration
-      await db.execute("INSERT INTO schema_version (version) VALUES (?)", [SCHEMA_VERSION]);
+      // Record current storage version so data migrations are skipped (DDL is already up-to-date)
+      await db.execute("INSERT INTO schema_version (version) VALUES (?)", [
+        CURRENT_STORAGE_VERSION,
+      ]);
     } else {
       // Existing database — check if connections are empty (failed prior migration)
       // and re-attempt migration from JSON if legacy files still exist

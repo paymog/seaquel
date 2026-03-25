@@ -12,7 +12,10 @@
     import SparklesIcon from "@lucide/svelte/icons/sparkles";
     import NetworkIcon from "@lucide/svelte/icons/network";
     import SettingsIcon from "@lucide/svelte/icons/settings";
+    import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
     import ProjectSettingsDialog from "./project-settings-dialog.svelte";
+    import ImportSharedProjectDialog from "./import-shared-project-dialog.svelte";
+    import { sharedProjectImportStore } from "$lib/stores/shared-project-import.svelte.js";
     import { toast } from "svelte-sonner";
     import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
     import CircleDollarSignIcon from "@lucide/svelte/icons/circle-dollar-sign";
@@ -112,6 +115,33 @@
         }
         showRemoveProjectDialog = false;
     };
+
+    const handleImportFromRepo = async () => {
+        if (!isTauri()) return;
+        try {
+            const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+            const selected = await openDialog({
+                directory: true,
+                multiple: false,
+                title: "Select Git repository folder",
+            });
+            if (!selected) return;
+
+            const projects = await db.sharedRepos.scanForSharedProjects(selected as string);
+            if (projects.length === 0) {
+                toast.info(m.shared_import_none_found());
+                return;
+            }
+            if (projects.length === 1) {
+                await db.projects.importFromGitRepo(selected as string, projects);
+                toast.success(m.shared_import_success({ count: 1 }));
+                return;
+            }
+            sharedProjectImportStore.openWithResults(selected as string, projects);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : String(error));
+        }
+    };
 </script>
 
 <header
@@ -169,6 +199,15 @@
                         <PlusIcon class="size-4" />
                         {m.project_new()}
                     </DropdownMenu.Item>
+                    {#if isTauri()}
+                        <DropdownMenu.Item
+                            class="flex items-center gap-2 cursor-pointer"
+                            onclick={handleImportFromRepo}
+                        >
+                            <FolderGit2Icon class="size-4" />
+                            {m.shared_import_from_repo()}
+                        </DropdownMenu.Item>
+                    {/if}
                 </DropdownMenu.Content>
             </DropdownMenu.Root>
         </div>
@@ -325,3 +364,6 @@
         </Dialog.Footer>
     </Dialog.Content>
 </Dialog.Root>
+
+<!-- Import Shared Project Dialog -->
+<ImportSharedProjectDialog />

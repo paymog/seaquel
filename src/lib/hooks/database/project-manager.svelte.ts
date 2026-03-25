@@ -1,4 +1,10 @@
-import type { Project, ConnectionLabel, PersistedProject, DatabaseConnection } from "$lib/types";
+import type {
+  Project,
+  ConnectionLabel,
+  PersistedProject,
+  DatabaseConnection,
+  SharedProject,
+} from "$lib/types";
 import { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
@@ -493,6 +499,42 @@ export class ProjectManager {
       };
     });
     await this.persistence.persistProjects();
+  }
+
+  /**
+   * Import shared projects from a git repo folder.
+   * Creates local projects, links them to the repo, and imports their connections.
+   */
+  async importFromGitRepo(repoPath: string, selectedProjects: SharedProject[]): Promise<string[]> {
+    const createdIds: string[] = [];
+
+    for (const sharedProject of selectedProjects) {
+      // Deduplicate name
+      let name = sharedProject.name;
+      const existingNames = new Set(this.state.projects.map((p) => p.name));
+      if (existingNames.has(name)) {
+        let suffix = 2;
+        while (existingNames.has(`${name} (${suffix})`)) suffix++;
+        name = `${name} (${suffix})`;
+      }
+
+      // Create the local project
+      const project = await this.add(name);
+      createdIds.push(project.id);
+
+      // Link to git repo (registers repo, loads configs, exports existing connections)
+      await this.setGitRepoPath(project.id, repoPath);
+
+      // Import shared connections as local entries
+      await this.importSharedConnections(project.id);
+    }
+
+    // Switch to first created project
+    if (createdIds.length > 0) {
+      await this.setActive(createdIds[0]);
+    }
+
+    return createdIds;
   }
 
   // === PRIVATE METHODS ===

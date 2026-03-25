@@ -1,4 +1,5 @@
 export { getDatabase, resetDatabase } from "./db";
+export { CURRENT_STORAGE_VERSION } from "./schema";
 export type { SqliteDatabase, SqliteProvider } from "./sqlite-types";
 export {
   projectsRepo,

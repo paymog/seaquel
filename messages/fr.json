@@ -550,6 +550,41 @@
   "starter_no_tabs": "Aucun onglet ouvert",
   "starter_show_getting_started": "Afficher Commencer",
 
+  "shared_import_title": "Import Shared Projects",
+  "shared_import_description": "Select which projects to import from this repository.",
+  "shared_import_from_repo": "Import from Git repo",
+  "shared_import_found": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Found {count} shared project",
+        "countPlural=other": "Found {count} shared projects"
+      }
+    }
+  ],
+  "shared_import_none_found": "No shared projects found in this folder.",
+  "shared_import_button": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Import {count} project",
+        "countPlural=other": "Import {count} projects"
+      }
+    }
+  ],
+  "shared_import_success": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Successfully imported {count} project",
+        "countPlural=other": "Successfully imported {count} projects"
+      }
+    }
+  ],
+
   "settings_license": "Licence",
   "settings_license_description": "Gérer votre licence Seaquel",
   "license_status_personal": "Usage Personnel",

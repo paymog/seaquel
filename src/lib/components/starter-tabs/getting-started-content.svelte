@@ -8,6 +8,9 @@
 	import { isTauri } from "$lib/utils/environment";
 	import { getFeatures } from "$lib/features";
 	import { PlusIcon, DownloadIcon, DatabaseIcon, PlugIcon, LoaderIcon } from "@lucide/svelte";
+	import { sharedProjectImportStore } from "$lib/stores/shared-project-import.svelte.js";
+	import ImportSharedProjectDialog from "../import-shared-project-dialog.svelte";
+	import { toast } from "svelte-sonner";
 
 	const db = useDatabase();
 	const features = getFeatures();
@@ -31,6 +34,33 @@
 	const handleImportTablePlus = async () => {
 		const existingIds = db.state.connections.map((c) => c.id);
 		await tablePlusImportStore.checkAndShowDialog(existingIds);
+	};
+
+	const handleImportFromRepo = async () => {
+		if (!isTauri()) return;
+		try {
+			const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+			const selected = await openDialog({
+				directory: true,
+				multiple: false,
+				title: "Select Git repository folder",
+			});
+			if (!selected) return;
+
+			const projects = await db.sharedRepos.scanForSharedProjects(selected as string);
+			if (projects.length === 0) {
+				toast.info(m.shared_import_none_found());
+				return;
+			}
+			if (projects.length === 1) {
+				await db.projects.importFromGitRepo(selected as string, projects);
+				toast.success(m.shared_import_success({ count: 1 }));
+				return;
+			}
+			sharedProjectImportStore.openWithResults(selected as string, projects);
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : String(error));
+		}
 	};
 
 	const handleConnectionClick = async (connection: typeof db.state.connections[0]) => {
@@ -86,6 +116,10 @@
 					<button class="hover:text-foreground transition-colors cursor-pointer" onclick={handleImportTablePlus}>
 						{m.starter_import_tableplus()}
 					</button>
+					<span class="text-muted-foreground/50">|</span>
+					<button class="hover:text-foreground transition-colors cursor-pointer" onclick={handleImportFromRepo}>
+						{m.shared_import_from_repo()}
+					</button>
 				</div>
 			{/if}
 		</div>
@@ -132,3 +166,5 @@
 		{/if}
 	</div>
 </div>
+
+<ImportSharedProjectDialog />
