@@ -108,6 +108,19 @@ export class QueryExecutionManager {
   }
 
   /**
+   * Build a WHERE clause for MSSQL using bracket-quoted identifiers and escaped values.
+   */
+  private buildMssqlWhereClause(primaryKeys: string[], row: Record<string, unknown>): string {
+    return primaryKeys
+      .map((pk) => {
+        const val = row[pk];
+        const escapedVal = typeof val === "string" ? `'${val.replace(/'/g, "''")}'` : String(val);
+        return `[${pk}] = ${escapedVal}`;
+      })
+      .join(" AND ");
+  }
+
+  /**
    * Execute a single SQL statement and return the result.
    * @param sql The SQL statement to execute (may contain $1, $2, etc. placeholders)
    * @param page Page number for pagination
@@ -657,11 +670,7 @@ export class QueryExecutionManager {
       const provider = await this.providers.getForType(connection.type);
       if (connection.type === "mssql") {
         // SQL Server: use square brackets for identifiers and inline values
-        const whereConditions = sourceTable.primaryKeys.map((pk) => {
-          const val = row[pk];
-          const escapedVal = typeof val === "string" ? `'${val.replace(/'/g, "''")}'` : String(val);
-          return `[${pk}] = ${escapedVal}`;
-        });
+        const whereClause = this.buildMssqlWhereClause(sourceTable.primaryKeys, row);
         // oxlint-disable-next-line typescript-eslint(no-base-to-string)
         const escapedNewValue =
           typeof newValue === "string"
@@ -670,7 +679,7 @@ export class QueryExecutionManager {
               ? "NULL"
               : // oxlint-disable-next-line typescript-eslint(no-base-to-string)
                 String(newValue);
-        const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = ${escapedNewValue} WHERE ${whereConditions.join(" AND ")}`;
+        const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = ${escapedNewValue} WHERE ${whereClause}`;
         await provider.execute(connection.providerConnectionId, query);
       } else {
         // PostgreSQL/SQLite/DuckDB: use double quotes and parameterized queries
@@ -786,12 +795,8 @@ export class QueryExecutionManager {
       const provider = await this.providers.getForType(connection.type);
       if (connection.type === "mssql") {
         // SQL Server: use square brackets for identifiers and inline values
-        const whereConditions = sourceTable.primaryKeys.map((pk) => {
-          const val = row[pk];
-          const escapedVal = typeof val === "string" ? `'${val.replace(/'/g, "''")}'` : String(val);
-          return `[${pk}] = ${escapedVal}`;
-        });
-        const query = `DELETE FROM [${sourceTable.schema}].[${sourceTable.name}] WHERE ${whereConditions.join(" AND ")}`;
+        const whereClause = this.buildMssqlWhereClause(sourceTable.primaryKeys, row);
+        const query = `DELETE FROM [${sourceTable.schema}].[${sourceTable.name}] WHERE ${whereClause}`;
         await provider.execute(connection.providerConnectionId, query);
       } else {
         // PostgreSQL/SQLite/DuckDB: use double quotes and parameterized queries

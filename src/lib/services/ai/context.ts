@@ -17,6 +17,14 @@ export function validateReadOnlyQuery(query: string): string | null {
       return "Only read-only SELECT queries are permitted";
     }
   }
+  // Block DML/DDL keywords anywhere in the query (catches CTEs with DML)
+  if (
+    /\b(INSERT\s+INTO|UPDATE\s+\S+\s+SET|DELETE\s+FROM|DROP\s|ALTER\s|TRUNCATE\s|CREATE\s|GRANT\s|REVOKE\s|EXEC\s)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return "Only read-only SELECT queries are permitted";
+  }
   // Block SELECT ... INTO (creates a table)
   if (/\bSELECT\b[^;]*\bINTO\b/i.test(trimmed)) {
     return "Only read-only SELECT queries are permitted";

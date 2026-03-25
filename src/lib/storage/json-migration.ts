@@ -1,3 +1,4 @@
+import { log } from "$lib/utils/logger";
 import type { SqliteDatabase } from "./sqlite-types";
 import type {
   PersistedProject,
@@ -98,7 +99,7 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
         }
       }
     } catch (error) {
-      console.error("Failed to migrate connections:", error);
+      void log.error("Failed to migrate connections:", error);
     }
 
     if (!hasLegacyData) {
@@ -106,7 +107,7 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
       return false;
     }
 
-    console.log("Migrating JSON data to SQLite...");
+    void log.info("Migrating JSON data to SQLite...");
 
     // === App State ===
     try {
@@ -294,10 +295,10 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
       }
     }
 
-    console.log("JSON to SQLite migration completed successfully");
+    void log.info("JSON to SQLite migration completed successfully");
     return true;
   } catch (error) {
-    console.error("Failed to migrate JSON to SQLite:", error);
+    void log.error("Failed to migrate JSON to SQLite:", error);
     return false;
   }
 }

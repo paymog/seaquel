@@ -2,6 +2,9 @@ import type { SqliteDatabase } from "$lib/storage";
 import { appStateRepo } from "$lib/storage";
 import { getKeyringService } from "$lib/services/keyring";
 import { DEFAULT_AI_SETTINGS, type AISettings, type AIProvider } from "$lib/types/ai";
+import { log } from "$lib/utils/logger";
+
+const ANTHROPIC_API_VERSION = "2023-06-01";
 
 const AI_SETTINGS_KEY = "aiSettings";
 
@@ -30,7 +33,7 @@ class AISettingsStore {
         );
         this.settings = { ...DEFAULT_AI_SETTINGS, ...parsed, providers };
       } catch (err) {
-        console.error("[AI] Failed to parse saved AI settings, using defaults:", err);
+        void log.error("[AI] Failed to parse saved AI settings, using defaults:", err);
       }
     }
   }
@@ -89,7 +92,7 @@ class AISettingsStore {
         const res = await fetch("https://api.anthropic.com/v1/models", {
           headers: {
             "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
+            "anthropic-version": ANTHROPIC_API_VERSION,
           },
         });
         return res.ok;
@@ -102,7 +105,7 @@ class AISettingsStore {
         return res.ok;
       }
     } catch (err) {
-      console.error("[AI] testConnection error:", err);
+      void log.error("[AI] testConnection error:", err);
       return false;
     }
   }
@@ -116,7 +119,7 @@ class AISettingsStore {
     try {
       if (config.type === "anthropic") {
         const res = await fetch("https://api.anthropic.com/v1/models", {
-          headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+          headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_API_VERSION },
         });
         if (!res.ok) return [];
         const data = await res.json();
@@ -132,7 +135,7 @@ class AISettingsStore {
         return (data.data as Array<{ id: string }>).map((e) => e.id);
       }
     } catch (err) {
-      console.error("[AI] fetchModels error:", err);
+      void log.error("[AI] fetchModels error:", err);
       return [];
     }
   }

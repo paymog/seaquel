@@ -1,6 +1,10 @@
 import type { SharedDashboard, Dashboard } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
-import { SEAQUEL_DIR, type SharedRepoManager } from "./shared-repo-manager.svelte.js";
+import {
+  SEAQUEL_DIR,
+  parseCompositeId,
+  type SharedRepoManager,
+} from "./shared-repo-manager.svelte.js";
 import { stripWidgetRuntimeState } from "./dashboard-manager.svelte.js";
 import {
   serializeDashboardFile,
@@ -9,11 +13,6 @@ import {
 import { nameToFilename } from "$lib/services/config-file-parser";
 import { writeTextFile, remove, mkdir, exists } from "@tauri-apps/plugin-fs";
 import { join, dirname } from "@tauri-apps/api/path";
-
-function parseDashboardId(dashboardId: string): { repoId: string; filePath: string } {
-  const [repoId, ...pathParts] = dashboardId.split(":");
-  return { repoId, filePath: pathParts.join(":") };
-}
 
 export class SharedDashboardManager {
   constructor(
@@ -82,7 +81,7 @@ export class SharedDashboardManager {
   }
 
   async deleteDashboard(dashboardId: string): Promise<boolean> {
-    const { repoId, filePath } = parseDashboardId(dashboardId);
+    const { repoId, filePath } = parseCompositeId(dashboardId);
 
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
     if (!repo) return false;
@@ -104,7 +103,7 @@ export class SharedDashboardManager {
   }
 
   getDashboard(dashboardId: string): SharedDashboard | null {
-    const { repoId } = parseDashboardId(dashboardId);
+    const { repoId } = parseCompositeId(dashboardId);
     const dashboards = this.state.sharedDashboardsByRepo[repoId] ?? [];
     return dashboards.find((d) => d.id === dashboardId) ?? null;
   }

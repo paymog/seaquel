@@ -1,4 +1,9 @@
 import type { ToolDefinition } from "./tool-definitions.js";
+import { log } from "$lib/utils/logger";
+
+const ANTHROPIC_API_VERSION = "2023-06-01";
+const MAX_STREAMING_TOKENS = 4096;
+const MAX_NON_STREAMING_TOKENS = 2048;
 
 export interface ToolCall {
   id: string;
@@ -80,7 +85,7 @@ async function streamAnthropicTurn(params: {
 
   const body: Record<string, unknown> = {
     model,
-    max_tokens: 4096,
+    max_tokens: MAX_STREAMING_TOKENS,
     system: systemPrompt,
     messages,
     stream: true,
@@ -92,7 +97,7 @@ async function streamAnthropicTurn(params: {
     headers: {
       "content-type": "application/json",
       "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
+      "anthropic-version": ANTHROPIC_API_VERSION,
     },
     body: JSON.stringify(body),
     signal,
@@ -147,8 +152,8 @@ async function streamAnthropicTurn(params: {
         } else if (event.type === "message_delta") {
           stopReason = event.delta?.stop_reason ?? null;
         }
-      } catch {
-        /* skip malformed */
+      } catch (parseErr) {
+        void log.warn("[AI] Malformed SSE event:", parseErr);
       }
     }
   }
@@ -180,17 +185,22 @@ async function fetchAnthropic(params: {
       headers: {
         "content-type": "application/json",
         "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
+        "anthropic-version": ANTHROPIC_API_VERSION,
       },
-      body: JSON.stringify({ model, max_tokens: 2048, system: systemPrompt, messages }),
+      body: JSON.stringify({
+        model,
+        max_tokens: MAX_NON_STREAMING_TOKENS,
+        system: systemPrompt,
+        messages,
+      }),
     });
   } catch (err) {
-    console.error("[AI] Anthropic network error:", err);
+    void log.error("[AI] Anthropic network error:", err);
     throw new Error("Could not connect to api.anthropic.com. Check your network connection.");
   }
   if (!res.ok) {
     const err = await res.text().catch(() => res.statusText);
-    console.error("[AI] Anthropic fetch error:", res.status, err);
+    void log.error(`[AI] Anthropic fetch error: ${res.status}`, err);
     throw new Error(res.status === 429 ? "rate_limit" : err);
   }
   const json = await res.json();
@@ -330,13 +340,14 @@ async function streamOpenAICompatTurn(params: {
             if (tc.function?.arguments) entry.args += tc.function.arguments;
           }
         }
-      } catch {
-        /* skip */
+      } catch (parseErr) {
+        void log.warn("[AI] Malformed SSE event:", parseErr);
       }
     }
   }
 
-  const primaryTc = toolCallMap.get(0);
+  const sortedKeys = [...toolCallMap.keys()].sort((a, b) => a - b);
+  const primaryTc = sortedKeys.length > 0 ? toolCallMap.get(sortedKeys[0]) : undefined;
   if (finishReason === "tool_calls" && primaryTc?.id && primaryTc?.name) {
     let input: Record<string, unknown> = {};
     try {
@@ -371,14 +382,14 @@ async function fetchOpenAICompat(params: {
       }),
     });
   } catch (err) {
-    console.error("[AI] OpenAI-compat network error:", err);
+    void log.error("[AI] OpenAI-compat network error:", err);
     throw new Error(
       `Could not connect to ${baseUrl}. Check that the server is running and that it allows requests from this app (CORS).`,
     );
   }
   if (!res.ok) {
     const err = await res.text().catch(() => res.statusText);
-    console.error("[AI] OpenAI-compat fetch error:", res.status, err);
+    void log.error(`[AI] OpenAI-compat fetch error: ${res.status}`, err);
     throw new Error(res.status === 429 ? "rate_limit" : err);
   }
   const json = await res.json();

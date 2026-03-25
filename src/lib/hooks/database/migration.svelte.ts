@@ -18,6 +18,7 @@ import {
   savedQueriesRepo,
   queryHistoryRepo,
 } from "$lib/storage";
+import { log } from "$lib/utils/logger";
 
 /**
  * Current storage version.
@@ -41,7 +42,7 @@ export class MigrationManager {
     const version = await this.persistence.getStorageVersion();
 
     if (version < CURRENT_STORAGE_VERSION) {
-      console.log(`Migrating storage from version ${version} to ${CURRENT_STORAGE_VERSION}`);
+      void log.info(`Migrating storage from version ${version} to ${CURRENT_STORAGE_VERSION}`);
 
       if (version < 2) {
         await this.migrateToV2();
@@ -56,7 +57,7 @@ export class MigrationManager {
       }
 
       await this.persistence.setStorageVersion(CURRENT_STORAGE_VERSION);
-      console.log("Migration completed successfully");
+      void log.info("Migration completed successfully");
     }
   }
 
@@ -71,14 +72,14 @@ export class MigrationManager {
    * 5. Remove old connection_state files
    */
   private async migrateToV2(): Promise<void> {
-    console.log("Running migration to v2 (projects)...");
+    void log.info("Running migration to v2 (projects)...");
 
     // 1. Load existing connections
     const connections = await this.persistence.loadPersistedConnections();
 
     if (connections.length === 0) {
       // No connections to migrate, just create default project
-      console.log("No existing connections, creating default project");
+      void log.info("No existing connections, creating default project");
       await this.createDefaultProject();
       return;
     }
@@ -112,7 +113,9 @@ export class MigrationManager {
       await this.migrateConnectionData(conn.id);
     }
 
-    console.log(`Migrated ${connections.length} connections to project "${DEFAULT_PROJECT_NAME}"`);
+    void log.info(
+      `Migrated ${connections.length} connections to project "${DEFAULT_PROJECT_NAME}"`,
+    );
   }
 
   /**
@@ -211,7 +214,7 @@ export class MigrationManager {
    * Migrate to v3: Add dashboards table and active_dashboard_tab_id column.
    */
   private async migrateToV3(): Promise<void> {
-    console.log("Running migration to v3 (dashboards)...");
+    void log.info("Running migration to v3 (dashboards)...");
 
     const db = await getDatabase();
 
@@ -237,14 +240,14 @@ export class MigrationManager {
       // Column may already exist
     }
 
-    console.log("Migration to v3 completed");
+    void log.info("Migration to v3 completed");
   }
 
   /**
    * Migrate to v4: Add pane_layout column to project_state for split pane persistence.
    */
   private async migrateToV4(): Promise<void> {
-    console.log("Running migration to v4 (pane layout)...");
+    void log.info("Running migration to v4 (pane layout)...");
 
     const db = await getDatabase();
 
@@ -254,7 +257,7 @@ export class MigrationManager {
       // Column may already exist
     }
 
-    console.log("Migration to v4 completed");
+    void log.info("Migration to v4 completed");
   }
 
   /**

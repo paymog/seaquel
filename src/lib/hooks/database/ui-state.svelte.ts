@@ -44,6 +44,20 @@ export class UIStateManager {
       this.aiAbortController = null;
     }
     this.state.isAIStreaming = false;
+
+    // Clear pendingApproval on any assistant message and persist
+    const chatId = this.state.activeAIChatId;
+    if (chatId) {
+      const messages = this.state.aiMessagesByChat[chatId] ?? [];
+      const hasStale = messages.some((m) => m.pendingApproval);
+      if (hasStale) {
+        this._setMessages(
+          chatId,
+          messages.map((m) => (m.pendingApproval ? { ...m, pendingApproval: null } : m)),
+        );
+      }
+      void this.persistAIChatMessages(chatId);
+    }
   }
 
   toggleAI() {

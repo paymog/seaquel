@@ -35,8 +35,25 @@ import {
 } from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
 import { log } from "$lib/utils/logger";
+import { extractErrorMessage } from "$lib/errors";
 
 export const SEAQUEL_DIR = ".seaquel";
+
+const DEFAULT_SYNC_STATE: SyncState = {
+  isSyncing: false,
+  pendingChanges: 0,
+  aheadBy: 0,
+  behindBy: 0,
+  conflictFiles: [],
+};
+
+/**
+ * Parse a composite ID ("repoId:filePath") into its parts.
+ */
+export function parseCompositeId(id: string): { repoId: string; filePath: string } {
+  const [repoId, ...pathParts] = id.split(":");
+  return { repoId, filePath: pathParts.join(":") };
+}
 
 /**
  * Manages shared query repositories: clone, sync, status updates.
@@ -147,13 +164,7 @@ export class SharedRepoManager {
     // Initialize sync state
     this.state.syncStateByRepo = {
       ...this.state.syncStateByRepo,
-      [repo.id]: {
-        isSyncing: false,
-        pendingChanges: 0,
-        aheadBy: 0,
-        behindBy: 0,
-        conflictFiles: [],
-      },
+      [repo.id]: { ...DEFAULT_SYNC_STATE },
     };
 
     // Load queries from the cloned repo
@@ -192,13 +203,7 @@ export class SharedRepoManager {
     // Initialize sync state
     this.state.syncStateByRepo = {
       ...this.state.syncStateByRepo,
-      [repo.id]: {
-        isSyncing: false,
-        pendingChanges: 0,
-        aheadBy: 0,
-        behindBy: 0,
-        conflictFiles: [],
-      },
+      [repo.id]: { ...DEFAULT_SYNC_STATE },
     };
 
     // Initialize empty queries list
@@ -286,7 +291,7 @@ export class SharedRepoManager {
           this.updateRepo(repoId, { syncStatus: "diverged" });
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = extractErrorMessage(error);
         this.updateSyncState(repoId, { lastError: message });
         this.updateRepo(repoId, { syncStatus: "error" });
         throw error;
@@ -316,7 +321,7 @@ export class SharedRepoManager {
           await this.refreshRepoStatus(repoId);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = extractErrorMessage(error);
         this.updateSyncState(repoId, { lastError: message });
         if (message.includes("rejected") || message.includes("non-fast-forward")) {
           this.updateRepo(repoId, { syncStatus: "behind" });
@@ -342,7 +347,7 @@ export class SharedRepoManager {
         await this.refreshRepoStatus(repoId);
         return commitId;
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg = extractErrorMessage(error);
         this.updateSyncState(repoId, { lastError: msg });
         return null;
       }
@@ -380,7 +385,7 @@ export class SharedRepoManager {
 
       this.updateRepo(repoId, { syncStatus });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = extractErrorMessage(error);
       this.updateSyncState(repoId, { lastError: message });
     }
   }
@@ -479,25 +484,28 @@ export class SharedRepoManager {
   }
 
   /**
+   * Try to read a YAML file, falling back from .yaml to .yml extension.
+   */
+  private async readYamlFile(dir: string, basename: string): Promise<string | null> {
+    const yamlPath = await join(dir, `${basename}.yaml`);
+    if (await exists(yamlPath)) {
+      return readTextFile(yamlPath);
+    }
+    const ymlPath = await join(dir, `${basename}.yml`);
+    if (await exists(ymlPath)) {
+      return readTextFile(ymlPath);
+    }
+    return null;
+  }
+
+  /**
    * Load shared labels from .seaquel/labels.yaml.
    */
   private async loadSharedLabels(repoId: string, seaquelDir: string): Promise<void> {
     try {
-      const labelsPath = await join(seaquelDir, "labels.yaml");
-      if (!(await exists(labelsPath))) {
-        // Try .yml extension
-        const labelsPathYml = await join(seaquelDir, "labels.yml");
-        if (!(await exists(labelsPathYml))) return;
-        const content = await readTextFile(labelsPathYml);
-        const parsed = parseLabelsFile(content);
-        this.state.sharedLabelsByRepo = {
-          ...this.state.sharedLabelsByRepo,
-          [repoId]: parsed.labels,
-        };
-        return;
-      }
+      const content = await this.readYamlFile(seaquelDir, "labels");
+      if (!content) return;
 
-      const content = await readTextFile(labelsPath);
       const parsed = parseLabelsFile(content);
       this.state.sharedLabelsByRepo = {
         ...this.state.sharedLabelsByRepo,
@@ -547,16 +555,7 @@ export class SharedRepoManager {
     dirName: string,
   ): Promise<SharedProject | null> {
     try {
-      // Try project.yaml, then project.yml
-      let content: string | null = null;
-      const yamlPath = await join(projectDir, "project.yaml");
-      const ymlPath = await join(projectDir, "project.yml");
-
-      if (await exists(yamlPath)) {
-        content = await readTextFile(yamlPath);
-      } else if (await exists(ymlPath)) {
-        content = await readTextFile(ymlPath);
-      }
+      let content = await this.readYamlFile(projectDir, "project");
 
       if (!content) {
         // No project.yaml — create a project from directory name
@@ -968,13 +967,7 @@ export class SharedRepoManager {
    * Update sync state for a repository.
    */
   private updateSyncState(repoId: string, updates: Partial<SyncState>): void {
-    const current = this.state.syncStateByRepo[repoId] ?? {
-      isSyncing: false,
-      pendingChanges: 0,
-      aheadBy: 0,
-      behindBy: 0,
-      conflictFiles: [],
-    };
+    const current = this.state.syncStateByRepo[repoId] ?? { ...DEFAULT_SYNC_STATE };
 
     this.state.syncStateByRepo = {
       ...this.state.syncStateByRepo,

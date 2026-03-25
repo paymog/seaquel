@@ -60,7 +60,11 @@ impl MssqlDriver {
         tiberius_config.port(port);
         tiberius_config.database(database);
         tiberius_config.authentication(AuthMethod::sql_server(username, password));
-        tiberius_config.encryption(tiberius::EncryptionLevel::NotSupported);
+        tiberius_config.encryption(if encrypt {
+            tiberius::EncryptionLevel::Required
+        } else {
+            tiberius::EncryptionLevel::NotSupported
+        });
 
         // Connect with timeout
         let tcp = tokio::time::timeout(

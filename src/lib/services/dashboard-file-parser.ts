@@ -5,6 +5,7 @@ import type { SharedDashboard } from "$lib/types";
 import type { DashboardWidget } from "$lib/types/dashboard";
 import { log } from "$lib/utils/logger";
 import { stripWidgetRuntimeState } from "$lib/hooks/database/dashboard-manager.svelte.js";
+import { nameToFilename } from "./config-file-parser.js";
 
 interface DashboardFileContent {
   name: string;
@@ -71,11 +72,5 @@ export function serializeDashboardFile(dashboard: SharedDashboard): string {
  * Generate a valid filename from a dashboard name.
  */
 export function dashboardNameToFilename(name: string): string {
-  const base = name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return `${base || "untitled"}.json`;
+  return `${nameToFilename(name)}.json`;
 }

@@ -15,6 +15,9 @@ import { handleDashboardToolCall } from "./dashboard-tools.js";
 import type { DashboardCallbacks, DashboardGetResult } from "./dashboard-tools.js";
 import { createAnthropicProvider, createOpenAICompatProvider } from "./providers.js";
 import type { AIProvider } from "./providers.js";
+import { log } from "$lib/utils/logger";
+
+const MAX_TOOL_CALLS_PER_MESSAGE = 20;
 
 export type { DashboardGetResult };
 export { buildSchemaContext, buildDataContext } from "./context.js";
@@ -150,7 +153,7 @@ export async function sendAIMessage(params: SendAIMessageParams): Promise<void> 
   type ApiMessage = Record<string, unknown>;
   let apiMessages: ApiMessage[] = messages.map((m) => ({ role: m.role, content: m.content }));
 
-  console.log("[AI] sendAIMessage: sending via", providerType, model);
+  void log.debug(`[AI] sendAIMessage: sending via ${providerType} ${model}`);
 
   try {
     let toolCallCount = 0;
@@ -174,7 +177,7 @@ export async function sendAIMessage(params: SendAIMessageParams): Promise<void> 
       }
 
       toolCallCount++;
-      if (toolCallCount > 20) {
+      if (toolCallCount > MAX_TOOL_CALLS_PER_MESSAGE) {
         onError("Tool call limit exceeded (max 20 per message)");
         return;
       }
@@ -223,7 +226,7 @@ export async function generateSQL(params: GenerateSQLParams): Promise<string> {
   const userMessage = existingQuery.trim()
     ? `${request}\n\nExisting query for context:\n\`\`\`sql\n${existingQuery}\n\`\`\``
     : request;
-  console.log("[AI] generateSQL: generating via", providerType, model);
+  void log.debug(`[AI] generateSQL: generating via ${providerType} ${model}`);
 
   const content = await provider.fetchNonStreaming({
     systemPrompt,

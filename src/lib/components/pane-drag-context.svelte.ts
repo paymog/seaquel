@@ -97,6 +97,18 @@ export class PaneDragState {
     return null;
   }
 
+  destroy() {
+    if (this.onPointerMove) {
+      document.removeEventListener("pointermove", this.onPointerMove);
+      this.onPointerMove = null;
+    }
+    this.isDragging = false;
+    this.draggedTabId = undefined;
+    this.dragSourcePaneId = undefined;
+    this.splitTarget = null;
+    this.moveTarget = null;
+  }
+
   private updateTargets(clientX: number, clientY: number) {
     // First check: is the pointer over a different pane's tab bar? → move target
     for (const [paneId, el] of this.tabBarElements) {

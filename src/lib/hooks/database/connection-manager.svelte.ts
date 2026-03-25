@@ -339,7 +339,7 @@ export class ConnectionManager {
       if (effectiveConnectionString && connection.password) {
         try {
           const url = new URL(effectiveConnectionString.replace("postgresql://", "postgres://"));
-          url.password = encodeURIComponent(connection.password);
+          url.password = connection.password;
           effectiveConnectionString = url.toString();
         } catch {
           // Not a URL-based connection string (e.g., file path), skip
@@ -887,7 +887,9 @@ export class ConnectionManager {
         await this.providers.getForType(connection.type).then((provider) => {
           provider.disconnect(connection.providerConnectionId!).catch((e) => void log.error(e));
         });
-        connection.providerConnectionId = undefined;
+        this.state.connections = this.state.connections.map((c) =>
+          c.id === id ? { ...c, providerConnectionId: undefined } : c,
+        );
       }
 
       if (wasConnected) {

@@ -189,11 +189,12 @@ export class DashboardManager {
 
     if (!query) return;
 
-    // Inject date filter placeholders
+    // Inject date filter placeholders (escape single quotes to prevent SQL injection)
     if (dashboard.dateFilter) {
+      const escapeDate = (val: string) => `'${val.replace(/'/g, "''")}'`;
       query = query
-        .replace(/\{\{start_date\}\}/g, dashboard.dateFilter.start)
-        .replace(/\{\{end_date\}\}/g, dashboard.dateFilter.end);
+        .replace(/\{\{start_date\}\}/g, escapeDate(dashboard.dateFilter.start))
+        .replace(/\{\{end_date\}\}/g, escapeDate(dashboard.dateFilter.end));
     }
 
     // Set loading state
@@ -279,6 +280,7 @@ export class DashboardManager {
   // === DATA LOADING ===
 
   async loadDashboards(projectId: string): Promise<void> {
+    this.stopAllAutoRefresh();
     try {
       const db = await getDatabase();
       const rows = await dashboardsRepo.loadByProject(db, projectId);

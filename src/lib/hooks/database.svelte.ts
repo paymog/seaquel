@@ -386,6 +386,7 @@ class UseDatabase {
   destroy(): void {
     this.sharedRepos.stopBackgroundRefresh();
     this.dashboards.stopAllAutoRefresh();
+    this.persistence.cancelPendingPersistence();
   }
 }
 

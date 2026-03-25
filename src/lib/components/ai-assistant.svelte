@@ -5,8 +5,6 @@
 	import { ChevronRightIcon, SendIcon, SparklesIcon, PlusIcon, ChevronDownIcon, Trash2Icon, ListIcon, SquareIcon } from "@lucide/svelte";
 	import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
 	import { marked } from "marked";
-
-	marked.use({ gfm: true, breaks: true });
 	import { Checkbox } from "$lib/components/ui/checkbox";
 	import { Label } from "$lib/components/ui/label";
 	import DatabaseIcon from "@lucide/svelte/icons/database";
@@ -19,6 +17,8 @@
 	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+
+	marked.use({ gfm: true, breaks: true });
 
 	const db = useDatabase();
 	let messageInput = $state("");

@@ -1,6 +1,10 @@
 import type { SharedQuery, QueryParameter, SavedQuery } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
-import { SEAQUEL_DIR, type SharedRepoManager } from "./shared-repo-manager.svelte.js";
+import {
+  SEAQUEL_DIR,
+  parseCompositeId,
+  type SharedRepoManager,
+} from "./shared-repo-manager.svelte.js";
 import {
   parseQueryFile,
   serializeQueryFile,
@@ -14,14 +18,6 @@ import { join, dirname } from "@tauri-apps/api/path";
 /**
  * Manages individual shared queries: create, update, delete.
  */
-/**
- * Parse a composite query ID ("repoId:filePath") into its parts.
- */
-function parseQueryId(queryId: string): { repoId: string; filePath: string } {
-  const [repoId, ...pathParts] = queryId.split(":");
-  return { repoId, filePath: pathParts.join(":") };
-}
-
 export class SharedQueryManager {
   constructor(
     private state: DatabaseState,
@@ -134,7 +130,7 @@ export class SharedQueryManager {
     },
   ): Promise<string | null> {
     // Find the query
-    const { repoId, filePath } = parseQueryId(queryId);
+    const { repoId, filePath } = parseCompositeId(queryId);
 
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
     if (!repo) return null;
@@ -199,7 +195,7 @@ export class SharedQueryManager {
    * Delete a shared query.
    */
   async deleteQuery(queryId: string): Promise<boolean> {
-    const { repoId, filePath } = parseQueryId(queryId);
+    const { repoId, filePath } = parseCompositeId(queryId);
 
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
     if (!repo) return false;
@@ -226,7 +222,7 @@ export class SharedQueryManager {
    * Move a query to a different folder.
    */
   async moveQuery(queryId: string, newFolder: string): Promise<boolean> {
-    const { repoId, filePath } = parseQueryId(queryId);
+    const { repoId, filePath } = parseCompositeId(queryId);
 
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
     if (!repo) return false;
@@ -316,7 +312,7 @@ export class SharedQueryManager {
    * Get a shared query by ID.
    */
   getQuery(queryId: string): SharedQuery | null {
-    const { repoId } = parseQueryId(queryId);
+    const { repoId } = parseCompositeId(queryId);
     const queries = this.state.sharedQueriesByRepo[repoId] ?? [];
     return queries.find((q) => q.id === queryId) ?? null;
   }
@@ -376,7 +372,7 @@ export class SharedQueryManager {
    * Reload a single query from disk.
    */
   async reloadQuery(queryId: string): Promise<void> {
-    const { repoId, filePath } = parseQueryId(queryId);
+    const { repoId, filePath } = parseCompositeId(queryId);
 
     const repo = this.state.sharedRepos.find((r) => r.id === repoId);
     if (!repo) return;

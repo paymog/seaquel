@@ -19,6 +19,7 @@
 
 import type { QueryFrontmatter, SharedQuery, QueryParameter } from "$lib/types";
 import { parseYamlValue, parseYamlArray, escapeYamlString } from "./yaml-utils";
+import { nameToFilename } from "./config-file-parser.js";
 
 const FRONTMATTER_REGEX = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
 
@@ -249,13 +250,7 @@ function serializeYamlFrontmatter(frontmatter: QueryFrontmatter): string {
  * Generates a valid filename from a query name.
  */
 export function queryNameToFilename(name: string): string {
-  const base = name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return `${base || "untitled"}.sql`;
+  return `${nameToFilename(name)}.sql`;
 }
 
 /**
