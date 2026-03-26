@@ -76,20 +76,18 @@ fn read_dbeaver_config() -> Result<Option<String>, CommandError> {
 
 #[tauri::command]
 fn read_tableplus_config() -> Result<Option<String>, CommandError> {
-    let home = dirs::home_dir().ok_or(CommandError {
-        message: "Could not find home directory".to_string(),
-        code: "HOME_DIR_ERROR".to_string(),
-    })?;
-
-    // TablePlus only runs on macOS
-    #[cfg(target_os = "macos")]
-    let config_path = home.join("Library/Application Support/com.tinyapp.TablePlus/Data/Connections.plist");
-
     #[cfg(not(target_os = "macos"))]
     return Ok(None);
 
+    // TablePlus only runs on macOS
     #[cfg(target_os = "macos")]
     {
+        let home = dirs::home_dir().ok_or(CommandError {
+            message: "Could not find home directory".to_string(),
+            code: "HOME_DIR_ERROR".to_string(),
+        })?;
+
+        let config_path = home.join("Library/Application Support/com.tinyapp.TablePlus/Data/Connections.plist");
         if config_path.exists() {
             let value: plist::Value = plist::from_file(&config_path)
                 .map_err(|e| CommandError {
