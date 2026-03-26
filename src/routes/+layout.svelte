@@ -34,6 +34,7 @@
     import { updateStore } from "$lib/stores/update.svelte.js";
     import type { UpdateInfo } from "$lib/api/tauri";
     import DeepLinkCloneDialog from "$lib/components/deep-link-clone-dialog.svelte";
+    import DeepLinkProjectPickerDialog from "$lib/components/deep-link-project-picker-dialog.svelte";
     import { handleDeepLink } from "$lib/services/deep-link";
 
     setDatabase();
@@ -203,6 +204,7 @@
     <DbeaverImportDialog />
     <TablePlusImportDialog />
     <DeepLinkCloneDialog />
+    <DeepLinkProjectPickerDialog />
 
     <Sidebar.Provider
         class="[--header-height:calc(--spacing(8))] flex-col h-svh overflow-hidden"

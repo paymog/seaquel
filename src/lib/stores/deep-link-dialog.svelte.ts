@@ -2,8 +2,11 @@
  * Reactive store for the deep link clone confirmation dialog.
  */
 
+import type { DeepLinkResourceType } from "$lib/services/deep-link.js";
+
 class DeepLinkDialogStore {
   open = $state(false);
+  resourceType = $state<DeepLinkResourceType>("query");
   repoUrl = $state("");
   filePath = $state("");
   branch = $state("main");
@@ -14,7 +17,13 @@ class DeepLinkDialogStore {
    * Show the dialog and wait for the user's response.
    * Returns true if the user cloned the repo, false if they cancelled.
    */
-  prompt(repoUrl: string, filePath: string, branch: string): Promise<boolean> {
+  prompt(
+    resourceType: DeepLinkResourceType,
+    repoUrl: string,
+    filePath: string,
+    branch: string,
+  ): Promise<boolean> {
+    this.resourceType = resourceType;
     this.repoUrl = repoUrl;
     this.filePath = filePath;
     this.branch = branch;

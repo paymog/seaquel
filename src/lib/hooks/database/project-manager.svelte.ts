@@ -4,6 +4,7 @@ import type {
   PersistedProject,
   DatabaseConnection,
   SharedProject,
+  SharedConnection,
 } from "$lib/types";
 import { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
@@ -593,6 +594,47 @@ export class ProjectManager {
         await this.persistence.persistConnection(connection);
       }
     }
+  }
+
+  /**
+   * Import a single shared connection template into a specific project.
+   * Used by deep links to import individual connections.
+   */
+  async importSingleSharedConnection(
+    sharedConn: SharedConnection,
+    projectId: string,
+  ): Promise<void> {
+    const alreadyImported = this.state.connections.some(
+      (c) => c.sharedConnectionId === sharedConn.id,
+    );
+    if (alreadyImported) return;
+
+    const connection: DatabaseConnection = {
+      id: `conn-${crypto.randomUUID()}`,
+      name: sharedConn.name,
+      type: sharedConn.type,
+      host: sharedConn.host,
+      port: sharedConn.port,
+      databaseName: sharedConn.databaseName,
+      username: "",
+      password: "",
+      sslMode: sharedConn.sslMode,
+      projectId,
+      labelIds: [],
+      sharedConnectionId: sharedConn.id,
+      sshTunnel: sharedConn.sshTunnel
+        ? {
+            enabled: true,
+            host: sharedConn.sshTunnel.host,
+            port: sharedConn.sshTunnel.port,
+            username: "",
+            authMethod: "key",
+          }
+        : undefined,
+    };
+
+    this.state.connections = [...this.state.connections, connection];
+    await this.persistence.persistConnection(connection);
   }
 
   private createDefaultProject(): Project {

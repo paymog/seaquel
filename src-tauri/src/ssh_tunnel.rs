@@ -46,7 +46,6 @@ impl std::error::Error for TunnelError {}
 
 struct TunnelHandle {
     shutdown_tx: Option<oneshot::Sender<()>>,
-    local_port: u16,
 }
 
 pub struct TunnelManager {
@@ -62,14 +61,6 @@ impl TunnelManager {
         }
     }
 
-    pub async fn close_all(&self) {
-        let mut tunnels = self.tunnels.lock().await;
-        for (_, handle) in tunnels.drain() {
-            if let Some(tx) = handle.shutdown_tx {
-                let _ = tx.send(());
-            }
-        }
-    }
 }
 
 impl Default for TunnelManager {
@@ -228,7 +219,6 @@ async fn establish_tunnel(
             tunnel_id.clone(),
             TunnelHandle {
                 shutdown_tx: Some(shutdown_tx),
-                local_port,
             },
         );
     }

@@ -5,12 +5,13 @@
 	import { Input } from "$lib/components/ui/input";
 	import SyncButton from "$lib/components/shared-queries/sync-button.svelte";
 	import SyncStatusBadge from "$lib/components/shared-queries/sync-status-badge.svelte";
-	import { FolderOpenIcon, Trash2Icon } from "@lucide/svelte";
+	import { FolderOpenIcon, Trash2Icon, LinkIcon } from "@lucide/svelte";
 	import { toast } from "svelte-sonner";
 	import { errorToast } from "$lib/utils/toast";
 	import { m } from "$lib/paraglide/messages.js";
 	import { isTauri } from "$lib/utils/environment";
 	import { DEFAULT_PROJECT_ID } from "$lib/types";
+	import { buildDeepLinkUrl } from "$lib/services/deep-link";
 
 	interface Props {
 		projectId: string;
@@ -27,6 +28,19 @@
 		return db.state.sharedRepos.find((r) => r.path === project.gitRepoPath) ?? null;
 	});
 	const syncState = $derived(repo ? (db.state.syncStateByRepo[repo.id] ?? null) : null);
+	const sharedProject = $derived.by(() => {
+		if (!repo) return null;
+		const projects = db.state.sharedProjectsByRepo[repo.id] ?? [];
+		return projects.find((p) => p.name === project?.name) ?? projects[0] ?? null;
+	});
+
+	const copyProjectLink = async () => {
+		if (!repo?.remoteUrl || !sharedProject) return;
+		const filePath = `.seaquel/projects/${sharedProject.dirName}`;
+		const url = buildDeepLinkUrl(repo.remoteUrl, repo.branch, filePath);
+		await navigator.clipboard.writeText(url);
+		toast.success("Link copied to clipboard");
+	};
 
 	let nameInput = $state("");
 	let descriptionInput = $state("");
@@ -267,14 +281,25 @@
 								</div>
 							{/if}
 
-							<!-- Remove git dir link -->
-							<button
-								class="text-xs text-muted-foreground hover:text-destructive cursor-pointer flex items-center gap-1"
-								onclick={handleRemoveGitDir}
-							>
-								<Trash2Icon class="size-3" />
-								{m.project_settings_remove_git()}
-							</button>
+							<!-- Share & Remove -->
+							<div class="flex items-center gap-3">
+								{#if repo?.remoteUrl && sharedProject}
+									<button
+										class="text-xs text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1"
+										onclick={copyProjectLink}
+									>
+										<LinkIcon class="size-3" />
+										{m.share_project()}
+									</button>
+								{/if}
+								<button
+									class="text-xs text-muted-foreground hover:text-destructive cursor-pointer flex items-center gap-1"
+									onclick={handleRemoveGitDir}
+								>
+									<Trash2Icon class="size-3" />
+									{m.project_settings_remove_git()}
+								</button>
+							</div>
 						</div>
 					{/if}
 				</div>

@@ -293,13 +293,13 @@
 		showLabelsDialog = true;
 	};
 
-	const copyShareLink = async (query: SharedQuery) => {
-		const repo = db.state.sharedRepos.find((r) => r.id === query.repoId);
+	const copyShareLink = async (resource: { repoId: string; filePath: string }) => {
+		const repo = db.state.sharedRepos.find((r) => r.id === resource.repoId);
 		if (!repo || !repo.remoteUrl) {
 			toast.error("This repository has no remote URL configured");
 			return;
 		}
-		const url = buildDeepLinkUrl(repo.remoteUrl, query.filePath, repo.branch);
+		const url = buildDeepLinkUrl(repo.remoteUrl, repo.branch, resource.filePath);
 		await navigator.clipboard.writeText(url);
 		toast.success("Link copied to clipboard");
 	};
@@ -541,6 +541,15 @@
 										<TagIcon class="size-4 me-2" />
 										{m.sidebar_connection_labels()}
 									</ContextMenu.Item>
+									{#if connection.sharedConnectionId}
+										{@const sharedConn = db.state.allSharedConnections.find((c) => c.id === connection.sharedConnectionId)}
+										{#if sharedConn}
+											<ContextMenu.Item onclick={() => copyShareLink(sharedConn)}>
+												<LinkIcon class="size-4 me-2" />
+												{m.share_connection()}
+											</ContextMenu.Item>
+										{/if}
+									{/if}
 									{#if !(isDemo() && connection.id === "demo-connection")}
 										<ContextMenu.Separator />
 										<ContextMenu.Item
@@ -1047,7 +1056,7 @@
 													<ContextMenu.Content class="w-44">
 														<ContextMenu.Item onclick={() => copyShareLink(item)}>
 															<LinkIcon class="size-4 me-2" />
-															Copy Link
+															{m.share_query()}
 														</ContextMenu.Item>
 														<ContextMenu.Separator />
 														<ContextMenu.Item onclick={() => handleUnshareQuery(item.id)}>
@@ -1469,6 +1478,11 @@
 														</Sidebar.MenuButton>
 													</ContextMenu.Trigger>
 													<ContextMenu.Content class="w-44">
+														<ContextMenu.Item onclick={() => copyShareLink(item)}>
+															<LinkIcon class="size-4 me-2" />
+															{m.share_dashboard()}
+														</ContextMenu.Item>
+														<ContextMenu.Separator />
 														<ContextMenu.Item onclick={() => handleUnshareDashboard(item.id)}>
 															<GitBranchIcon class="size-4 me-2" />
 															{m.connection_mark_local_only()}

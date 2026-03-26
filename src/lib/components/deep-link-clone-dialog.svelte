@@ -79,7 +79,7 @@
 				Clone Shared Repository?
 			</Dialog.Title>
 			<Dialog.Description>
-				This link references a query in a repository you don't have locally.
+				This link references a {deepLinkDialogStore.resourceType} in a repository you don't have locally.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -90,7 +90,7 @@
 			</div>
 
 			<div class="space-y-1">
-				<p class="text-sm font-medium">Query</p>
+				<p class="text-sm font-medium capitalize">{deepLinkDialogStore.resourceType}</p>
 				<p class="text-sm text-muted-foreground break-all">{deepLinkDialogStore.filePath}</p>
 			</div>
 

@@ -152,8 +152,8 @@ import { errorToast } from "$lib/utils/toast";
 		visualPanelOpen = !visualPanelOpen;
 	}
 
-	// Track query content for live statement count
-	let currentQuery = $state(activeTab?.query ?? '');
+	// Track query content for live statement count (synced via $effect below)
+	let currentQuery = $state('');
 
 	// Update currentQuery when active tab changes
 	$effect(() => {
