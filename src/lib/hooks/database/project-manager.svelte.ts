@@ -24,6 +24,16 @@ import {
 } from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
 import { nameToFilename, serializeProjectFile } from "$lib/services/config-file-parser";
+import type { PersistedWorkflowTab } from "$lib/types/persisted";
+import type { SavedWorkflow } from "$lib/types/workflow";
+import type { PersistedProjectState } from "$lib/types/project";
+
+/** Legacy persisted state from before canvas→workflow rename */
+interface LegacyPersistedProjectState extends PersistedProjectState {
+  canvasTabs?: PersistedWorkflowTab[];
+  savedCanvases?: SavedWorkflow[];
+  activeCanvasTabId?: string | null;
+}
 
 /**
  * Manages projects and their lifecycle.
@@ -355,13 +365,12 @@ export class ProjectManager {
     if (this.removeConnection) {
       for (const connection of projectConnections) {
         await this.removeConnection(connection.id);
+        // Cancel any debounced persistence scheduled by removeConnection
+        // (e.g. via setActiveForProject) before the next iteration's await
+        // gives the timer a chance to fire against the soon-to-be-deleted project
+        this.persistence.cancelPendingPersistence();
       }
     }
-
-    // Cancel any debounced persistence that may have been scheduled
-    // by removeConnection (e.g. via setActiveForProject) to prevent
-    // writing to a project that's about to be deleted
-    this.persistence.cancelPendingPersistence();
 
     // Remove project directory from the git repo if linked
     if (project?.gitRepoPath && this.sharedRepos) {
@@ -661,7 +670,9 @@ export class ProjectManager {
   }
 
   private async loadProjectState(projectId: string): Promise<void> {
-    const persistedState = await this.persistence.loadProjectState(projectId);
+    const persistedState = (await this.persistence.loadProjectState(
+      projectId,
+    )) as LegacyPersistedProjectState | null;
     if (!persistedState) {
       // Initialize empty state for this project
       this.state.queryTabsByProject[projectId] = [];
@@ -745,11 +756,11 @@ export class ProjectManager {
     // Restore workflow tabs
     this.state.workflowTabsByProject[projectId] = (
       persistedState.workflowTabs ??
-      (persistedState as any).canvasTabs ??
+      persistedState.canvasTabs ??
       []
     )
-      .filter((t: any) => t.connectionId)
-      .map((t: any) => ({
+      .filter((t) => t.connectionId)
+      .map((t) => ({
         id: t.id,
         name: t.name,
         connectionId: t.connectionId,
@@ -757,7 +768,7 @@ export class ProjectManager {
 
     // Restore saved workflows
     this.state.savedWorkflowsByProject[projectId] =
-      persistedState.savedWorkflows ?? (persistedState as any).savedCanvases ?? [];
+      persistedState.savedWorkflows ?? persistedState.savedCanvases ?? [];
 
     // Restore tab order and active IDs
     this.state.tabOrderByProject[projectId] = persistedState.tabOrder;
@@ -768,7 +779,7 @@ export class ProjectManager {
     this.state.activeStatisticsTabIdByProject[projectId] =
       persistedState.activeStatisticsTabId ?? null;
     this.state.activeWorkflowTabIdByProject[projectId] =
-      persistedState.activeWorkflowTabId ?? (persistedState as any).activeCanvasTabId ?? null;
+      persistedState.activeWorkflowTabId ?? persistedState.activeCanvasTabId ?? null;
     // Restore the active connection ID if the connection exists (even if not yet reconnected).
     // Auto-reconnect runs after restore and will establish providerConnectionId.
     const restoredConnectionExists = persistedState.activeConnectionId
@@ -805,7 +816,8 @@ export class ProjectManager {
         (this.state.connectionTabsByProject[projectId]?.length ?? 0) > 0 ||
         (this.state.explainTabsByProject[projectId]?.length ?? 0) > 0 ||
         (this.state.erdTabsByProject[projectId]?.length ?? 0) > 0 ||
-        (this.state.dashboardTabsByProject[projectId]?.length ?? 0) > 0;
+        (this.state.dashboardTabsByProject[projectId]?.length ?? 0) > 0 ||
+        (this.state.settingsTabsByProject[projectId]?.length ?? 0) > 0;
       if (!hasOtherTabs) {
         this.starterTabManager?.initializeDefaults(projectId);
       }

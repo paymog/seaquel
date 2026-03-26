@@ -25,7 +25,6 @@ import { errorToast } from "$lib/utils/toast";
 	import type { QueryParameter, ParameterValue } from "$lib/types";
 	import { generateSQL } from "$lib/services/ai";
 	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
-	import { settingsDialogStore } from "$lib/stores/settings-dialog.svelte.js";
 	import { getDatabase } from "$lib/storage/db";
 	import QueryExampleCard from "$lib/components/empty-states/query-example-card.svelte";
 	import AiModelSwitcher from "$lib/components/ai-model-switcher.svelte";
@@ -576,7 +575,7 @@ import { errorToast } from "$lib/utils/toast";
 						message: "No AI provider configured.",
 						action: {
 							label: "Configure",
-							fn: () => { settingsDialogStore.open("ai-provider"); closeAIInlinePrompt(); },
+							fn: () => { db.settingsTabs.open("app", "ai-provider"); closeAIInlinePrompt(); },
 						},
 					};
 				} else {
@@ -608,7 +607,7 @@ import { errorToast } from "$lib/utils/toast";
 					message: "No AI provider configured.",
 					action: {
 						label: "Configure",
-						fn: () => { settingsDialogStore.open("ai-provider"); closeAIInlinePrompt(); },
+						fn: () => { db.settingsTabs.open("app", "ai-provider"); closeAIInlinePrompt(); },
 					},
 				};
 			} else if (msg === "no_api_key") {
@@ -616,7 +615,7 @@ import { errorToast } from "$lib/utils/toast";
 					message: "No API key configured.",
 					action: {
 						label: "Settings → AI",
-						fn: () => { settingsDialogStore.open("ai-provider"); closeAIInlinePrompt(); },
+						fn: () => { db.settingsTabs.open("app", "ai-provider"); closeAIInlinePrompt(); },
 					},
 				};
 			} else if (msg === "rate_limit") {

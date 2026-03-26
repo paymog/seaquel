@@ -83,6 +83,9 @@ export type { Pane, PaneLayout } from "./pane";
 export type { StarterTabType, StarterTab } from "./starter-tabs";
 export { DEFAULT_STARTER_TABS } from "./starter-tabs";
 
+// Settings tab types
+export type { SettingsTabKind, SettingsTab } from "./settings-tab";
+
 // Persisted state types
 export type {
   PersistedQueryTab,

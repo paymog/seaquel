@@ -6,7 +6,7 @@
     import { isTauri } from "$lib/utils/environment";
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
-    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, WorkflowIcon, GitBranchIcon, CableIcon, LayoutDashboardIcon } from "@lucide/svelte";
+    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, WorkflowIcon, GitBranchIcon, CableIcon, LayoutDashboardIcon, SettingsIcon } from "@lucide/svelte";
     import { RocketIcon } from "@lucide/svelte";
     import { useDatabase } from "$lib/hooks/database.svelte.js";
     import { useShortcuts, findShortcut } from "$lib/shortcuts/index.js";
@@ -165,6 +165,11 @@
         db.ui.setActiveView("starter");
     };
 
+    const handleSettingsTabClick = (tabId: string) => {
+        db.settingsTabs.setActive(tabId);
+        db.ui.setActiveView("settings");
+    };
+
     const allTabs = $derived.by(() => {
         if (paneId) {
             const ordered = db.tabs.orderedForPane(paneId);
@@ -175,7 +180,7 @@
     });
 
     type TabType = ActiveViewType;
-    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | WorkflowTab | VisualizeTab | ConnectionTab | DashboardTab | import('$lib/types').StarterTab };
+    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | WorkflowTab | VisualizeTab | ConnectionTab | DashboardTab | import('$lib/types').StarterTab | import('$lib/types').SettingsTab };
 
     let draggedItems = $state<DndItem[]>([]);
     let isDragging = $state(false);
@@ -237,6 +242,7 @@
         connection: handleConnectionTabClick,
         dashboard: handleDashboardTabClick,
         starter: handleStarterTabClick,
+        settings: handleSettingsTabClick,
     };
 
     const switchToTab = (index: number) => {
@@ -264,6 +270,7 @@
         connection: db.connectionTabs,
         dashboard: db.dashboardTabs,
         starter: db.starterTabs,
+        settings: db.settingsTabs,
     };
 
     const closeTabDirect = (id: string, type: TabType) => {
@@ -892,6 +899,50 @@
                                                 <XIcon />
                                             </Button>
                                         {/if}
+                                    </div>
+                                </ContextMenu.Trigger>
+                                <ContextMenu.Portal>
+                                    <ContextMenu.Content class="w-40">
+                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
+                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
+                                        <ContextMenu.Separator />
+                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
+                                        {#if paneId}
+                                            <ContextMenu.Separator />
+                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
+                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
+                                        {/if}
+                                    </ContextMenu.Content>
+                                </ContextMenu.Portal>
+                            </ContextMenu.Root>
+                        {:else if type === 'settings'}
+                            {@const settingsTab = tab as import('$lib/types').SettingsTab}
+                            <ContextMenu.Root>
+                                <ContextMenu.Trigger>
+                                    <div
+                                        class={[
+                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors cursor-pointer",
+                                            isTabActive(id, 'settings')
+                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
+                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
+                                        ]}
+                                        onclick={() => handleSettingsTabClick(id)}
+                                    >
+                                        <SettingsIcon class="size-3 text-muted-foreground" />
+                                        <span class="pr-4">{settingsTab.name}</span>
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
+                                            onclick={(e) => {
+                                                e.stopPropagation();
+                                                db.settingsTabs.remove(id);
+                                            }}
+                                        >
+                                            <XIcon />
+                                        </Button>
                                     </div>
                                 </ContextMenu.Trigger>
                                 <ContextMenu.Portal>

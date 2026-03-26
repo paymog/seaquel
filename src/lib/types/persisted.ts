@@ -233,7 +233,8 @@ export type ActiveViewType =
   | "visualize"
   | "connection"
   | "dashboard"
-  | "starter";
+  | "starter"
+  | "settings";
 
 /**
  * Complete persisted state for a single connection.

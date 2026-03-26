@@ -447,6 +447,13 @@ export class PersistenceManager {
   }
 
   async removeConnectionData(connectionId: string): Promise<void> {
+    // Cancel any pending AI chat persistence timer for this connection
+    const aiTimer = this.aiChatTimers.get(connectionId);
+    if (aiTimer) {
+      clearTimeout(aiTimer);
+      this.aiChatTimers.delete(connectionId);
+    }
+
     try {
       const db = await getDatabase();
       await queryHistoryRepo.removeByConnection(db, connectionId);

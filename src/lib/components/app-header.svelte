@@ -13,7 +13,6 @@
     import NetworkIcon from "@lucide/svelte/icons/network";
     import SettingsIcon from "@lucide/svelte/icons/settings";
     import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
-    import ProjectSettingsDialog from "./project-settings-dialog.svelte";
     import ImportSharedProjectDialog from "./import-shared-project-dialog.svelte";
     import { sharedProjectImportStore } from "$lib/stores/shared-project-import.svelte.js";
     import { toast } from "svelte-sonner";
@@ -28,7 +27,7 @@
     import { Badge } from "$lib/components/ui/badge/index.js";
     import { licenseStore } from "$lib/stores/license.svelte.js";
     import { updateStore } from "$lib/stores/update.svelte.js";
-    import { settingsDialogStore } from "$lib/stores/settings-dialog.svelte.js";
+
     import { isTauri } from "$lib/utils/environment";
     import { page } from "$app/state";
     import { resolve } from "$app/paths";
@@ -84,9 +83,7 @@
     // Project management state
     let showNewProjectDialog = $state(false);
     let showRemoveProjectDialog = $state(false);
-    let showProjectSettingsDialog = $state(false);
     let newProjectName = $state("");
-    let projectToSettings = $state<string | null>(null);
     let projectToRemove = $state<string | null>(null);
     let projectToRemoveName = $state("");
     const handleCreateProject = async () => {
@@ -97,8 +94,11 @@
     };
 
     const openProjectSettings = (projectId: string) => {
-        projectToSettings = projectId;
-        showProjectSettingsDialog = true;
+        // Switch to the project first if needed, then open settings tab
+        if (db.state.activeProjectId !== projectId) {
+            db.projects.setActive(projectId);
+        }
+        db.settingsTabs.open("project");
     };
 
     const confirmRemoveProject = (projectId: string, name: string) => {
@@ -154,7 +154,7 @@
         <!-- Left section: sidebar toggle + project dropdown (fixed sidebar width) -->
         <div data-tauri-drag-region class="flex items-center gap-1 shrink-0 w-(--sidebar-width) {isMac() ? 'pl-18' : 'pl-2'}">
             <Button
-                class="size-8 shrink-0"
+                class="size-6 shrink-0"
                 variant="ghost"
                 size="icon"
                 onclick={sidebar.toggle}
@@ -163,10 +163,19 @@
             </Button>
             <!-- Project Dropdown -->
             <DropdownMenu.Root>
-                <DropdownMenu.Trigger class="flex items-center gap-2 px-3 h-8 text-sm rounded-md bg-background hover:bg-muted transition-colors">
-                    <span class="max-w-40 truncate" title={db.state.activeProject?.name || m.project_default_name()}>
-                        {db.state.activeProject?.name || m.project_default_name()}
-                    </span>
+                <DropdownMenu.Trigger>
+                    {#snippet child({ props })}
+                        <Button
+                            {...props}
+                            variant="ghost"
+                            size="sm"
+                            class="h-6 px-3"
+                        >
+                            <span class="max-w-40 truncate" title={db.state.activeProject?.name || m.project_default_name()}>
+                                {db.state.activeProject?.name || m.project_default_name()}
+                            </span>
+                        </Button>
+                    {/snippet}
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Content class="w-56" align="start">
                     {#each db.state.projects as project (project.id)}
@@ -220,7 +229,7 @@
             {#if isTauri()}
                 <button
                     class="cursor-pointer"
-                    onclick={() => settingsDialogStore.open("license")}
+                    onclick={() => db.settingsTabs.open("app", "license")}
                 >
                     <Badge variant={licenseStore.status === "active" ? "default" : licenseStore.status === "expired" || licenseStore.status === "invalid" ? "destructive" : "secondary"}>
                         {licenseStore.badgeLabel}
@@ -271,7 +280,7 @@
                     {/snippet}
                 </DropdownMenu.Trigger>
                 <DropdownMenu.Content class="w-52" align="end">
-                    <DropdownMenu.Item onclick={() => settingsDialogStore.open()}>
+                    <DropdownMenu.Item onclick={() => db.settingsTabs.open("app")}>
                         Settings
                         <DropdownMenu.Shortcut>⌘,</DropdownMenu.Shortcut>
                     </DropdownMenu.Item>
@@ -283,7 +292,7 @@
                     {#if isTauri() && licenseStore.status !== "active"}
                         <DropdownMenu.Item
                             class="text-emerald-600 dark:text-emerald-400 focus:text-emerald-600 dark:focus:text-emerald-400"
-                            onclick={() => settingsDialogStore.open("license")}
+                            onclick={() => db.settingsTabs.open("app", "license")}
                         >
                             <CircleDollarSignIcon class="size-4" />
                             Purchase License
@@ -339,11 +348,6 @@
         </Dialog.Footer>
     </Dialog.Content>
 </Dialog.Root>
-
-<!-- Project Settings Dialog -->
-{#if projectToSettings}
-    <ProjectSettingsDialog projectId={projectToSettings} bind:open={showProjectSettingsDialog} />
-{/if}
 
 <!-- Remove Project Dialog -->
 <Dialog.Root bind:open={showRemoveProjectDialog}>

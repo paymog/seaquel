@@ -9,6 +9,7 @@ import type {
   ConnectionTab,
   DashboardTab,
   StarterTab,
+  SettingsTab,
 } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PaneManager } from "./pane-manager.svelte.js";
@@ -121,7 +122,8 @@ export class TabOrderingManager {
       | "visualize"
       | "connection"
       | "dashboard"
-      | "starter";
+      | "starter"
+      | "settings";
     tab:
       | QueryTab
       | SchemaTab
@@ -132,7 +134,8 @@ export class TabOrderingManager {
       | VisualizeTab
       | ConnectionTab
       | DashboardTab
-      | StarterTab;
+      | StarterTab
+      | SettingsTab;
   }> {
     if (!this.state.activeProjectId) return [];
 
@@ -175,7 +178,8 @@ export class TabOrderingManager {
       | "visualize"
       | "connection"
       | "dashboard"
-      | "starter";
+      | "starter"
+      | "settings";
     tab:
       | QueryTab
       | SchemaTab
@@ -186,7 +190,8 @@ export class TabOrderingManager {
       | VisualizeTab
       | ConnectionTab
       | DashboardTab
-      | StarterTab;
+      | StarterTab
+      | SettingsTab;
   }> {
     if (!this.state.activeProjectId) return [];
 
@@ -215,7 +220,8 @@ export class TabOrderingManager {
         | "visualize"
         | "connection"
         | "dashboard"
-        | "starter";
+        | "starter"
+        | "settings";
       tab:
         | QueryTab
         | SchemaTab
@@ -226,7 +232,8 @@ export class TabOrderingManager {
         | VisualizeTab
         | ConnectionTab
         | DashboardTab
-        | StarterTab;
+        | StarterTab
+        | SettingsTab;
     }> = [];
 
     for (const t of queryTabs) {
@@ -261,6 +268,12 @@ export class TabOrderingManager {
 
     for (const t of starterTabs) {
       allTabsUnordered.push({ id: t.id, type: "starter", tab: t });
+    }
+
+    const settingsTabs = this.state.settingsTabs || [];
+
+    for (const t of settingsTabs) {
+      allTabsUnordered.push({ id: t.id, type: "settings", tab: t });
     }
 
     const order = this.state.tabOrderByProject[this.state.activeProjectId] ?? [];

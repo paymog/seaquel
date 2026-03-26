@@ -1,5 +1,4 @@
-import type { ActiveViewType } from "$lib/types/persisted";
-import type { Pane, PaneLayout } from "$lib/types";
+import type { ActiveViewType, Pane, PaneLayout } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 
 /**
@@ -111,10 +110,16 @@ export class PaneManager {
     const activePane = layout.panes.find((p) => p.id === layout.activePaneId);
     if (!activePane) return;
 
-    if (activePane.tabIds.includes(tabId)) return;
+    const alreadyInPane = activePane.tabIds.includes(tabId);
 
     const updatedPanes = layout.panes.map((p) =>
-      p.id === layout.activePaneId ? { ...p, tabIds: [...p.tabIds, tabId], activeTabId: tabId } : p,
+      p.id === layout.activePaneId
+        ? {
+            ...p,
+            tabIds: alreadyInPane ? p.tabIds : [...p.tabIds, tabId],
+            activeTabId: tabId,
+          }
+        : p,
     );
 
     this.updateLayout(projectId, { ...layout, panes: updatedPanes });
@@ -299,6 +304,8 @@ export class PaneManager {
       return "dashboard";
     if ((this.state.starterTabsByProject[projectId] ?? []).some((t) => t.id === tabId))
       return "starter";
+    if ((this.state.settingsTabsByProject[projectId] ?? []).some((t) => t.id === tabId))
+      return "settings";
 
     return null;
   }
@@ -495,6 +502,12 @@ export class PaneManager {
           [projectId]: id,
         };
       },
+      settings: (id) => {
+        this.state.activeSettingsTabIdByProject = {
+          ...this.state.activeSettingsTabIdByProject,
+          [projectId]: id,
+        };
+      },
     };
 
     setters[viewType](tabId);
@@ -530,6 +543,7 @@ export class PaneManager {
       connection: this.state.activeConnectionTabIdByProject[projectId] ?? null,
       dashboard: this.state.activeDashboardTabIdByProject[projectId] ?? null,
       starter: this.state.activeStarterTabIdByProject[projectId] ?? null,
+      settings: this.state.activeSettingsTabIdByProject[projectId] ?? null,
     };
 
     return idMap[view] ?? null;

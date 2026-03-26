@@ -1,5 +1,5 @@
 import { setContext, getContext } from "svelte";
-import type { SchemaTable } from "$lib/types";
+import type { SchemaTable, ActiveViewType } from "$lib/types";
 import type { DatabaseAdapter } from "$lib/db";
 import { log } from "$lib/utils/logger";
 import { DatabaseState } from "./database/state.svelte.js";
@@ -22,6 +22,7 @@ import { ConnectionTabManager } from "./database/connection-tabs.svelte.js";
 import { ProjectManager } from "./database/project-manager.svelte.js";
 import { LabelManager } from "./database/label-manager.svelte.js";
 import { StarterTabManager } from "./database/starter-tabs.svelte.js";
+import { SettingsTabManager } from "./database/settings-tabs.svelte.js";
 import { DashboardTabManager } from "./database/dashboard-tabs.svelte.js";
 import { DashboardManager } from "./database/dashboard-manager.svelte.js";
 import { WorkflowState } from "./database/workflow-state.svelte.js";
@@ -72,6 +73,7 @@ class UseDatabase {
   readonly workflow: WorkflowManager;
   readonly sharedRepos: SharedRepoManager;
   readonly connectionTabs: ConnectionTabManager;
+  readonly settingsTabs: SettingsTabManager;
   readonly sharedQueries: SharedQueryManager;
   readonly sharedDashboards: SharedDashboardManager;
   readonly aiChats: AIChatManager;
@@ -95,19 +97,7 @@ class UseDatabase {
       this.persistence.scheduleConnectionData(connectionId);
     };
 
-    const setActiveView = (
-      view:
-        | "query"
-        | "schema"
-        | "explain"
-        | "erd"
-        | "statistics"
-        | "workflow"
-        | "visualize"
-        | "connection"
-        | "dashboard"
-        | "starter",
-    ) => {
+    const setActiveView = (view: ActiveViewType) => {
       this.ui.setActiveView(view);
     };
 
@@ -210,6 +200,12 @@ class UseDatabase {
       setActiveView,
     );
     this.starterTabs = new StarterTabManager(this.state, this.tabs, scheduleProjectPersistence);
+    this.settingsTabs = new SettingsTabManager(
+      this.state,
+      this.tabs,
+      scheduleProjectPersistence,
+      setActiveView,
+    );
 
     // Workflow
     this.workflowState = new WorkflowState();

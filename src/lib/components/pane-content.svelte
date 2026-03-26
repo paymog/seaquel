@@ -14,6 +14,8 @@
     import WorkflowView from "$lib/components/workflow/workflow-view.svelte";
     import QueryVisualViewer from "$lib/components/query-visual-viewer.svelte";
     import ConnectionTabView from "$lib/components/connection-tab-view.svelte";
+    import SettingsTabView from "$lib/components/settings-tab-view.svelte";
+    import ProjectSettingsTabView from "$lib/components/project-settings-tab-view.svelte";
     import { DashboardView } from "$lib/components/dashboard";
     import DragSplitOverlay from "$lib/components/drag-split-overlay.svelte";
     import { usePaneDragState } from "$lib/components/pane-drag-context.svelte.js";
@@ -52,6 +54,11 @@
     const activeStarterTab = $derived(
         paneViewType === 'starter' && pane.activeTabId
             ? db.state.starterTabs.find(t => t.id === pane.activeTabId) ?? null
+            : null
+    );
+    const activeSettingsTab = $derived(
+        paneViewType === 'settings' && pane.activeTabId
+            ? db.state.settingsTabs.find(t => t.id === pane.activeTabId) ?? null
             : null
     );
 
@@ -94,6 +101,16 @@
         <div class="flex-1 min-h-0 flex flex-col">
             {#key activeConnectionTab.id}
                 <ConnectionTabView tab={activeConnectionTab} />
+            {/key}
+        </div>
+    {:else if paneViewType === "settings" && activeSettingsTab}
+        <div class="flex-1 min-h-0 flex flex-col">
+            {#key activeSettingsTab.id}
+                {#if activeSettingsTab.kind === "project"}
+                    <ProjectSettingsTabView tab={activeSettingsTab} />
+                {:else}
+                    <SettingsTabView tab={activeSettingsTab} />
+                {/if}
             {/key}
         </div>
     {:else if paneViewType === "query" && pane.activeTabId}

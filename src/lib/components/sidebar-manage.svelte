@@ -21,7 +21,6 @@
 	import { buildDeepLinkUrl } from "$lib/services/deep-link";
 	import { LinkIcon, SettingsIcon } from "@lucide/svelte";
 	import { toast } from "svelte-sonner";
-	import ProjectSettingsDialog from "$lib/components/project-settings-dialog.svelte";
     import { snippets } from "monaco-sql-languages";
 
 	interface Props {
@@ -97,9 +96,6 @@
 		showDeleteDashboardDialog = false;
 		dashboardToDelete = null;
 	};
-
-	// Project settings dialog state
-	let showProjectSettingsDialog = $state(false);
 
 	// Labels dialog state
 	let showLabelsDialog = $state(false);
@@ -1076,7 +1072,7 @@
 												{#if !db.state.activeProjectHasGit}
 													<button
 														class="text-xs text-primary hover:underline cursor-pointer"
-														onclick={() => { showProjectSettingsDialog = true; }}
+														onclick={() => { db.settingsTabs.open("project"); }}
 													>
 														{m.sidebar_share_queries()}
 													</button>
@@ -1500,7 +1496,7 @@
 												{#if !db.state.activeProjectHasGit}
 													<button
 														class="text-xs text-primary hover:underline cursor-pointer"
-														onclick={() => { showProjectSettingsDialog = true; }}
+														onclick={() => { db.settingsTabs.open("project"); }}
 													>
 														{m.sidebar_share_dashboards()}
 													</button>
@@ -1599,11 +1595,6 @@
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>
-
-<!-- Project Settings Dialog -->
-{#if db.state.activeProjectId}
-	<ProjectSettingsDialog projectId={db.state.activeProjectId} bind:open={showProjectSettingsDialog} />
-{/if}
 
 <!-- Delete Dashboard Confirmation Dialog -->
 <AlertDialog.Root bind:open={showDeleteDashboardDialog}>

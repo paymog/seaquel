@@ -15,6 +15,7 @@ import type {
   ConnectionTab,
   Project,
   StarterTab,
+  SettingsTab,
   SharedQueryRepo,
   SharedQuery,
   SyncState,
@@ -99,6 +100,10 @@ export class DatabaseState {
   starterTabsByProject = $state<Record<string, StarterTab[]>>({});
   activeStarterTabIdByProject = $state<Record<string, string | null>>({});
 
+  // === SETTINGS TABS STATE (per-project) ===
+  settingsTabsByProject = $state<Record<string, SettingsTab[]>>({});
+  activeSettingsTabIdByProject = $state<Record<string, string | null>>({});
+
   // Tab ordering state (stores ordered array of all tab IDs per project)
   tabOrderByProject = $state<Record<string, string[]>>({});
 
@@ -154,6 +159,7 @@ export class DatabaseState {
     | "connection"
     | "dashboard"
     | "starter"
+    | "settings"
   >("query");
 
   // === PROJECT DERIVED VALUES ===
@@ -372,6 +378,23 @@ export class DatabaseState {
     this.starterTabs.find((t) => t.id === this.activeStarterTabId) || null,
   );
 
+  // === SETTINGS TAB DERIVED VALUES ===
+
+  // Derived: settings tabs for active project
+  settingsTabs = $derived(
+    this.activeProjectId ? (this.settingsTabsByProject[this.activeProjectId] ?? []) : [],
+  );
+
+  // Derived: active settings tab ID for active project
+  activeSettingsTabId = $derived(
+    this.activeProjectId ? (this.activeSettingsTabIdByProject[this.activeProjectId] ?? null) : null,
+  );
+
+  // Derived: active settings tab object
+  activeSettingsTab = $derived(
+    this.settingsTabs.find((t) => t.id === this.activeSettingsTabId) || null,
+  );
+
   // === TAB TYPE UTILITIES ===
 
   /** Get the active tab ID for a given view type */
@@ -397,6 +420,8 @@ export class DatabaseState {
         return this.activeDashboardTabId;
       case "starter":
         return this.activeStarterTabId;
+      case "settings":
+        return this.activeSettingsTabId;
       default:
         return null;
     }

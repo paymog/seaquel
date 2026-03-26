@@ -1,6 +1,6 @@
 <script lang="ts">
   import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
-  import { settingsDialogStore } from "$lib/stores/settings-dialog.svelte.js";
+  import { useDatabase } from "$lib/hooks/database.svelte.js";
   import { m } from "$lib/paraglide/messages.js";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
@@ -12,6 +12,8 @@
   }
 
   let { providerId, model, onSelect }: Props = $props();
+
+  const db = useDatabase();
 
   let open = $state(false);
   let modelsByProvider = $state<Record<string, string[]>>({});
@@ -77,7 +79,7 @@
           <button
             type="button"
             class="underline ml-1"
-            onclick={() => { open = false; settingsDialogStore.open("ai-provider"); }}
+            onclick={() => { open = false; db.settingsTabs.open("app", "ai-provider"); }}
           >{m.settings_ai_configure_link()}</button>
         </div>
       {:else}

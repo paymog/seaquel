@@ -7,29 +7,22 @@
     import { useDatabase } from "$lib/hooks/database.svelte.js";
     import { useShortcuts } from "$lib/shortcuts/index.js";
     import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
-    import { settingsDialogStore } from "$lib/stores/settings-dialog.svelte.js";
     import PaneContainer from "$lib/components/pane-container.svelte";
-    import ProjectSettingsDialog from "$lib/components/project-settings-dialog.svelte";
     import { aiSettingsStore } from "$lib/stores/ai-settings.svelte.js";
 
     const db = useDatabase();
     const shortcuts = useShortcuts();
     const sidebar = useSidebar();
 
-    // Project settings dialog state (opened via Cmd+;)
-    let showProjectSettings = $state(false);
-    let projectSettingsId = $state<string | null>(null);
-
     // Register keyboard shortcuts (settings + sidebar only; tab shortcuts are in header-tabs)
     onMount(() => {
         shortcuts.registerHandler('openSettings', () => {
-            settingsDialogStore.open();
+            db.settingsTabs.open("app");
         });
 
         shortcuts.registerHandler('openProjectSettings', () => {
             if (db.state.activeProjectId) {
-                projectSettingsId = db.state.activeProjectId;
-                showProjectSettings = true;
+                db.settingsTabs.open("project");
             }
         });
 
@@ -65,8 +58,4 @@
             <AIAssistant />
         </Sidebar.Root>
     </Sidebar.Provider>
-{/if}
-
-{#if projectSettingsId}
-    <ProjectSettingsDialog projectId={projectSettingsId} bind:open={showProjectSettings} />
 {/if}

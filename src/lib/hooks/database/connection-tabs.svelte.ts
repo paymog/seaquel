@@ -1,4 +1,4 @@
-import type { ConnectionTab, ConnectionFormData } from "$lib/types";
+import type { ConnectionTab, ConnectionFormData, ActiveViewType } from "$lib/types";
 import type { DatabaseType, SSHAuthMethod } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
@@ -60,41 +60,17 @@ export const defaultFormData: ConnectionFormData = {
  * Tabs are organized per-project.
  */
 export class ConnectionTabManager extends BaseTabManager<ConnectionTab> {
-  private setActiveView: (
-    view:
-      | "query"
-      | "schema"
-      | "explain"
-      | "erd"
-      | "statistics"
-      | "workflow"
-      | "visualize"
-      | "connection"
-      | "dashboard"
-      | "starter",
-  ) => void;
+  private setActiveView: (view: ActiveViewType) => void;
 
   // Tracks the view that was active before the connection tab was opened,
   // so we can restore it when the last connection tab is closed.
-  private previousView: Parameters<typeof this.setActiveView>[0] | null = null;
+  private previousView: ActiveViewType | null = null;
 
   constructor(
     state: DatabaseState,
     tabOrdering: TabOrderingManager,
     schedulePersistence: (projectId: string | null) => void,
-    setActiveView: (
-      view:
-        | "query"
-        | "schema"
-        | "explain"
-        | "erd"
-        | "statistics"
-        | "workflow"
-        | "visualize"
-        | "connection"
-        | "dashboard"
-        | "starter",
-    ) => void,
+    setActiveView: (view: ActiveViewType) => void,
   ) {
     super(state, tabOrdering, schedulePersistence);
     this.setActiveView = setActiveView;

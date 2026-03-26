@@ -11,8 +11,6 @@
     import { setShortcuts } from "$lib/shortcuts/index.js";
     import KeyboardShortcutsDialog from "$lib/components/keyboard-shortcuts-dialog.svelte";
     import CommandPalette from "$lib/components/command-palette.svelte";
-    import SettingsDialog from "$lib/components/settings-dialog.svelte";
-    import { settingsDialogStore } from "$lib/stores/settings-dialog.svelte.js";
     import { themeStore } from "$lib/stores/theme.svelte.js";
     import { applyThemeColors } from "$lib/themes/apply";
     import DbeaverImportDialog from "$lib/components/dbeaver-import-dialog.svelte";
@@ -112,7 +110,7 @@
 
             // Listen for Settings menu event
             const unlistenSettings = await listen("menu-settings", () => {
-                settingsDialogStore.open();
+                db.settingsTabs.open("app");
             });
             cleanupFns.push(unlistenSettings);
 
@@ -200,7 +198,6 @@
     <!-- Main app window: full app shell with header and sidebars -->
     <KeyboardShortcutsDialog />
     <CommandPalette />
-    <SettingsDialog />
     <DbeaverImportDialog />
     <TablePlusImportDialog />
     <DeepLinkCloneDialog />
