@@ -16,10 +16,10 @@
 		SearchIcon,
 		ActivityIcon,
 		NetworkIcon,
-		GitBranchIcon
+		HistoryIcon
 	} from "@lucide/svelte";
 	import { m } from "$lib/paraglide/messages.js";
-	import type { StatementResult } from "$lib/types";
+	import type { StatementResult, ResolvedQueryVersion } from "$lib/types";
 
 	type Props = {
 		isExecuting: boolean;
@@ -32,7 +32,11 @@
 		onVisualize: () => void;
 		onFormat: () => void;
 		onSave: () => void;
-		onShare?: () => void;
+		onSaveAs?: () => void;
+		savedQueryId?: string;
+		tabId?: string;
+		versions?: ResolvedQueryVersion[];
+		onDiffVersions?: (selected: ResolvedQueryVersion[]) => void;
 	};
 
 	let {
@@ -46,13 +50,50 @@
 		onVisualize,
 		onFormat,
 		onSave,
-		onShare
+		onSaveAs,
+		savedQueryId,
+		tabId,
+		versions = [],
+		onDiffVersions
 	}: Props = $props();
 
-	const db = useDatabase();
+	let checkedVersionIds = $state<string[]>([]);
 
-	// Check if shared repos exist
-	const hasSharedRepos = $derived(db.state.sharedRepos.length > 0);
+	export function clearVersionSelection() {
+		checkedVersionIds = [];
+	}
+
+	function toggleVersion(version: ResolvedQueryVersion) {
+		const idx = checkedVersionIds.indexOf(version.id);
+		if (idx >= 0) {
+			checkedVersionIds = checkedVersionIds.filter((id) => id !== version.id);
+		} else if (checkedVersionIds.length < 2) {
+			checkedVersionIds = [...checkedVersionIds, version.id];
+		} else {
+			checkedVersionIds = [checkedVersionIds[1], version.id];
+		}
+
+		// Trigger diff callback (order preserved: first selected = left, second = right)
+		const selected = checkedVersionIds
+			.map((id) => versions.find((v) => v.id === id))
+			.filter((v): v is ResolvedQueryVersion => v != null);
+		onDiffVersions?.(selected);
+	}
+
+	function formatRelativeTime(date: Date): string {
+		const now = Date.now();
+		const diff = now - date.getTime();
+		const minutes = Math.floor(diff / 60000);
+		if (minutes < 1) return "just now";
+		if (minutes < 60) return `${minutes}m ago`;
+		const hours = Math.floor(minutes / 60);
+		if (hours < 24) return `${hours}h ago`;
+		const days = Math.floor(hours / 24);
+		if (days < 30) return `${days}d ago`;
+		return date.toLocaleDateString();
+	}
+
+	const db = useDatabase();
 </script>
 
 <div class="flex items-center justify-between p-2 shrink-0">
@@ -154,11 +195,42 @@
 				<ShortcutKeys keys={findShortcut('formatSql')!.keys} class="ms-1" />
 			{/if}
 		</Button>
-		<div class="flex">
+		{#if savedQueryId && onSaveAs}
+			<div class="flex">
+				<Button
+					size="sm"
+					variant="outline"
+					class="h-7 gap-1 rounded-r-none border-r-0"
+					onclick={onSave}
+					disabled={!hasQuery || (tabId != null && !db.queryTabs.hasUnsavedChanges(tabId))}
+				>
+					<SaveIcon class="size-3" />
+					{m.query_save()}
+					{#if findShortcut('saveQuery')}
+						<ShortcutKeys keys={findShortcut('saveQuery')!.keys} class="ms-1" />
+					{/if}
+				</Button>
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger
+						class={buttonVariants({ size: "sm", variant: "outline" }) +
+							" !h-7 px-1.5 rounded-l-none"}
+						disabled={!hasQuery}
+					>
+						<ChevronDownIcon class="size-3" />
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="end">
+						<DropdownMenu.Item onclick={onSaveAs}>
+							<SaveIcon class="size-4 me-2" />
+							{m.query_save_as()}
+						</DropdownMenu.Item>
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
+			</div>
+		{:else}
 			<Button
 				size="sm"
 				variant="outline"
-				class="h-7 gap-1 rounded-r-none border-r-0"
+				class="h-7 gap-1"
 				onclick={onSave}
 				disabled={!hasQuery}
 			>
@@ -168,30 +240,38 @@
 					<ShortcutKeys keys={findShortcut('saveQuery')!.keys} class="ms-1" />
 				{/if}
 			</Button>
+		{/if}
+		{#if savedQueryId && versions.length > 0}
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger
-					class={buttonVariants({ size: "sm", variant: "outline" }) +
-						" !h-7 px-1.5 rounded-l-none"}
-					disabled={!hasQuery}
+					class={buttonVariants({ size: "sm", variant: "outline" }) + " !h-7 px-2"}
 				>
-					<ChevronDownIcon class="size-3" />
+					<HistoryIcon class="size-3" />
 				</DropdownMenu.Trigger>
-				<DropdownMenu.Content align="end">
-					<DropdownMenu.Item onclick={onSave}>
-						<SaveIcon class="size-4 me-2" />
-						{m.query_save()}
-						{#if findShortcut('saveQuery')}
-							<ShortcutKeys keys={findShortcut('saveQuery')!.keys} class="ms-auto" />
-						{/if}
-					</DropdownMenu.Item>
-					{#if onShare}
-						<DropdownMenu.Item onclick={onShare} disabled={!hasSharedRepos}>
-							<GitBranchIcon class="size-4 me-2" />
-							Share to Repository
-						</DropdownMenu.Item>
-					{/if}
+				<DropdownMenu.Content align="end" class="w-80 max-h-80 overflow-y-auto">
+					<DropdownMenu.Label class="text-xs text-muted-foreground">Version History</DropdownMenu.Label>
+					<DropdownMenu.Separator />
+					{#each [...versions].reverse() as version}
+						<button
+							class="relative flex w-full cursor-default select-none items-start gap-2 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-accent hover:text-accent-foreground"
+							onclick={() => toggleVersion(version)}
+						>
+							<div class="flex size-4 shrink-0 items-center justify-center rounded-sm border border-input mt-0.5 {checkedVersionIds.includes(version.id) ? 'bg-primary border-primary' : ''}">
+								{#if checkedVersionIds.includes(version.id)}
+									<svg class="size-3 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+								{/if}
+							</div>
+							<div class="flex flex-col gap-0.5 flex-1 min-w-0">
+								<div class="flex items-center justify-between">
+									<span class="font-medium text-xs">Version {version.version}</span>
+									<span class="text-xs text-muted-foreground">{formatRelativeTime(version.createdAt)}</span>
+								</div>
+								<span class="text-xs text-muted-foreground truncate block">{version.query.slice(0, 80)}</span>
+							</div>
+						</button>
+					{/each}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
-		</div>
+		{/if}
 	</div>
 </div>

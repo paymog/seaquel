@@ -198,6 +198,41 @@ export interface SavedQuery {
 }
 
 /**
+ * A single version entry for a saved query.
+ * Keyframe versions store a full snapshot; delta versions store a diff patch.
+ */
+export interface QueryVersion {
+  /** Unique identifier */
+  id: string;
+  /** The saved query this version belongs to */
+  savedQueryId: string;
+  /** Monotonically increasing version number (1-based) */
+  version: number;
+  /** Full query text on keyframes, null otherwise */
+  snapshot: string | null;
+  /** Patch text on deltas, null on keyframes */
+  diff: string | null;
+  /** When this version was created */
+  createdAt: Date;
+}
+
+/**
+ * A query version with the full query text reconstructed from snapshots and diffs.
+ */
+export interface ResolvedQueryVersion {
+  /** Unique identifier */
+  id: string;
+  /** The saved query this version belongs to */
+  savedQueryId: string;
+  /** Version number */
+  version: number;
+  /** Reconstructed full query text */
+  query: string;
+  /** When this version was created */
+  createdAt: Date;
+}
+
+/**
  * An AI chat conversation belonging to a specific database connection.
  */
 export interface AIChat {

@@ -225,7 +225,11 @@ class UseDatabase {
       (connectionId) => this.labels.getConnectionLabelsById(connectionId),
       (connectionId) => this.state.connections.find((c) => c.id === connectionId)?.name || "",
     );
-    this.savedQueries = new SavedQueryManager(this.state, scheduleProjectPersistence);
+    this.savedQueries = new SavedQueryManager(
+      this.state,
+      scheduleProjectPersistence,
+      this.persistence,
+    );
     this.savedQueries.setRemoveTab((id) => this.queryTabs.remove(id));
     this.queries = new QueryExecutionManager(this.state, this.history, providers);
 

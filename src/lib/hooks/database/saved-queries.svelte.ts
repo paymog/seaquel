@@ -1,5 +1,8 @@
-import type { SavedQuery, QueryTab, QueryParameter } from "$lib/types";
+import type { SavedQuery, QueryTab, QueryParameter, QueryVersion } from "$lib/types";
+import type { ResolvedQueryVersion } from "$lib/types";
+import { createVersionEntry, resolveVersions } from "$lib/utils/query-versions";
 import type { DatabaseState } from "./state.svelte.js";
+import type { PersistenceManager } from "./persistence-manager.svelte.js";
 
 /**
  * Manages saved queries: save, delete.
@@ -12,6 +15,7 @@ export class SavedQueryManager {
   constructor(
     private state: DatabaseState,
     private scheduleProjectPersistence: (projectId: string | null) => void,
+    private persistence: PersistenceManager,
   ) {}
 
   setRemoveTab(fn: (id: string) => void) {
@@ -23,6 +27,7 @@ export class SavedQueryManager {
     query: string,
     tabId?: string,
     parameters?: QueryParameter[],
+    forceNew?: boolean,
   ): string | null {
     if (!this.state.activeProjectId) return null;
 
@@ -30,7 +35,7 @@ export class SavedQueryManager {
 
     // Check if this tab is already linked to a saved query
     let savedQueryId: string | undefined;
-    if (tabId) {
+    if (tabId && !forceNew) {
       const tabs = this.state.queryTabsByProject[projectId] ?? [];
       const tab = tabs.find((t: QueryTab) => t.id === tabId);
       savedQueryId = tab?.savedQueryId;
@@ -41,6 +46,51 @@ export class SavedQueryManager {
       const savedQueries = this.state.savedQueriesByProject[projectId] ?? [];
       const savedQuery = savedQueries.find((q) => q.id === savedQueryId);
       if (savedQuery) {
+        // Create a version for the previous state before updating
+        const versions = this.getVersionsForQuery(savedQueryId!);
+        const nextVersion =
+          versions.length > 0 ? Math.max(...versions.map((v) => v.version)) + 1 : 1;
+
+        // For delta versions, we need the previous version's resolved text
+        let previousVersionQuery: string | undefined;
+        if (nextVersion > 1) {
+          const resolved = resolveVersions(versions);
+          previousVersionQuery =
+            resolved.length > 0 ? resolved[resolved.length - 1].query : savedQuery.query;
+        }
+
+        const newVersion = createVersionEntry(
+          savedQueryId!,
+          nextVersion,
+          savedQuery.query,
+          previousVersionQuery,
+        );
+
+        // Add to state
+        const projectVersions = this.state.queryVersionsByProject[projectId] ?? [];
+        this.state.queryVersionsByProject = {
+          ...this.state.queryVersionsByProject,
+          [projectId]: [...projectVersions, newVersion],
+        };
+
+        // Persist immediately
+        this.persistence
+          .persistQueryVersion({
+            id: newVersion.id,
+            savedQueryId: newVersion.savedQueryId,
+            version: newVersion.version,
+            snapshot: newVersion.snapshot,
+            diff: newVersion.diff,
+            createdAt: newVersion.createdAt.toISOString(),
+          })
+          .catch((err) => console.error("[saved-queries] Failed to persist query version:", err));
+
+        // Prune old versions if over limit
+        this.pruneIfNeeded(savedQueryId!, projectId).catch((err) =>
+          console.error("[saved-queries] Failed to prune query versions:", err),
+        );
+
+        // Then update the saved query as before
         const updatedSavedQueries = savedQueries.map((q) =>
           q.id === savedQueryId ? { ...q, name, query, parameters, updatedAt: new Date() } : q,
         );
@@ -84,8 +134,8 @@ export class SavedQueryManager {
       [projectId]: [...savedQueries, newSavedQuery],
     };
 
-    // Link tab to saved query if tabId provided
-    if (tabId) {
+    // Link tab to saved query if tabId provided (skip for forceNew — caller handles it)
+    if (tabId && !forceNew) {
       const tabs = this.state.queryTabsByProject[projectId] ?? [];
       const updatedTabs = tabs.map((t: QueryTab) =>
         t.id === tabId ? { ...t, savedQueryId: newSavedQuery.id, name } : t,
@@ -110,6 +160,14 @@ export class SavedQueryManager {
     this.state.savedQueriesByProject = {
       ...this.state.savedQueriesByProject,
       [projectId]: filtered,
+    };
+
+    // Remove versions from state (SQLite CASCADE handles persistence)
+    const projectVersions = this.state.queryVersionsByProject[projectId] ?? [];
+    const filteredVersions = projectVersions.filter((v) => v.savedQueryId !== id);
+    this.state.queryVersionsByProject = {
+      ...this.state.queryVersionsByProject,
+      [projectId]: filteredVersions,
     };
 
     // Close any tabs linked to this query
@@ -148,5 +206,37 @@ export class SavedQueryManager {
     }
     this.state.starredSharedQueryIds = newSet;
     this.scheduleProjectPersistence(this.state.activeProjectId);
+  }
+
+  getVersionsForQuery(savedQueryId: string): QueryVersion[] {
+    if (!this.state.activeProjectId) return [];
+    const versions = this.state.queryVersionsByProject[this.state.activeProjectId] ?? [];
+    return versions.filter((v) => v.savedQueryId === savedQueryId);
+  }
+
+  getResolvedVersionsForQuery(savedQueryId: string): ResolvedQueryVersion[] {
+    return resolveVersions(this.getVersionsForQuery(savedQueryId));
+  }
+
+  private async pruneIfNeeded(savedQueryId: string, projectId: string): Promise<void> {
+    const { getDatabase } = await import("$lib/storage/db");
+    const { appStateRepo } = await import("$lib/storage/repository");
+    const db = await getDatabase();
+    const limitStr = await appStateRepo.get(db, "query_version_limit");
+    const limit = limitStr ? parseInt(limitStr, 10) : 100;
+    await this.persistence.pruneQueryVersions(savedQueryId, limit);
+
+    // Also update state to reflect pruning
+    const versions = this.state.queryVersionsByProject[projectId] ?? [];
+    const queryVersions = versions.filter((v) => v.savedQueryId === savedQueryId);
+    if (queryVersions.length > limit) {
+      const sorted = [...queryVersions].sort((a, b) => b.version - a.version);
+      const keepIds = new Set(sorted.slice(0, limit).map((v) => v.id));
+      const filtered = versions.filter((v) => v.savedQueryId !== savedQueryId || keepIds.has(v.id));
+      this.state.queryVersionsByProject = {
+        ...this.state.queryVersionsByProject,
+        [projectId]: filtered,
+      };
+    }
   }
 }

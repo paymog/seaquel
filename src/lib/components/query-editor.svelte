@@ -10,8 +10,8 @@
 import { errorToast } from "$lib/utils/toast";
 	import SaveQueryDialog from "$lib/components/save-query-dialog.svelte";
 	import ParameterInputDialog from "$lib/components/parameter-input-dialog.svelte";
-	import { SharedQueryEditor } from "$lib/components/shared-queries/index.js";
-	import MonacoEditor, { type MonacoEditorRef } from "$lib/components/monaco-editor.svelte";
+import MonacoEditor, { type MonacoEditorRef } from "$lib/components/monaco-editor.svelte";
+	import MonacoDiffEditor from "$lib/components/monaco-diff-editor.svelte";
 	import * as Resizable from "$lib/components/ui/resizable";
 	import { save } from "@tauri-apps/plugin-dialog";
 	import { writeTextFile } from "@tauri-apps/plugin-fs";
@@ -64,8 +64,8 @@ import { errorToast } from "$lib/utils/toast";
 	);
 	const activeTabId = $derived(propTabId ?? db.state.activeQueryTabId);
 	let showSaveDialog = $state(false);
-	let showShareDialog = $state(false);
-	let showParamsDialog = $state(false);
+	let showSaveAsDialog = $state(false);
+let showParamsDialog = $state(false);
 	let pendingParams = $state<QueryParameter[]>([]);
 	// Track pending action type: 'query' for execute all, 'query-current' for current statement, explain or visualize details
 	let pendingAction = $state<'query' | { type: 'query-current'; cursorOffset: number } | { type: 'explain'; analyze: boolean; cursorOffset: number } | { type: 'visualize'; cursorOffset: number } | null>(null);
@@ -73,6 +73,32 @@ import { errorToast } from "$lib/utils/toast";
 	let pendingDeleteRow = $state<{ index: number; row: Record<string, unknown> } | null>(null);
 	let showDeleteConfirm = $state(false);
 	let monacoRef = $state<MonacoEditorRef | null>(null);
+
+	// Version history diff mode state
+	let diffMode = $state<{
+		original: string;
+		modified: string;
+		leftLabel: string;
+		rightLabel: string;
+		restoreLeft?: string;
+		restoreRight?: string;
+	} | null>(null);
+
+	let diffOriginalWidth = $state(0);
+	let queryToolbar = $state<ReturnType<typeof QueryToolbar>>();
+
+	function closeDiff() {
+		diffMode = null;
+		queryToolbar?.clearVersionSelection();
+	}
+
+	// Get resolved versions for the current saved query
+	const savedQueryVersions = $derived(
+		activeTab?.savedQueryId
+			? db.savedQueries.getResolvedVersionsForQuery(activeTab.savedQueryId)
+			: []
+	);
+
 
 	// AI inline prompt state
 	let aiInlinePromptOpen = $state(false);
@@ -464,12 +490,21 @@ import { errorToast } from "$lib/utils/toast";
 
 	const handleSave = () => {
 		if (!activeTab?.query.trim()) return;
+		if (activeTab.savedQueryId) {
+			// Overwrite existing saved query
+			const savedQuery = db.state.projectSavedQueries.find((q) => q.id === activeTab.savedQueryId);
+			if (savedQuery) {
+				db.savedQueries.saveQuery(savedQuery.name, activeTab.query, activeTab.id, savedQuery.parameters);
+				toast.success(m.save_query_success());
+				return;
+			}
+		}
 		showSaveDialog = true;
 	};
 
-	const handleShare = () => {
+	const handleSaveAs = () => {
 		if (!activeTab?.query.trim()) return;
-		showShareDialog = true;
+		showSaveAsDialog = true;
 	};
 
 	const handleFormat = () => {
@@ -656,7 +691,7 @@ import { errorToast } from "$lib/utils/toast";
 	{#if activeTab}
 		<div class="flex items-center justify-between border-b bg-muted/30 shrink-0">
 			<div class="flex-1">
-				<QueryToolbar
+				<QueryToolbar bind:this={queryToolbar}
 					isExecuting={activeTab.isExecuting}
 					hasQuery={!!activeTab.query.trim()}
 					{activeResult}
@@ -667,7 +702,32 @@ import { errorToast } from "$lib/utils/toast";
 					onVisualize={handleVisualize}
 					onFormat={handleFormat}
 					onSave={handleSave}
-					onShare={handleShare}
+					onSaveAs={handleSaveAs}
+					savedQueryId={activeTab.savedQueryId}
+					tabId={activeTab.id}
+					versions={savedQueryVersions}
+					onDiffVersions={(selected) => {
+						if (selected.length === 0) {
+							diffMode = null;
+						} else if (selected.length === 1) {
+							diffMode = {
+								original: selected[0].query,
+								modified: activeTab!.query,
+								leftLabel: `Version ${selected[0].version}`,
+								rightLabel: "Current",
+								restoreLeft: selected[0].query,
+							};
+						} else if (selected.length === 2) {
+							diffMode = {
+								original: selected[0].query,
+								modified: selected[1].query,
+								leftLabel: `Version ${selected[0].version}`,
+								rightLabel: `Version ${selected[1].version}`,
+								restoreLeft: selected[0].query,
+								restoreRight: selected[1].query,
+							};
+						}
+					}}
 				/>
 			</div>
 			<!-- Visual Builder Toggle -->
@@ -700,6 +760,55 @@ import { errorToast } from "$lib/utils/toast";
 								bind:getSql={visualPanelGetSql}
 							/>
 						{/key}
+					</div>
+				{:else if diffMode}
+					<!-- Diff View Mode -->
+					<div class="flex flex-col h-full">
+						<div class="flex items-center bg-muted/50 border-b text-xs shrink-0">
+							<div class="flex items-center gap-2 px-3 py-1.5 border-r border-border shrink-0" style:width="{diffOriginalWidth}px">
+								<span class="text-muted-foreground">{diffMode.leftLabel}</span>
+								{#if diffMode.restoreLeft}
+									<button
+										class="text-xs text-primary hover:underline"
+										onclick={() => {
+											if (diffMode?.restoreLeft && activeTabId) {
+												db.queryTabs.updateContent(activeTabId, diffMode.restoreLeft);
+												activeTab!.query = diffMode.restoreLeft;
+												closeDiff();
+											}
+										}}
+									>
+										Restore
+									</button>
+								{/if}
+							</div>
+							<div class="flex-1 flex items-center px-3 py-1.5">
+								<span class="text-muted-foreground">{diffMode.rightLabel}</span>
+								{#if diffMode.restoreRight}
+									<button
+										class="text-xs text-primary hover:underline ms-2"
+										onclick={() => {
+											if (diffMode?.restoreRight && activeTabId) {
+												db.queryTabs.updateContent(activeTabId, diffMode.restoreRight);
+												activeTab!.query = diffMode.restoreRight;
+												closeDiff();
+											}
+										}}
+									>
+										Restore
+									</button>
+								{/if}
+								<button
+									class="text-xs text-muted-foreground hover:text-foreground ms-auto"
+									onclick={() => { closeDiff(); }}
+								>
+									Close
+								</button>
+							</div>
+						</div>
+						<div class="flex-1 min-h-0">
+							<MonacoDiffEditor original={diffMode.original} modified={diffMode.modified} bind:originalWidth={diffOriginalWidth} />
+						</div>
 					</div>
 				{:else}
 					<!-- Just SQL Editor -->
@@ -1021,11 +1130,11 @@ import { errorToast } from "$lib/utils/toast";
 		tabId={activeTab.id}
 	/>
 
-	<SharedQueryEditor
-		bind:open={showShareDialog}
-		onOpenChange={(open) => showShareDialog = open}
+	<SaveQueryDialog
+		bind:open={showSaveAsDialog}
 		query={activeTab.query}
-		name={activeTab.name}
+		tabId={activeTab.id}
+		saveAsNew
 	/>
 
 	<ParameterInputDialog

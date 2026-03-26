@@ -222,6 +222,7 @@
   "query_format": "포맷",
   "query_add_row": "행 추가",
   "query_save": "저장",
+  "query_save_as": "다른 이름으로 저장…",
   "query_export": "내보내기",
   "query_download": "다운로드",
   "query_copy_to_clipboard": "클립보드에 복사",
@@ -591,6 +592,10 @@
 
   "settings_license": "라이선스",
   "settings_license_description": "Seaquel 라이선스 관리",
+  "settings_query_history": "쿼리 기록",
+  "settings_query_history_description": "저장된 쿼리의 버전 기록 구성",
+  "settings_query_version_limit": "쿼리당 최대 버전 수",
+  "settings_query_version_limit_description": "저장된 쿼리당 유지할 최대 버전 수입니다. 오래된 버전은 자동으로 삭제됩니다.",
   "license_status_personal": "개인 사용",
   "license_status_active": "활성",
   "license_status_expired": "만료됨",

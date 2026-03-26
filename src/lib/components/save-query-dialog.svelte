@@ -33,10 +33,11 @@ import { errorToast } from "$lib/utils/toast";
 		open?: boolean;
 		query: string;
 		tabId?: string;
+		saveAsNew?: boolean;
 		onSaveComplete?: () => void;
 	};
 
-	let { open = $bindable(false), query, tabId, onSaveComplete }: Props = $props();
+	let { open = $bindable(false), query, tabId, saveAsNew = false, onSaveComplete }: Props = $props();
 	const db = useDatabase();
 
 	let queryName = $state("");
@@ -91,7 +92,10 @@ import { errorToast } from "$lib/utils/toast";
 
 		// Pass parameters if any exist
 		const params = parameterConfigs.length > 0 ? parameterConfigs : undefined;
-		db.savedQueries.saveQuery(queryName.trim(), query, tabId, params);
+		const savedId = db.savedQueries.saveQuery(queryName.trim(), query, tabId, params, saveAsNew);
+		if (saveAsNew && savedId) {
+			db.queryTabs.loadSaved(savedId);
+		}
 		toast.success(m.save_query_success());
 		open = false;
 		queryName = "";
@@ -116,7 +120,7 @@ import { errorToast } from "$lib/utils/toast";
 <Dialog bind:open>
 	<DialogContent class="max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
 		<DialogHeader>
-			<DialogTitle>{m.save_query_title()}</DialogTitle>
+			<DialogTitle>{saveAsNew ? m.query_save_as() : m.save_query_title()}</DialogTitle>
 			<DialogDescription>{m.save_query_description()}</DialogDescription>
 		</DialogHeader>
 

@@ -150,6 +150,25 @@ export interface PersistedSavedQuery {
 }
 
 /**
+ * Persisted query version entry.
+ * Uses ISO strings for dates.
+ */
+export interface PersistedQueryVersion {
+  /** Version identifier */
+  id: string;
+  /** The saved query this version belongs to */
+  savedQueryId: string;
+  /** Monotonically increasing version number */
+  version: number;
+  /** Full query text on keyframes, null otherwise */
+  snapshot: string | null;
+  /** Patch text on deltas, null on keyframes */
+  diff: string | null;
+  /** When created (ISO 8601 string) */
+  createdAt: string;
+}
+
+/**
  * Persisted query history entry.
  * Uses ISO strings for dates.
  */

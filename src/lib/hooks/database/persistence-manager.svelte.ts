@@ -12,6 +12,7 @@ import type {
   PersistedQueryHistoryItem,
   PersistedAIChat,
   PersistedAIMessage,
+  PersistedQueryVersion,
   DatabaseConnection,
   PersistedProject,
   PersistedProjectState,
@@ -30,6 +31,7 @@ import {
   projectStateRepo,
   savedQueriesRepo,
   queryHistoryRepo,
+  queryVersionsRepo,
   sharedReposRepo,
   dashboardsRepo,
   connectionOverridesRepo,
@@ -431,6 +433,34 @@ export class PersistenceManager {
     } catch (error) {
       void log.error(`Failed to load saved queries for project ${projectId}:`, error);
       return [];
+    }
+  }
+
+  async loadProjectQueryVersions(projectId: string): Promise<PersistedQueryVersion[]> {
+    try {
+      const db = await getDatabase();
+      return await queryVersionsRepo.loadByProject(db, projectId);
+    } catch (error) {
+      void log.error(`Failed to load query versions for project ${projectId}:`, error);
+      return [];
+    }
+  }
+
+  async persistQueryVersion(version: PersistedQueryVersion): Promise<void> {
+    try {
+      const db = await getDatabase();
+      await queryVersionsRepo.insert(db, version);
+    } catch (error) {
+      void log.error(`Failed to persist query version:`, error);
+    }
+  }
+
+  async pruneQueryVersions(savedQueryId: string, keepCount: number): Promise<void> {
+    try {
+      const db = await getDatabase();
+      await queryVersionsRepo.pruneOldVersions(db, savedQueryId, keepCount);
+    } catch (error) {
+      void log.error(`Failed to prune query versions:`, error);
     }
   }
 

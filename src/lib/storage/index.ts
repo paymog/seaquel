@@ -7,6 +7,7 @@ export {
   connectionsRepo,
   projectStateRepo,
   savedQueriesRepo,
+  queryVersionsRepo,
   queryHistoryRepo,
   sharedReposRepo,
   themeRepo,

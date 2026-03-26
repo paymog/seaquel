@@ -3,10 +3,12 @@ import type {
   QueryHistoryItem,
   Dashboard,
   AIChat,
+  QueryVersion,
   PersistedSavedQuery,
   PersistedQueryHistoryItem,
   PersistedAIChat,
   PersistedAIMessage,
+  PersistedQueryVersion,
 } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
@@ -101,6 +103,24 @@ export class StateRestorationManager {
     this.state.savedQueriesByProject = {
       ...this.state.savedQueriesByProject,
       [projectId]: savedQueries,
+    };
+  }
+
+  /**
+   * Restore query versions from persisted data (per-project).
+   */
+  restoreQueryVersions(projectId: string, data: PersistedQueryVersion[]): void {
+    const versions: QueryVersion[] = data.map((v) => ({
+      id: v.id,
+      savedQueryId: v.savedQueryId,
+      version: v.version,
+      snapshot: v.snapshot,
+      diff: v.diff,
+      createdAt: new Date(v.createdAt),
+    }));
+    this.state.queryVersionsByProject = {
+      ...this.state.queryVersionsByProject,
+      [projectId]: versions,
     };
   }
 
@@ -216,6 +236,11 @@ export class StateRestorationManager {
     const savedQueries = await this.persistence.loadProjectSavedQueries(projectId);
     if (savedQueries.length > 0) {
       this.restoreSavedQueries(projectId, savedQueries);
+    }
+
+    const queryVersions = await this.persistence.loadProjectQueryVersions(projectId);
+    if (queryVersions.length > 0) {
+      this.restoreQueryVersions(projectId, queryVersions);
     }
 
     const dashboards = await this.persistence.loadProjectDashboards(projectId);

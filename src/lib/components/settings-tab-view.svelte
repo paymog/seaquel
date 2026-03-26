@@ -43,6 +43,7 @@
 	import SparklesIcon from "@lucide/svelte/icons/sparkles";
 	import PencilIcon from "@lucide/svelte/icons/pencil";
 	import ShieldIcon from "@lucide/svelte/icons/shield";
+	import HistoryIcon from "@lucide/svelte/icons/history";
 	import ThemePreview from "./theme-preview.svelte";
 	import { openThemeEditor } from "$lib/utils/theme-editor-window";
 	import type { Theme } from "$lib/types/theme";
@@ -51,6 +52,7 @@
 	import { onboardingStore } from "$lib/stores/onboarding.svelte.js";
 	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte.js";
 	import { getDatabase } from "$lib/storage/db";
+	import { appStateRepo } from "$lib/storage/repository";
 	import { getKeyringService } from "$lib/services/keyring";
 	import { licenseStore } from "$lib/stores/license.svelte.js";
 	import { isTauri } from "$lib/utils/environment";
@@ -100,6 +102,7 @@
 			{
 				"app-info": "general",
 				license: "general",
+				"query-history": "general",
 				theme: "appearance",
 				themes: "appearance",
 				"ai-feature": "features",
@@ -116,6 +119,9 @@
 	let dataPath = $state<string>("");
 	let logPath = $state<string>("");
 
+	// Query version limit
+	let queryVersionLimit = $state<number>(100);
+
 	// Delete confirmation state
 	let deleteDialogOpen = $state(false);
 	let themeToDelete = $state<Theme | null>(null);
@@ -125,8 +131,10 @@
 	let providerToDelete = $state<string | null>(null);
 
 	// Load app info on mount
-	onMount(() => {
+	onMount(async () => {
 		loadAppInfo();
+		const savedLimit = await appStateRepo.get(await getDatabase(), "query_version_limit");
+		if (savedLimit) queryVersionLimit = parseInt(savedLimit, 10);
 	});
 
 	async function loadAppInfo() {
@@ -261,6 +269,7 @@
 			items: [
 				{ id: "app-info", name: m.settings_app_info(), icon: InfoIcon },
 				...(isTauri() ? [{ id: "license" as const, name: m.settings_license(), icon: KeyIcon }] : []),
+				{ id: "query-history", name: m.settings_query_history(), icon: HistoryIcon },
 			],
 		},
 		{
@@ -345,6 +354,7 @@
 		learn: "features",
 		"ai-provider": "ai",
 		"ai-privacy": "ai",
+		"query-history": "general",
 	};
 
 	// Get scroll-spy section only if it belongs to the current view's group
@@ -889,6 +899,34 @@
 					</div>
 				{/if}
 			</div>
+		{/if}
+
+		{#if shouldShowSection("query-history")}
+		<div class="space-y-6" data-section="query-history">
+			<div>
+				<h2 class="text-lg font-medium">{m.settings_query_history()}</h2>
+				<p class="text-sm text-muted-foreground mt-1">{m.settings_query_history_description()}</p>
+			</div>
+			<div class="space-y-4">
+				<div class="flex items-center justify-between">
+					<div>
+						<p class="text-sm font-medium">{m.settings_query_version_limit()}</p>
+						<p class="text-sm text-muted-foreground">{m.settings_query_version_limit_description()}</p>
+					</div>
+					<input
+						type="number"
+						min="10"
+						max="1000"
+						bind:value={queryVersionLimit}
+						onchange={async () => {
+							const db = await getDatabase();
+							await appStateRepo.set(db, "query_version_limit", String(queryVersionLimit));
+						}}
+						class="w-24 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+					/>
+				</div>
+			</div>
+		</div>
 		{/if}
 
 		{#if shouldShowSection("theme")}

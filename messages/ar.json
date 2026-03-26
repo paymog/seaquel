@@ -222,6 +222,7 @@
   "query_format": "تنسيق",
   "query_add_row": "إضافة صف",
   "query_save": "حفظ",
+  "query_save_as": "حفظ باسم…",
   "query_export": "تصدير",
   "query_download": "تنزيل",
   "query_copy_to_clipboard": "نسخ إلى الحافظة",
@@ -595,6 +596,10 @@
 
   "settings_license": "الترخيص",
   "settings_license_description": "إدارة ترخيص Seaquel الخاص بك",
+  "settings_query_history": "سجل الاستعلامات",
+  "settings_query_history_description": "تكوين سجل إصدارات الاستعلامات المحفوظة",
+  "settings_query_version_limit": "الحد الأقصى للإصدارات لكل استعلام",
+  "settings_query_version_limit_description": "الحد الأقصى لعدد الإصدارات التي يتم الاحتفاظ بها لكل استعلام محفوظ. ستتم إزالة الإصدارات الأقدم تلقائيًا.",
   "license_status_personal": "الاستخدام الشخصي",
   "license_status_active": "نشط",
   "license_status_expired": "منتهي الصلاحية",

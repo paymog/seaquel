@@ -7,6 +7,7 @@ import type {
   PersistedSharedQueryRepo,
   PersistedAIChat,
   PersistedAIMessage,
+  PersistedQueryVersion,
 } from "$lib/types";
 import type { PersistedConnection } from "$lib/hooks/database/types";
 import type { SavedWorkflow } from "$lib/types/workflow";
@@ -646,11 +647,28 @@ export const savedQueriesRepo = {
     projectId: string,
     queries: PersistedSavedQuery[],
   ): Promise<void> {
-    await db.execute("DELETE FROM saved_queries WHERE project_id = ?", [projectId]);
+    // Use upsert instead of delete+reinsert to preserve CASCADE children (query_versions)
+    const currentIds = queries.map((q) => q.id);
+    if (currentIds.length > 0) {
+      // Delete only queries that were removed
+      const placeholders = currentIds.map(() => "?").join(",");
+      await db.execute(
+        `DELETE FROM saved_queries WHERE project_id = ? AND id NOT IN (${placeholders})`,
+        [projectId, ...currentIds],
+      );
+    } else {
+      await db.execute("DELETE FROM saved_queries WHERE project_id = ?", [projectId]);
+    }
     for (const q of queries) {
       await db.execute(
         `INSERT INTO saved_queries (id, project_id, name, query, parameters, starred, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           query = excluded.query,
+           parameters = excluded.parameters,
+           starred = excluded.starred,
+           updated_at = excluded.updated_at`,
         [
           q.id,
           projectId,
@@ -667,6 +685,94 @@ export const savedQueriesRepo = {
 
   async removeByProject(db: SqliteDatabase, projectId: string): Promise<void> {
     await db.execute("DELETE FROM saved_queries WHERE project_id = ?", [projectId]);
+  },
+};
+
+// === Query Versions ===
+
+export const queryVersionsRepo = {
+  async loadBySavedQuery(
+    db: SqliteDatabase,
+    savedQueryId: string,
+  ): Promise<PersistedQueryVersion[]> {
+    const rows = await db.query<{
+      id: string;
+      saved_query_id: string;
+      version: number;
+      snapshot: string | null;
+      diff: string | null;
+      created_at: string;
+    }>("SELECT * FROM query_versions WHERE saved_query_id = ? ORDER BY version ASC", [
+      savedQueryId,
+    ]);
+
+    return rows.map((r) => ({
+      id: r.id,
+      savedQueryId: r.saved_query_id,
+      version: r.version,
+      snapshot: r.snapshot,
+      diff: r.diff,
+      createdAt: r.created_at,
+    }));
+  },
+
+  async loadByProject(db: SqliteDatabase, projectId: string): Promise<PersistedQueryVersion[]> {
+    const rows = await db.query<{
+      id: string;
+      saved_query_id: string;
+      version: number;
+      snapshot: string | null;
+      diff: string | null;
+      created_at: string;
+    }>(
+      `SELECT qv.* FROM query_versions qv
+       JOIN saved_queries sq ON sq.id = qv.saved_query_id
+       WHERE sq.project_id = ?
+       ORDER BY qv.saved_query_id, qv.version ASC`,
+      [projectId],
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      savedQueryId: r.saved_query_id,
+      version: r.version,
+      snapshot: r.snapshot,
+      diff: r.diff,
+      createdAt: r.created_at,
+    }));
+  },
+
+  async insert(db: SqliteDatabase, version: PersistedQueryVersion): Promise<void> {
+    await db.execute(
+      `INSERT INTO query_versions (id, saved_query_id, version, snapshot, diff, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        version.id,
+        version.savedQueryId,
+        version.version,
+        version.snapshot,
+        version.diff,
+        version.createdAt,
+      ],
+    );
+  },
+
+  async pruneOldVersions(
+    db: SqliteDatabase,
+    savedQueryId: string,
+    keepCount: number,
+  ): Promise<void> {
+    await db.execute(
+      `DELETE FROM query_versions
+       WHERE saved_query_id = ?
+         AND version <= (
+           SELECT version FROM query_versions
+           WHERE saved_query_id = ?
+           ORDER BY version DESC
+           LIMIT 1 OFFSET ?
+         )`,
+      [savedQueryId, savedQueryId, keepCount],
+    );
   },
 };
 

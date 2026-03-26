@@ -125,6 +125,19 @@ const DDL_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_saved_queries_project ON saved_queries(project_id)`,
 
+  // Query versions (version history for saved queries)
+  `CREATE TABLE IF NOT EXISTS query_versions (
+    id TEXT PRIMARY KEY,
+    saved_query_id TEXT NOT NULL REFERENCES saved_queries(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    snapshot TEXT,
+    diff TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(saved_query_id, version),
+    CHECK ((snapshot IS NOT NULL AND diff IS NULL) OR (snapshot IS NULL AND diff IS NOT NULL))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_query_versions_saved_query ON query_versions(saved_query_id, version DESC)`,
+
   // Query history
   `CREATE TABLE IF NOT EXISTS query_history (
     id TEXT PRIMARY KEY,

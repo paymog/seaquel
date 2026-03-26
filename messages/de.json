@@ -222,6 +222,7 @@
   "query_format": "Formatieren",
   "query_add_row": "Zeile hinzufügen",
   "query_save": "Speichern",
+  "query_save_as": "Speichern unter…",
   "query_export": "Exportieren",
   "query_download": "Herunterladen",
   "query_copy_to_clipboard": "In Zwischenablage kopieren",
@@ -591,6 +592,10 @@
 
   "settings_license": "Lizenz",
   "settings_license_description": "Verwalten Sie Ihre Seaquel-Lizenz",
+  "settings_query_history": "Abfrageverlauf",
+  "settings_query_history_description": "Versionsverlauf gespeicherter Abfragen konfigurieren",
+  "settings_query_version_limit": "Maximale Versionen pro Abfrage",
+  "settings_query_version_limit_description": "Maximale Anzahl von Versionen, die pro gespeicherter Abfrage behalten werden. Ältere Versionen werden automatisch entfernt.",
   "license_status_personal": "Persönliche Nutzung",
   "license_status_active": "Aktiv",
   "license_status_expired": "Abgelaufen",

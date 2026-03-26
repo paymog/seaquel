@@ -26,6 +26,7 @@ import type {
   ConnectionOverride,
   SharedDashboard,
   ActiveViewType,
+  QueryVersion,
 } from "$lib/types";
 import type { PaneLayout } from "$lib/types";
 import type { ConnectionLabel } from "$lib/types/project";
@@ -113,6 +114,7 @@ export class DatabaseState {
   // === QUERY DATA STATE ===
   queryHistoryByConnection = $state<Record<string, QueryHistoryItem[]>>({});
   savedQueriesByProject = $state<Record<string, SavedQuery[]>>({});
+  queryVersionsByProject = $state<Record<string, QueryVersion[]>>({});
   /** Set of shared query IDs that the user has starred (persisted locally) */
   starredSharedQueryIds = $state<Set<string>>(new Set());
   /** Set of shared dashboard IDs that the user has starred (persisted locally) */
