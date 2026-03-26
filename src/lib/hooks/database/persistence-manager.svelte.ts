@@ -13,6 +13,7 @@ import type {
   PersistedAIChat,
   PersistedAIMessage,
   PersistedQueryVersion,
+  PersistedDashboardVersion,
   DatabaseConnection,
   PersistedProject,
   PersistedProjectState,
@@ -34,6 +35,7 @@ import {
   queryVersionsRepo,
   sharedReposRepo,
   dashboardsRepo,
+  dashboardVersionsRepo,
   connectionOverridesRepo,
   aiChatsRepo,
 } from "$lib/storage";
@@ -466,6 +468,34 @@ export class PersistenceManager {
       await queryVersionsRepo.pruneOldVersions(db, queryId, keepCount);
     } catch (error) {
       void log.error(`Failed to prune query versions:`, error);
+    }
+  }
+
+  async persistDashboardVersion(version: PersistedDashboardVersion): Promise<void> {
+    try {
+      const db = await getDatabase();
+      await dashboardVersionsRepo.insert(db, version);
+    } catch (error) {
+      void log.error(`Failed to persist dashboard version:`, error);
+    }
+  }
+
+  async pruneDashboardVersions(dashboardId: string, keepCount: number): Promise<void> {
+    try {
+      const db = await getDatabase();
+      await dashboardVersionsRepo.pruneOldVersions(db, dashboardId, keepCount);
+    } catch (error) {
+      void log.error(`Failed to prune dashboard versions:`, error);
+    }
+  }
+
+  async loadProjectDashboardVersions(projectId: string): Promise<PersistedDashboardVersion[]> {
+    try {
+      const db = await getDatabase();
+      return await dashboardVersionsRepo.loadByProject(db, projectId);
+    } catch (error) {
+      void log.error(`Failed to load dashboard versions for project ${projectId}:`, error);
+      return [];
     }
   }
 

@@ -177,6 +177,23 @@ export interface PersistedQueryVersion {
 }
 
 /**
+ * Persisted dashboard version entry.
+ * Uses ISO strings for dates.
+ */
+export interface PersistedDashboardVersion {
+  /** Version identifier */
+  id: string;
+  /** The dashboard this version belongs to */
+  dashboardId: string;
+  /** Monotonically increasing version number */
+  version: number;
+  /** Full JSON snapshot of dashboard state */
+  snapshot: string;
+  /** When created (ISO 8601 string) */
+  createdAt: string;
+}
+
+/**
  * Persisted query history entry.
  * Uses ISO strings for dates.
  */

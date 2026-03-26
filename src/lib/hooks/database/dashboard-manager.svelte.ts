@@ -1,8 +1,18 @@
-import type { Dashboard, DashboardWidget } from "$lib/types";
+import type {
+  Dashboard,
+  DashboardWidget,
+  DashboardVersion,
+  ResolvedDashboardVersion,
+} from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
+import type { PersistenceManager } from "./persistence-manager.svelte.js";
 import { getDatabase, dashboardsRepo } from "$lib/storage";
 import type { PersistedDashboard } from "$lib/storage/repository";
 import { log } from "$lib/utils/logger";
+import {
+  createDashboardVersionEntry,
+  resolveDashboardVersions,
+} from "$lib/utils/dashboard-versions";
 
 /**
  * Strip runtime-only state from a dashboard widget before persistence or serialization.
@@ -27,6 +37,7 @@ export class DashboardManager {
     private state: DatabaseState,
     private executeQuery: (query: string) => Promise<Record<string, unknown>[]>,
     private scheduleProjectPersistence: (projectId: string | null) => void,
+    private persistence?: PersistenceManager,
   ) {}
 
   setFileProjection(fns: {
@@ -93,6 +104,8 @@ export class DashboardManager {
   }
 
   async renameDashboard(id: string, name: string): Promise<void> {
+    const before = this.getDashboard(id);
+    if (before) this.captureVersion(before);
     this.updateDashboard(id, (d) => ({ ...d, name, updatedAt: new Date() }));
     const dashboard = this.getDashboard(id);
     if (dashboard) await this.persistDashboard(dashboard);
@@ -101,6 +114,8 @@ export class DashboardManager {
   // === WIDGET MANAGEMENT ===
 
   async addWidget(dashboardId: string, widget: DashboardWidget): Promise<void> {
+    const before = this.getDashboard(dashboardId);
+    if (before) this.captureVersion(before);
     this.updateDashboard(dashboardId, (d) => ({
       ...d,
       widgets: [...d.widgets, widget],
@@ -115,6 +130,8 @@ export class DashboardManager {
     widgetId: string,
     updates: Partial<DashboardWidget>,
   ): Promise<void> {
+    const before = this.getDashboard(dashboardId);
+    if (before) this.captureVersion(before);
     this.updateDashboard(dashboardId, (d) => ({
       ...d,
       widgets: d.widgets.map((w) => (w.id === widgetId ? { ...w, ...updates } : w)),
@@ -125,6 +142,8 @@ export class DashboardManager {
   }
 
   async removeWidget(dashboardId: string, widgetId: string): Promise<void> {
+    const before = this.getDashboard(dashboardId);
+    if (before) this.captureVersion(before);
     this.stopAutoRefresh(dashboardId, widgetId);
     this.updateDashboard(dashboardId, (d) => ({
       ...d,
@@ -279,6 +298,8 @@ export class DashboardManager {
     dashboardId: string,
     range: { start: string; end: string } | null,
   ): Promise<void> {
+    const before = this.getDashboard(dashboardId);
+    if (before) this.captureVersion(before);
     this.updateDashboard(dashboardId, (d) => ({
       ...d,
       dateFilter: range,
@@ -417,6 +438,86 @@ export class DashboardManager {
       widgets: d.widgets.map((w) => (w.id === widgetId ? { ...w, ...updates } : w)),
     }));
   }
+
+  // === VERSION HISTORY ===
+
+  getVersionsForDashboard(dashboardId: string): DashboardVersion[] {
+    for (const versions of Object.values(this.state.dashboardVersionsByProject)) {
+      const filtered = versions.filter((v) => v.dashboardId === dashboardId);
+      if (filtered.length > 0) return filtered;
+    }
+    return [];
+  }
+
+  getResolvedVersionsForDashboard(dashboardId: string): ResolvedDashboardVersion[] {
+    const versions = this.getVersionsForDashboard(dashboardId);
+    return resolveDashboardVersions(versions);
+  }
+
+  /**
+   * Restore a dashboard to a previous version's snapshot state.
+   */
+  async restoreVersion(dashboardId: string, version: ResolvedDashboardVersion): Promise<void> {
+    const dashboard = this.getDashboard(dashboardId);
+    if (!dashboard) return;
+
+    // Capture current state as a version before restoring
+    this.captureVersion(dashboard);
+
+    const snapshot = version.dashboard;
+    this.updateDashboard(dashboardId, (d) => ({
+      ...d,
+      name: snapshot.name,
+      description: snapshot.description,
+      widgets: snapshot.widgets as DashboardWidget[],
+      viewport: snapshot.viewport,
+      dateFilter: snapshot.dateFilter,
+      updatedAt: new Date(),
+    }));
+
+    const updated = this.getDashboard(dashboardId);
+    if (updated) await this.persistDashboard(updated);
+  }
+
+  private captureVersion(dashboard: Dashboard): void {
+    if (!this.persistence) return;
+    const projectId = dashboard.projectId;
+
+    const versions = this.getVersionsForDashboard(dashboard.id);
+    const nextVersion = versions.length > 0 ? Math.max(...versions.map((v) => v.version)) + 1 : 1;
+
+    const newVersion = createDashboardVersionEntry(dashboard.id, nextVersion, dashboard);
+
+    // Add to state
+    const projectVersions = this.state.dashboardVersionsByProject[projectId] ?? [];
+    this.state.dashboardVersionsByProject = {
+      ...this.state.dashboardVersionsByProject,
+      [projectId]: [...projectVersions, newVersion],
+    };
+
+    // Persist immediately
+    this.persistence
+      .persistDashboardVersion({
+        id: newVersion.id,
+        dashboardId: newVersion.dashboardId,
+        version: newVersion.version,
+        snapshot: newVersion.snapshot,
+        createdAt: newVersion.createdAt.toISOString(),
+      })
+      .catch((err) =>
+        console.error("[dashboard-manager] Failed to persist dashboard version:", err),
+      );
+
+    // Prune old versions if over limit
+    const DEFAULT_VERSION_LIMIT = 100;
+    this.persistence
+      .pruneDashboardVersions(dashboard.id, DEFAULT_VERSION_LIMIT)
+      .catch((err) =>
+        console.error("[dashboard-manager] Failed to prune dashboard versions:", err),
+      );
+  }
+
+  // === PERSISTENCE ===
 
   private async persistDashboard(dashboard: Dashboard): Promise<void> {
     try {

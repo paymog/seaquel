@@ -68,7 +68,15 @@ export type {
 } from "./visualize";
 
 // Dashboard types
-export type { Dashboard, DashboardWidget, DashboardTab, KpiConfig } from "./dashboard";
+export type {
+  Dashboard,
+  DashboardWidget,
+  DashboardTab,
+  KpiConfig,
+  DashboardSnapshot,
+  DashboardVersion,
+  ResolvedDashboardVersion,
+} from "./dashboard";
 
 // Statistics types
 export type {
@@ -101,6 +109,7 @@ export type {
   PersistedQueryParameter,
   PersistedSavedQuery,
   PersistedQueryVersion,
+  PersistedDashboardVersion,
   PersistedQueryHistoryItem,
   PersistedConnectionTab,
   PersistedConnectionState,

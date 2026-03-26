@@ -10,24 +10,29 @@
 	interface Props {
 		dashboard: Dashboard;
 		editingWidgetId?: string | null;
-		onEditWidget: (widget: DashboardWidget) => void;
-		onDuplicateWidget: (widget: DashboardWidget) => void;
-		onDeleteWidget: (widgetId: string) => void;
-		onAddWidgetAt: (position: { x: number; y: number }) => void;
-		onContextMenu: (event: MouseEvent, position: { x: number; y: number }) => void;
+		readonly?: boolean;
+		onEditWidget?: (widget: DashboardWidget) => void;
+		onDuplicateWidget?: (widget: DashboardWidget) => void;
+		onDeleteWidget?: (widgetId: string) => void;
+		onAddWidgetAt?: (position: { x: number; y: number }) => void;
+		onContextMenu?: (event: MouseEvent, position: { x: number; y: number }) => void;
 	}
 
-	let { dashboard, editingWidgetId = null, onEditWidget, onDuplicateWidget, onDeleteWidget, onAddWidgetAt, onContextMenu }: Props = $props();
+	let { dashboard, editingWidgetId = null, readonly = false, onEditWidget, onDuplicateWidget, onDeleteWidget, onAddWidgetAt, onContextMenu }: Props = $props();
 
 	const db = useDatabase();
 
 	const colorMode: ColorMode = $derived(mode.current === 'dark' ? 'dark' : 'light');
 
+	const noop = () => {};
+
 	function handleRefreshWidget(widgetId: string) {
+		if (readonly) return;
 		db.dashboards.executeWidget(dashboard.id, widgetId);
 	}
 
 	function handleResizeEnd(widgetId: string, size: { width: number; height: number }) {
+		if (readonly) return;
 		db.dashboards.resizeWidget(dashboard.id, widgetId, size);
 	}
 
@@ -40,24 +45,23 @@
 			height: widget.height,
 			data: {
 				widget,
-				onEditWidget,
-				onRefreshWidget: handleRefreshWidget,
-				onDuplicateWidget: onDuplicateWidget,
-				onDeleteWidget: onDeleteWidget,
-				onResizeEnd: handleResizeEnd,
+				onEditWidget: readonly ? noop : onEditWidget,
+				onRefreshWidget: readonly ? noop : handleRefreshWidget,
+				onDuplicateWidget: readonly ? noop : onDuplicateWidget,
+				onDeleteWidget: readonly ? noop : onDeleteWidget,
+				onResizeEnd: readonly ? noop : handleResizeEnd,
 			},
-			selected: editingWidgetId === widget.id,
+			selected: !readonly && editingWidgetId === widget.id,
 		}))
 	);
 
 	function handleNodeDragStop({ targetNode }: { targetNode: Node | null; nodes: Node[]; event: MouseEvent | TouchEvent }) {
-		if (targetNode) {
-			const dashboardId = dashboard.id;
-			db.dashboards.moveWidget(dashboardId, targetNode.id, {
-				x: targetNode.position.x,
-				y: targetNode.position.y,
-			});
-		}
+		if (readonly || !targetNode) return;
+		const dashboardId = dashboard.id;
+		db.dashboards.moveWidget(dashboardId, targetNode.id, {
+			x: targetNode.position.x,
+			y: targetNode.position.y,
+		});
 	}
 
 	const getInitialViewport = () => dashboard.viewport;
@@ -69,6 +73,7 @@
 	const dashboardId = $derived(dashboard.id);
 
 	$effect(() => {
+		if (readonly) return;
 		// Track viewport changes for debounced persistence
 		const vp = viewport;
 		const id = dashboardId;
@@ -93,9 +98,10 @@
 	let lastPaneClickTime = 0;
 
 	function handlePaneClick({ event }: { event: MouseEvent }) {
+		if (readonly) return;
 		const now = Date.now();
 		if (now - lastPaneClickTime < 400) {
-			onAddWidgetAt(screenToCanvas(event));
+			onAddWidgetAt?.(screenToCanvas(event));
 			lastPaneClickTime = 0;
 		} else {
 			lastPaneClickTime = now;
@@ -103,8 +109,9 @@
 	}
 
 	function handlePaneContextMenu({ event }: { event: MouseEvent }) {
+		if (readonly) return;
 		event.preventDefault();
-		onContextMenu(event, screenToCanvas(event));
+		onContextMenu?.(event, screenToCanvas(event));
 	}
 </script>
 
@@ -118,9 +125,9 @@
 		bind:viewport
 		minZoom={0.1}
 		maxZoom={2}
-		nodesDraggable={true}
+		nodesDraggable={!readonly}
 		nodesConnectable={false}
-		elementsSelectable={true}
+		elementsSelectable={!readonly}
 		deleteKey={null}
 		onnodedragstop={handleNodeDragStop}
 		onpaneclick={handlePaneClick}
@@ -135,7 +142,7 @@
 		<MiniMap />
 	</SvelteFlow>
 
-	{#if dashboard.widgets.length === 0}
+	{#if !readonly && dashboard.widgets.length === 0}
 		<div class="absolute inset-0 flex items-center justify-center pointer-events-none z-[1]">
 			<div class="text-center text-muted-foreground">
 				<LayoutDashboardIcon class="size-12 mx-auto mb-3 opacity-20" />

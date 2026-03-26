@@ -237,6 +237,17 @@ const DDL_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_dashboards_project ON dashboards(project_id)`,
 
+  // Dashboard versions (version history for dashboards)
+  `CREATE TABLE IF NOT EXISTS dashboard_versions (
+    id TEXT PRIMARY KEY,
+    dashboard_id TEXT NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    snapshot TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(dashboard_id, version)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_dashboard_versions_dashboard ON dashboard_versions(dashboard_id, version DESC)`,
+
   // AI chats
   `CREATE TABLE IF NOT EXISTS ai_chats (
     id TEXT PRIMARY KEY,

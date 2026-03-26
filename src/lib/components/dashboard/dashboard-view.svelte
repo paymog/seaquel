@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import type { DashboardWidget } from '$lib/types';
+	import type { DashboardWidget, ResolvedDashboardVersion } from '$lib/types';
 	import { useDatabase } from '$lib/hooks/database.svelte.js';
+	import { createDashboardSnapshot } from '$lib/utils/dashboard-versions';
 	import DashboardToolbar from './dashboard-toolbar.svelte';
 	import DashboardCanvas from './dashboard-canvas.svelte';
 	import DashboardWidgetEditor from './dashboard-widget-editor.svelte';
+	import DashboardDiffView from './dashboard-diff-view.svelte';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import { Loader2Icon } from '@lucide/svelte';
 	import { ChartBarIcon, GaugeIcon, TypeIcon } from '@lucide/svelte';
@@ -28,6 +30,49 @@
 	let editingWidget = $state<DashboardWidget | null>(null);
 	let pendingWidget = $state<DashboardWidget | null>(null);
 	const isFullscreen = $derived(db.state.isDashboardFullscreen);
+
+	// Version history / diff mode
+	const versions = $derived(
+		dashboard ? db.dashboards.getResolvedVersionsForDashboard(dashboard.id) : []
+	);
+	let diffLeft = $state<ResolvedDashboardVersion | null>(null);
+	let diffRight = $state<ResolvedDashboardVersion | null>(null);
+	const diffMode = $derived(diffLeft !== null && diffRight !== null);
+
+	let dashboardToolbar = $state<ReturnType<typeof DashboardToolbar> | undefined>();
+	let diffView = $state<ReturnType<typeof DashboardDiffView> | undefined>();
+
+	function handleDiffVersions(selected: ResolvedDashboardVersion[]) {
+		if (selected.length === 0) {
+			diffLeft = null;
+			diffRight = null;
+		} else if (selected.length === 1 && dashboard) {
+			// Diff selected version against current dashboard state
+			diffLeft = selected[0];
+			diffRight = {
+				id: 'current',
+				dashboardId: dashboard.id,
+				version: 0,
+				dashboard: createDashboardSnapshot(dashboard),
+				createdAt: dashboard.updatedAt,
+			};
+		} else if (selected.length === 2) {
+			diffLeft = selected[0];
+			diffRight = selected[1];
+		}
+	}
+
+	function handleCloseDiff() {
+		diffLeft = null;
+		diffRight = null;
+		dashboardToolbar?.clearVersionSelection();
+	}
+
+	function handleRestoreVersion(version: ResolvedDashboardVersion) {
+		if (!dashboard) return;
+		db.dashboards.restoreVersion(dashboard.id, version);
+		handleCloseDiff();
+	}
 
 	async function getAppWindow() {
 		if (!isTauri()) return null;
@@ -166,6 +211,7 @@
 	function handleRefreshAll() {
 		if (!dashboard) return;
 		db.dashboards.executeAllWidgets(dashboard.id);
+		diffView?.refreshAll();
 	}
 
 	function handleWidgetSave(widget: DashboardWidget) {
@@ -225,35 +271,48 @@
 		</div>
 	{:else}
 		<DashboardToolbar
+			bind:this={dashboardToolbar}
 			{dashboard}
 			{isFullscreen}
+			{versions}
 			onAddWidget={handleAddWidget}
 			onRefreshAll={handleRefreshAll}
 			onToggleFullscreen={handleToggleFullscreen}
+			onDiffVersions={handleDiffVersions}
 		/>
 
-		<div class="flex flex-1 min-h-0 overflow-hidden">
-			<DashboardCanvas
-				{dashboard}
-				editingWidgetId={editingWidget?.id}
-				onEditWidget={handleEditWidget}
-				onDuplicateWidget={handleDuplicateWidget}
-				onDeleteWidget={handleDeleteWidget}
-				onAddWidgetAt={handleAddWidgetAt}
-				onContextMenu={handleCanvasContextMenu}
+		{#if diffMode && diffLeft && diffRight}
+			<DashboardDiffView
+				bind:this={diffView}
+				left={diffLeft}
+				right={diffRight}
+				onClose={handleCloseDiff}
+				onRestore={handleRestoreVersion}
 			/>
+		{:else}
+			<div class="flex flex-1 min-h-0 overflow-hidden">
+				<DashboardCanvas
+					{dashboard}
+					editingWidgetId={editingWidget?.id}
+					onEditWidget={handleEditWidget}
+					onDuplicateWidget={handleDuplicateWidget}
+					onDeleteWidget={handleDeleteWidget}
+					onAddWidgetAt={handleAddWidgetAt}
+					onContextMenu={handleCanvasContextMenu}
+				/>
 
-			<!-- Widget editor sidebar -->
-			<DashboardWidgetEditor
-				open={widgetEditorOpen}
-				widget={editingWidget}
-				dashboardId={dashboard.id}
-				initialWidget={pendingWidget}
-				onClose={handleWidgetEditorClose}
-				onSave={handleWidgetSave}
-				onDelete={handleDeleteWidget}
-			/>
-		</div>
+				<!-- Widget editor sidebar -->
+				<DashboardWidgetEditor
+					open={widgetEditorOpen}
+					widget={editingWidget}
+					dashboardId={dashboard.id}
+					initialWidget={pendingWidget}
+					onClose={handleWidgetEditorClose}
+					onSave={handleWidgetSave}
+					onDelete={handleDeleteWidget}
+				/>
+			</div>
+		{/if}
 	{/if}
 </div>
 

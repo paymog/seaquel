@@ -84,3 +84,37 @@ export interface DashboardTab {
   name: string;
   dashboardId: string;
 }
+
+/**
+ * Snapshot of a dashboard's versionable state (excludes id, projectId, timestamps, etc.).
+ */
+export interface DashboardSnapshot {
+  name: string;
+  description?: string;
+  widgets: Omit<DashboardWidget, "result" | "isLoading" | "error" | "lastRefreshed">[];
+  viewport: { x: number; y: number; zoom: number };
+  dateFilter?: { start: string; end: string } | null;
+}
+
+/**
+ * A single version entry for a dashboard. Always stores a full JSON snapshot.
+ */
+export interface DashboardVersion {
+  id: string;
+  dashboardId: string;
+  version: number;
+  /** JSON-serialized DashboardSnapshot */
+  snapshot: string;
+  createdAt: Date;
+}
+
+/**
+ * A resolved dashboard version with the parsed snapshot.
+ */
+export interface ResolvedDashboardVersion {
+  id: string;
+  dashboardId: string;
+  version: number;
+  dashboard: DashboardSnapshot;
+  createdAt: Date;
+}

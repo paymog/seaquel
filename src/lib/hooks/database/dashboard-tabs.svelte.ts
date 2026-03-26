@@ -39,7 +39,7 @@ export class DashboardTabManager extends BaseTabManager<DashboardTab> {
       const tabs = this.getProjectTabs();
       const existingTab = tabs.find((t) => t.dashboardId === dashboardId);
       if (existingTab) {
-        this.setActiveTabId(existingTab.id);
+        this.setActive(existingTab.id);
         this.viewFallbackFn!("dashboard");
         return existingTab.id;
       }

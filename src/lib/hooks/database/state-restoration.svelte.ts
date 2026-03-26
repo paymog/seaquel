@@ -9,6 +9,8 @@ import type {
   PersistedAIChat,
   PersistedAIMessage,
   PersistedQueryVersion,
+  DashboardVersion,
+  PersistedDashboardVersion,
 } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
@@ -125,6 +127,23 @@ export class StateRestorationManager {
     }));
     this.state.queryVersionsByProject = {
       ...this.state.queryVersionsByProject,
+      [projectId]: versions,
+    };
+  }
+
+  /**
+   * Restore dashboard versions from persisted data (per-project).
+   */
+  restoreDashboardVersions(projectId: string, data: PersistedDashboardVersion[]): void {
+    const versions: DashboardVersion[] = data.map((v) => ({
+      id: v.id,
+      dashboardId: v.dashboardId,
+      version: v.version,
+      snapshot: v.snapshot,
+      createdAt: new Date(v.createdAt),
+    }));
+    this.state.dashboardVersionsByProject = {
+      ...this.state.dashboardVersionsByProject,
       [projectId]: versions,
     };
   }
@@ -253,6 +272,11 @@ export class StateRestorationManager {
     const dashboards = await this.persistence.loadProjectDashboards(projectId);
     if (dashboards.length > 0) {
       this.restoreDashboards(projectId, dashboards);
+    }
+
+    const dashboardVersions = await this.persistence.loadProjectDashboardVersions(projectId);
+    if (dashboardVersions.length > 0) {
+      this.restoreDashboardVersions(projectId, dashboardVersions);
     }
   }
 

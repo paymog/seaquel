@@ -133,6 +133,7 @@ class UseDatabase {
         return await this.queries.executeRaw(query);
       },
       scheduleProjectPersistence,
+      this.persistence,
     );
 
     // UI

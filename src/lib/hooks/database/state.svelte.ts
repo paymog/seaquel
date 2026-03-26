@@ -27,6 +27,7 @@ import type {
   SharedDashboard,
   ActiveViewType,
   QueryVersion,
+  DashboardVersion,
 } from "$lib/types";
 import type { PaneLayout } from "$lib/types";
 import type { ConnectionLabel } from "$lib/types/project";
@@ -115,6 +116,7 @@ export class DatabaseState {
   queryHistoryByConnection = $state<Record<string, QueryHistoryItem[]>>({});
   queriesByProject = $state<Record<string, Query[]>>({});
   queryVersionsByProject = $state<Record<string, QueryVersion[]>>({});
+  dashboardVersionsByProject = $state<Record<string, DashboardVersion[]>>({});
 
   // === SHARED QUERY LIBRARY STATE ===
   sharedRepos = $state<SharedQueryRepo[]>([]);

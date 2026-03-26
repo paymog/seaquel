@@ -16,6 +16,7 @@ export {
   tutorialRepo,
   importStateRepo,
   dashboardsRepo,
+  dashboardVersionsRepo,
   connectionOverridesRepo,
   aiChatsRepo,
 } from "./repository";

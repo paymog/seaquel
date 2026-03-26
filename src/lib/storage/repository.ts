@@ -8,6 +8,7 @@ import type {
   PersistedAIChat,
   PersistedAIMessage,
   PersistedQueryVersion,
+  PersistedDashboardVersion,
 } from "$lib/types";
 import type { PersistedConnection } from "$lib/hooks/database/types";
 import type { SavedWorkflow } from "$lib/types/workflow";
@@ -1068,6 +1069,83 @@ export const dashboardsRepo = {
 
   async removeByProject(db: SqliteDatabase, projectId: string): Promise<void> {
     await db.execute("DELETE FROM dashboards WHERE project_id = ?", [projectId]);
+  },
+};
+
+// === Dashboard Versions ===
+
+export const dashboardVersionsRepo = {
+  async loadByDashboard(
+    db: SqliteDatabase,
+    dashboardId: string,
+  ): Promise<PersistedDashboardVersion[]> {
+    const rows = await db.query<{
+      id: string;
+      dashboard_id: string;
+      version: number;
+      snapshot: string;
+      created_at: string;
+    }>("SELECT * FROM dashboard_versions WHERE dashboard_id = ? ORDER BY version ASC", [
+      dashboardId,
+    ]);
+
+    return rows.map((r) => ({
+      id: r.id,
+      dashboardId: r.dashboard_id,
+      version: r.version,
+      snapshot: r.snapshot,
+      createdAt: r.created_at,
+    }));
+  },
+
+  async loadByProject(db: SqliteDatabase, projectId: string): Promise<PersistedDashboardVersion[]> {
+    const rows = await db.query<{
+      id: string;
+      dashboard_id: string;
+      version: number;
+      snapshot: string;
+      created_at: string;
+    }>(
+      `SELECT dv.* FROM dashboard_versions dv
+       JOIN dashboards d ON d.id = dv.dashboard_id
+       WHERE d.project_id = ?
+       ORDER BY dv.dashboard_id, dv.version ASC`,
+      [projectId],
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      dashboardId: r.dashboard_id,
+      version: r.version,
+      snapshot: r.snapshot,
+      createdAt: r.created_at,
+    }));
+  },
+
+  async insert(db: SqliteDatabase, version: PersistedDashboardVersion): Promise<void> {
+    await db.execute(
+      `INSERT INTO dashboard_versions (id, dashboard_id, version, snapshot, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [version.id, version.dashboardId, version.version, version.snapshot, version.createdAt],
+    );
+  },
+
+  async pruneOldVersions(
+    db: SqliteDatabase,
+    dashboardId: string,
+    keepCount: number,
+  ): Promise<void> {
+    await db.execute(
+      `DELETE FROM dashboard_versions
+       WHERE dashboard_id = ?
+         AND version <= (
+           SELECT version FROM dashboard_versions
+           WHERE dashboard_id = ?
+           ORDER BY version DESC
+           LIMIT 1 OFFSET ?
+         )`,
+      [dashboardId, dashboardId, keepCount],
+    );
   },
 };
 
