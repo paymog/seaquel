@@ -128,6 +128,28 @@
 		// Initial decoration pass
 		updateVariableDecorations();
 
+		// Work around WKWebView/Tauri bug: the first character keypress with an
+		// active selection is silently dropped by the browser's text input pipeline.
+		// Intercept it and type programmatically via Monaco's command system instead.
+		// (The "/" key is excluded because it's handled by addCommand below.)
+		const editorForWorkaround = editor;
+		editor.onKeyDown((e) => {
+			const sel = editorForWorkaround.getSelection();
+			if (
+				sel && !sel.isEmpty() &&
+				e.browserEvent.key.length === 1 &&
+				e.browserEvent.key !== "/" &&
+				!e.browserEvent.isComposing &&
+				!e.browserEvent.ctrlKey &&
+				!e.browserEvent.metaKey &&
+				!e.browserEvent.altKey
+			) {
+				e.preventDefault();
+				e.stopPropagation();
+				editorForWorkaround.trigger("keyboard", "type", { text: e.browserEvent.key });
+			}
+		});
+
 		// Add Cmd/Ctrl+Enter keybinding for query execution
 		editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
 			onExecute();
