@@ -994,5 +994,6 @@
   "wizard_ai_share_data_description": "عند التفعيل، يمكن للذكاء الاصطناعي تشغيل استعلامات SELECT على هذا الاتصال. ستُطلب منك الموافقة على كل استعلام.",
   "wizard_ai_share_always": "مشاركة دائماً",
   "wizard_ai_share_never": "عدم المشاركة أبداً",
-  "wizard_ai_share_default": "استخدام الإعداد العام"
+  "wizard_ai_share_default": "استخدام الإعداد العام",
+  "sidebar_new_query": "استعلام جديد"
 }

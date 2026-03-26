@@ -694,14 +694,34 @@
 			aria-hidden={sidebarTab !== "queries"}
 			inert={sidebarTab !== "queries" ? true : undefined}
 		>
-			<div class="px-4 py-2">
-				<div class="relative">
-					<SearchIcon class="absolute start-2 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-					<Input
-						bind:value={searchQuery}
-						placeholder={m.sidebar_search_queries()}
-						class="ps-8 h-8 text-sm"
-					/>
+			<div class="px-4 py-2 flex">
+				<div class="flex items-center gap-1">
+					<div class="relative">
+						<SearchIcon class="absolute start-2 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+						<Input
+							bind:value={searchQuery}
+							placeholder={m.sidebar_search_queries()}
+							class="ps-8 h-8 text-sm"
+						/>
+					</div>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Button {...props}
+									variant="ghost"
+									size="icon"
+									class="size-8 shrink-0"
+									onclick={() => {
+										db.queryTabs.add();
+										db.ui.setActiveView("query");
+									}}
+								>
+									<PlusIcon class="size-4" />
+								</Button>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>{m.sidebar_new_query()}</Tooltip.Content>
+					</Tooltip.Root>
 				</div>
 			</div>
 

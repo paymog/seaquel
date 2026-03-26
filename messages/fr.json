@@ -990,5 +990,6 @@
   "wizard_ai_share_data_description": "Lorsqu'activé, l'IA peut exécuter des requêtes SELECT sur cette connexion. Vous serez invité à approuver chaque requête.",
   "wizard_ai_share_always": "Toujours partager",
   "wizard_ai_share_never": "Ne jamais partager",
-  "wizard_ai_share_default": "Utiliser le paramètre global"
+  "wizard_ai_share_default": "Utiliser le paramètre global",
+  "sidebar_new_query": "Nouvelle requête"
 }

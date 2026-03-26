@@ -446,7 +446,7 @@
 						</div>
 						{#if !canDelete}
 							<p class="text-xs text-muted-foreground">
-								You cannot delete the last remaining project.
+								You cannot delete the default or last remaining project.
 							</p>
 						{/if}
 					</div>

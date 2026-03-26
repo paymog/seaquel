@@ -990,5 +990,6 @@
   "wizard_ai_share_data_description": "Cuando está activado, la IA puede ejecutar consultas SELECT contra esta conexión. Se te pedirá aprobar cada consulta.",
   "wizard_ai_share_always": "Compartir siempre",
   "wizard_ai_share_never": "No compartir nunca",
-  "wizard_ai_share_default": "Usar valor global predeterminado"
+  "wizard_ai_share_default": "Usar valor global predeterminado",
+  "sidebar_new_query": "Nueva consulta"
 }

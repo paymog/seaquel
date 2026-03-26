@@ -990,5 +990,6 @@
   "wizard_ai_share_data_description": "Wenn aktiviert, kann die KI SELECT-Abfragen gegen diese Verbindung ausführen. Sie werden gebeten, jede Abfrage zu genehmigen.",
   "wizard_ai_share_always": "Immer teilen",
   "wizard_ai_share_never": "Nie teilen",
-  "wizard_ai_share_default": "Globale Standardeinstellung verwenden"
+  "wizard_ai_share_default": "Globale Standardeinstellung verwenden",
+  "sidebar_new_query": "Neue Abfrage"
 }

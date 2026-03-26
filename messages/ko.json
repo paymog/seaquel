@@ -990,5 +990,6 @@
   "wizard_ai_share_data_description": "활성화하면 AI가 이 연결에 SELECT 쿼리를 실행할 수 있습니다. 각 쿼리 실행 전 승인을 요청합니다.",
   "wizard_ai_share_always": "항상 공유",
   "wizard_ai_share_never": "공유 안 함",
-  "wizard_ai_share_default": "전역 기본값 사용"
+  "wizard_ai_share_default": "전역 기본값 사용",
+  "sidebar_new_query": "새 쿼리"
 }

@@ -314,6 +314,7 @@
   "sidebar_refresh_schema": "Refresh schema",
   "sidebar_search_tables": "Search tables...",
   "sidebar_search_queries": "Search queries...",
+  "sidebar_new_query": "New query",
   "sidebar_new_dashboard": "New dashboard",
   "sidebar_no_connection": "No active connection",
   "sidebar_no_connection_schema": "Connect to a database to browse its schema",
