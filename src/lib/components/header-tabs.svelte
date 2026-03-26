@@ -6,13 +6,14 @@
     import { isTauri } from "$lib/utils/environment";
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
-    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, WorkflowIcon, GitBranchIcon, CableIcon, LayoutDashboardIcon, SettingsIcon } from "@lucide/svelte";
+    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, WorkflowIcon, GitBranchIcon, CableIcon, LayoutDashboardIcon, SettingsIcon, ChevronDownIcon } from "@lucide/svelte";
     import { RocketIcon } from "@lucide/svelte";
     import { useDatabase } from "$lib/hooks/database.svelte.js";
     import { useShortcuts, findShortcut } from "$lib/shortcuts/index.js";
     import ShortcutKeys from "$lib/components/shortcut-keys.svelte";
     import * as Tooltip from "$lib/components/ui/tooltip/index.js";
     import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+    import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
     import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
     import BatchUnsavedDialog from "$lib/components/batch-unsaved-dialog.svelte";
     import SaveQueryDialog from "$lib/components/save-query-dialog.svelte";
@@ -967,30 +968,70 @@
                 </div>
             </div>
 
-            <!-- Add new query tab button -->
-            <Tooltip.Root>
-                <Tooltip.Trigger>
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        class="size-7 shrink-0 [&_svg:not([class*='size-'])]:size-4"
-                        onclick={() => {
-                            db.queryTabs.add();
-                            db.ui.setActiveView("query");
-                        }}
-                    >
-                        <PlusIcon />
-                    </Button>
-                </Tooltip.Trigger>
-                <Tooltip.Content side="bottom">
-                    <span class="flex items-center gap-2">
-                        New Tab
-                        {#if findShortcut('newTab')}
-                            <ShortcutKeys keys={findShortcut('newTab')!.keys} />
-                        {/if}
-                    </span>
-                </Tooltip.Content>
-            </Tooltip.Root>
+            <!-- Add new tab button with dropdown -->
+            <div class="flex shrink-0 items-center">
+                <Tooltip.Root>
+                    <Tooltip.Trigger>
+                        <Button
+                            size="icon"
+                            variant="ghost"
+                            class="size-7 shrink-0 rounded-r-none [&_svg:not([class*='size-'])]:size-4"
+                            onclick={() => {
+                                db.queryTabs.add();
+                                db.ui.setActiveView("query");
+                            }}
+                        >
+                            <PlusIcon />
+                        </Button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Content side="bottom">
+                        <span class="flex items-center gap-2">
+                            New Query
+                            {#if findShortcut('newTab')}
+                                <ShortcutKeys keys={findShortcut('newTab')!.keys} />
+                            {/if}
+                        </span>
+                    </Tooltip.Content>
+                </Tooltip.Root>
+                <DropdownMenu.Root>
+                    <DropdownMenu.Trigger>
+                        {#snippet child({ props })}
+                            <button
+                                {...props}
+                                class="flex h-7 w-4 shrink-0 items-center justify-center rounded-r-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            >
+                                <ChevronDownIcon class="size-3" />
+                            </button>
+                        {/snippet}
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Portal>
+                        <DropdownMenu.Content align="start" side="bottom" class="min-w-40">
+                            <DropdownMenu.Item onclick={() => {
+                                db.queryTabs.add();
+                                db.ui.setActiveView("query");
+                            }}>
+                                <FileCodeIcon class="mr-2 size-4" />
+                                Query
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item onclick={() => {
+                                void db.connectionTabs.open();
+                            }}>
+                                <CableIcon class="mr-2 size-4" />
+                                Connection
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item onclick={async () => {
+                                const dashboard = await db.dashboards.createDashboard("New Dashboard");
+                                if (dashboard) {
+                                    db.dashboardTabs.add(dashboard.id, dashboard.name);
+                                }
+                            }}>
+                                <LayoutDashboardIcon class="mr-2 size-4" />
+                                Dashboard
+                            </DropdownMenu.Item>
+                        </DropdownMenu.Content>
+                    </DropdownMenu.Portal>
+                </DropdownMenu.Root>
+            </div>
         </div>
     {/if}
 {/if}
