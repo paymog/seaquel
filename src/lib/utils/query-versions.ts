@@ -17,7 +17,7 @@ export function isKeyframe(version: number): boolean {
  * a keyframe (full snapshot) and a delta (diff patch).
  */
 export function createVersionEntry(
-  savedQueryId: string,
+  queryId: string,
   version: number,
   queryText: string,
   previousVersionQuery?: string,
@@ -28,7 +28,7 @@ export function createVersionEntry(
   }
   return {
     id: `ver-${crypto.randomUUID()}`,
-    savedQueryId,
+    queryId,
     version,
     snapshot: isSnap ? queryText : null,
     diff: isSnap ? null : patchToText(previousVersionQuery!, queryText),
@@ -58,14 +58,14 @@ export function resolveVersions(versions: QueryVersion[]): ResolvedQueryVersion[
       const [result, success] = dmp.patch_apply(patches, currentText);
       if (!success.every(Boolean)) {
         console.warn(
-          `[query-versions] Patch partially failed for version ${v.version} of query ${v.savedQueryId}`,
+          `[query-versions] Patch partially failed for version ${v.version} of query ${v.queryId}`,
         );
       }
       currentText = result;
     }
     resolved.push({
       id: v.id,
-      savedQueryId: v.savedQueryId,
+      queryId: v.queryId,
       version: v.version,
       query: currentText,
       createdAt: v.createdAt,

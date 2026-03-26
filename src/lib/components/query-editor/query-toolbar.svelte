@@ -33,7 +33,7 @@
 		onFormat: () => void;
 		onSave: () => void;
 		onSaveAs?: () => void;
-		savedQueryId?: string;
+		queryId?: string;
 		tabId?: string;
 		versions?: ResolvedQueryVersion[];
 		onDiffVersions?: (selected: ResolvedQueryVersion[]) => void;
@@ -51,7 +51,7 @@
 		onFormat,
 		onSave,
 		onSaveAs,
-		savedQueryId,
+		queryId,
 		tabId,
 		versions = [],
 		onDiffVersions
@@ -195,7 +195,7 @@
 				<ShortcutKeys keys={findShortcut('formatSql')!.keys} class="ms-1" />
 			{/if}
 		</Button>
-		{#if savedQueryId && onSaveAs}
+		{#if queryId && onSaveAs}
 			<div class="flex">
 				<Button
 					size="sm"
@@ -241,7 +241,7 @@
 				{/if}
 			</Button>
 		{/if}
-		{#if savedQueryId && versions.length > 0}
+		{#if queryId && versions.length > 0}
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger
 					class={buttonVariants({ size: "sm", variant: "outline" }) + " !h-7 px-2"}

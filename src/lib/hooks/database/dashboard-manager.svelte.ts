@@ -180,7 +180,7 @@ export class DashboardManager {
     let query = widget.query;
     if (widget.querySource === "saved" && widget.savedQueryId) {
       const projectId = dashboard.projectId;
-      const savedQueries = this.state.savedQueriesByProject[projectId] ?? [];
+      const savedQueries = this.state.queriesByProject[projectId] ?? [];
       const savedQuery = savedQueries.find((sq) => sq.id === widget.savedQueryId);
       if (savedQuery) {
         query = savedQuery.query;

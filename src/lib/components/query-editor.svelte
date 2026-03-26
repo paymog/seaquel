@@ -94,8 +94,8 @@ let showParamsDialog = $state(false);
 
 	// Get resolved versions for the current saved query
 	const savedQueryVersions = $derived(
-		activeTab?.savedQueryId
-			? db.savedQueries.getResolvedVersionsForQuery(activeTab.savedQueryId)
+		activeTab?.queryId
+			? db.savedQueries.getResolvedVersionsForQuery(activeTab.queryId)
 			: []
 	);
 
@@ -276,9 +276,9 @@ let showParamsDialog = $state(false);
 	 * Uses linked saved query parameters if available, otherwise creates defaults.
 	 */
 	const getParameterDefinitions = (query: string): QueryParameter[] => {
-		const savedQueryId = activeTab?.savedQueryId;
-		const savedQuery = savedQueryId
-			? db.state.projectSavedQueries.find((q) => q.id === savedQueryId)
+		const queryId = activeTab?.queryId;
+		const savedQuery = queryId
+			? db.state.projectQueries.find((q) => q.id === queryId)
 			: null;
 
 		if (savedQuery?.parameters && savedQuery.parameters.length > 0) {
@@ -490,9 +490,9 @@ let showParamsDialog = $state(false);
 
 	const handleSave = () => {
 		if (!activeTab?.query.trim()) return;
-		if (activeTab.savedQueryId) {
-			// Overwrite existing saved query
-			const savedQuery = db.state.projectSavedQueries.find((q) => q.id === activeTab.savedQueryId);
+		if (activeTab.queryId) {
+			// Overwrite existing query
+			const savedQuery = db.state.projectQueries.find((q) => q.id === activeTab.queryId);
 			if (savedQuery) {
 				db.savedQueries.saveQuery(savedQuery.name, activeTab.query, activeTab.id, savedQuery.parameters);
 				toast.success(m.save_query_success());
@@ -703,7 +703,7 @@ let showParamsDialog = $state(false);
 					onFormat={handleFormat}
 					onSave={handleSave}
 					onSaveAs={handleSaveAs}
-					savedQueryId={activeTab.savedQueryId}
+					queryId={activeTab.queryId}
 					tabId={activeTab.id}
 					versions={savedQueryVersions}
 					onDiffVersions={(selected) => {

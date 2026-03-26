@@ -35,7 +35,7 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
   /**
    * Add a new query tab.
    */
-  add(name?: string, query?: string, savedQueryId?: string): string | null {
+  add(name?: string, query?: string, queryId?: string): string | null {
     if (!this.state.activeProjectId) return null;
 
     const tabs = this.getProjectTabs();
@@ -44,7 +44,7 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
       name: name || `Query ${tabs.length + 1}`,
       query: query || "",
       isExecuting: false,
-      savedQueryId,
+      queryId,
     });
 
     return this.appendTab(newTab);
@@ -61,29 +61,28 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     if (tab) {
       this.updateTab(id, (t) => ({ ...t, name: newName }));
 
-      // Also update linked saved query name if exists (saved queries are per-project)
-      if (tab.savedQueryId && this.state.activeProjectId) {
+      // Also update linked query name if exists
+      if (tab.queryId && this.state.activeProjectId) {
         const projectId = this.state.activeProjectId;
-        const savedQueries = this.state.savedQueriesByProject[projectId] ?? [];
-        const updatedSavedQueries = savedQueries.map((q) =>
-          q.id === tab.savedQueryId ? { ...q, name: newName, updatedAt: new Date() } : q,
-        );
-        this.state.savedQueriesByProject = {
-          ...this.state.savedQueriesByProject,
-          [projectId]: updatedSavedQueries,
-        };
-      }
+        const queries = this.state.queriesByProject[projectId] ?? [];
+        const query = queries.find((q) => q.id === tab.queryId);
+        if (query) {
+          const updatedQueries = queries.map((q) =>
+            q.id === tab.queryId ? { ...q, name: newName, updatedAt: new Date() } : q,
+          );
+          this.state.queriesByProject = {
+            ...this.state.queriesByProject,
+            [projectId]: updatedQueries,
+          };
 
-      // Also update linked shared query (renames file and updates frontmatter)
-      if (tab.sharedQueryId && this.sharedQueryManager) {
-        await this.sharedQueryManager
-          .updateQuery(tab.sharedQueryId, { name: newName })
-          .then((newId) => {
-            if (newId && newId !== tab.sharedQueryId) {
-              this.updateTab(id, (t) => ({ ...t, sharedQueryId: newId }));
-              this.schedulePersistence(this.state.activeProjectId);
+          // If shared, also update the .sql file
+          if (query.shared && this.sharedQueryManager) {
+            const updatedQuery = updatedQueries.find((q) => q.id === tab.queryId);
+            if (updatedQuery) {
+              await this.sharedQueryManager.writeQueryFile(updatedQuery);
             }
-          });
+          }
+        }
       }
 
       this.schedulePersistence(this.state.activeProjectId);
@@ -100,21 +99,14 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     // Empty tabs are not considered "unsaved"
     if (!tab.query.trim()) return false;
 
-    // Tab linked to saved query - compare content
-    if (tab.savedQueryId) {
-      const savedQuery = this.state.projectSavedQueries.find((q) => q.id === tab.savedQueryId);
-      if (!savedQuery) return true;
-      return tab.query !== savedQuery.query;
+    // Tab linked to a query - compare content
+    if (tab.queryId) {
+      const query = this.state.projectQueries.find((q) => q.id === tab.queryId);
+      if (!query) return true;
+      return tab.query !== query.query;
     }
 
-    // Tab linked to shared query - compare content
-    if (tab.sharedQueryId) {
-      const sharedQuery = this.state.allSharedQueries.find((q) => q.id === tab.sharedQueryId);
-      if (!sharedQuery) return true;
-      return tab.query !== sharedQuery.query;
-    }
-
-    // Tab not linked to any saved/shared query = unsaved
+    // Tab not linked to any query = unsaved
     return true;
   }
 
@@ -155,63 +147,41 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
   }
 
   /**
-   * Load a saved query into a tab (or switch to existing tab).
-   * Note: Saved queries are per-connection, so we need an active connection.
+   * Load a query into a tab (or switch to existing tab).
    */
-  loadSaved(savedQueryId: string, setActiveView?: () => void): void {
+  loadQuery(queryId: string, setActiveView?: () => void): void {
     if (!this.state.activeProjectId) return;
 
-    const savedQueries = this.state.savedQueriesByProject[this.state.activeProjectId] ?? [];
-    const savedQuery = savedQueries.find((q) => q.id === savedQueryId);
-    if (!savedQuery) return;
+    const queries = this.state.queriesByProject[this.state.activeProjectId] ?? [];
+    const query = queries.find((q) => q.id === queryId);
+    if (!query) return;
 
-    // Check if a tab with this saved query is already open
+    // Check if a tab with this query is already open
     const tabs = this.getProjectTabs();
-    const existingTab = tabs.find((t) => t.savedQueryId === savedQueryId);
+    const existingTab = tabs.find((t) => t.queryId === queryId);
 
     if (existingTab) {
-      // Switch to existing tab
       this.setActive(existingTab.id);
       setActiveView?.();
     } else {
-      // Create new tab
-      this.add(savedQuery.name, savedQuery.query, savedQueryId);
+      this.add(query.name, query.query, queryId);
       setActiveView?.();
     }
   }
 
-  /**
-   * Load a shared query into a tab (or switch to existing tab).
-   */
+  /** @deprecated Use loadQuery instead */
+  loadSaved(queryId: string, setActiveView?: () => void): void {
+    this.loadQuery(queryId, setActiveView);
+  }
+
+  /** @deprecated Use loadQuery instead */
   loadSharedQuery(
-    sharedQueryId: string,
-    name: string,
-    query: string,
+    queryId: string,
+    _name: string,
+    _query: string,
     setActiveView?: () => void,
   ): void {
-    if (!this.state.activeProjectId) return;
-
-    // Check if a tab with this shared query is already open
-    const tabs = this.getProjectTabs();
-    const existingTab = tabs.find((t) => t.sharedQueryId === sharedQueryId);
-
-    if (existingTab) {
-      // Switch to existing tab
-      this.setActive(existingTab.id);
-      setActiveView?.();
-    } else {
-      // Create new tab with sharedQueryId
-      const newTab: QueryTab = $state({
-        id: `tab-${crypto.randomUUID()}`,
-        name,
-        query,
-        isExecuting: false,
-        sharedQueryId,
-      });
-
-      this.appendTab(newTab);
-      setActiveView?.();
-    }
+    this.loadQuery(queryId, setActiveView);
   }
 
   /**

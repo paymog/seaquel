@@ -49,8 +49,8 @@ import { errorToast } from "$lib/utils/toast";
 		if (open) {
 			// Get existing saved query if linked
 			const tab = tabId ? db.state.queryTabs.find((t) => t.id === tabId) : null;
-			const savedQuery = tab?.savedQueryId
-				? db.state.projectSavedQueries.find((q) => q.id === tab.savedQueryId)
+			const savedQuery = tab?.queryId
+				? db.state.projectQueries.find((q) => q.id === tab.queryId)
 				: null;
 
 			// Pre-populate query name
@@ -94,7 +94,7 @@ import { errorToast } from "$lib/utils/toast";
 		const params = parameterConfigs.length > 0 ? parameterConfigs : undefined;
 		const savedId = db.savedQueries.saveQuery(queryName.trim(), query, tabId, params, saveAsNew);
 		if (saveAsNew && savedId) {
-			db.queryTabs.loadSaved(savedId);
+			db.queryTabs.loadQuery(savedId);
 		}
 		toast.success(m.save_query_success());
 		open = false;

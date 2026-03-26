@@ -304,8 +304,7 @@ export const projectStateRepo = {
         id: t.id,
         name: t.name,
         query: t.query ?? "",
-        savedQueryId: t.saved_query_id ?? undefined,
-        sharedQueryId: t.shared_query_id ?? undefined,
+        queryId: t.saved_query_id ?? t.shared_query_id ?? undefined,
       }));
 
     const schemaTabs = tabs
@@ -529,16 +528,9 @@ export const projectStateRepo = {
 
     for (const tab of state.queryTabs) {
       await db.execute(
-        `INSERT INTO tabs (id, project_id, tab_type, name, query, saved_query_id, shared_query_id)
-         VALUES (?, ?, 'query', ?, ?, ?, ?)`,
-        [
-          tab.id,
-          state.projectId,
-          tab.name,
-          tab.query,
-          tab.savedQueryId ?? null,
-          tab.sharedQueryId ?? null,
-        ],
+        `INSERT INTO tabs (id, project_id, tab_type, name, query, saved_query_id)
+         VALUES (?, ?, 'query', ?, ?, ?)`,
+        [tab.id, state.projectId, tab.name, tab.query, tab.queryId ?? null],
       );
     }
 
@@ -626,6 +618,12 @@ export const savedQueriesRepo = {
       name: string;
       query: string;
       parameters: string | null;
+      starred: number;
+      shared: number;
+      description: string | null;
+      database_type: string | null;
+      tags: string | null;
+      folder: string | null;
       created_at: string;
       updated_at: string;
     }>("SELECT * FROM saved_queries WHERE project_id = ?", [projectId]);
@@ -636,7 +634,12 @@ export const savedQueriesRepo = {
       name: r.name,
       query: r.query,
       parameters: safeJsonParse(r.parameters, undefined),
-      starred: !!(r as Record<string, unknown>).starred,
+      starred: !!r.starred,
+      shared: !!r.shared,
+      description: r.description ?? undefined,
+      databaseType: r.database_type ?? undefined,
+      tags: safeJsonParse(r.tags, undefined),
+      folder: r.folder ?? undefined,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));
@@ -661,13 +664,18 @@ export const savedQueriesRepo = {
     }
     for (const q of queries) {
       await db.execute(
-        `INSERT INTO saved_queries (id, project_id, name, query, parameters, starred, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO saved_queries (id, project_id, name, query, parameters, starred, shared, description, database_type, tags, folder, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
            query = excluded.query,
            parameters = excluded.parameters,
            starred = excluded.starred,
+           shared = excluded.shared,
+           description = excluded.description,
+           database_type = excluded.database_type,
+           tags = excluded.tags,
+           folder = excluded.folder,
            updated_at = excluded.updated_at`,
         [
           q.id,
@@ -676,6 +684,11 @@ export const savedQueriesRepo = {
           q.query,
           q.parameters ? JSON.stringify(q.parameters) : null,
           q.starred ? 1 : 0,
+          q.shared ? 1 : 0,
+          q.description ?? null,
+          q.databaseType ?? null,
+          q.tags ? JSON.stringify(q.tags) : null,
+          q.folder ?? null,
           q.createdAt,
           q.updatedAt,
         ],
@@ -691,10 +704,7 @@ export const savedQueriesRepo = {
 // === Query Versions ===
 
 export const queryVersionsRepo = {
-  async loadBySavedQuery(
-    db: SqliteDatabase,
-    savedQueryId: string,
-  ): Promise<PersistedQueryVersion[]> {
+  async loadByQuery(db: SqliteDatabase, queryId: string): Promise<PersistedQueryVersion[]> {
     const rows = await db.query<{
       id: string;
       saved_query_id: string;
@@ -702,13 +712,11 @@ export const queryVersionsRepo = {
       snapshot: string | null;
       diff: string | null;
       created_at: string;
-    }>("SELECT * FROM query_versions WHERE saved_query_id = ? ORDER BY version ASC", [
-      savedQueryId,
-    ]);
+    }>("SELECT * FROM query_versions WHERE saved_query_id = ? ORDER BY version ASC", [queryId]);
 
     return rows.map((r) => ({
       id: r.id,
-      savedQueryId: r.saved_query_id,
+      queryId: r.saved_query_id,
       version: r.version,
       snapshot: r.snapshot,
       diff: r.diff,
@@ -734,7 +742,7 @@ export const queryVersionsRepo = {
 
     return rows.map((r) => ({
       id: r.id,
-      savedQueryId: r.saved_query_id,
+      queryId: r.saved_query_id,
       version: r.version,
       snapshot: r.snapshot,
       diff: r.diff,
@@ -748,7 +756,7 @@ export const queryVersionsRepo = {
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
         version.id,
-        version.savedQueryId,
+        version.queryId,
         version.version,
         version.snapshot,
         version.diff,
@@ -757,11 +765,7 @@ export const queryVersionsRepo = {
     );
   },
 
-  async pruneOldVersions(
-    db: SqliteDatabase,
-    savedQueryId: string,
-    keepCount: number,
-  ): Promise<void> {
+  async pruneOldVersions(db: SqliteDatabase, queryId: string, keepCount: number): Promise<void> {
     await db.execute(
       `DELETE FROM query_versions
        WHERE saved_query_id = ?
@@ -771,7 +775,7 @@ export const queryVersionsRepo = {
            ORDER BY version DESC
            LIMIT 1 OFFSET ?
          )`,
-      [savedQueryId, savedQueryId, keepCount],
+      [queryId, queryId, keepCount],
     );
   },
 };

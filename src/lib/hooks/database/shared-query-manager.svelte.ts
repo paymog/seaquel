@@ -1,22 +1,19 @@
-import type { SharedQuery, QueryParameter, SavedQuery } from "$lib/types";
+import type { Query, QueryParameter } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
+import { SEAQUEL_DIR, type SharedRepoManager } from "./shared-repo-manager.svelte.js";
 import {
-  SEAQUEL_DIR,
-  parseCompositeId,
-  type SharedRepoManager,
-} from "./shared-repo-manager.svelte.js";
-import {
-  parseQueryFile,
   serializeQueryFile,
   queryNameToFilename,
   isValidQueryPath,
 } from "$lib/services/query-file-parser";
 import { nameToFilename } from "$lib/services/config-file-parser";
-import { readTextFile, writeTextFile, remove, mkdir, exists, rename } from "@tauri-apps/plugin-fs";
+import { writeTextFile, remove, mkdir, exists } from "@tauri-apps/plugin-fs";
 import { join, dirname } from "@tauri-apps/api/path";
 
 /**
- * Manages individual shared queries: create, update, delete.
+ * File projection utility for shared queries.
+ * Writes/deletes .sql files in the git repo as projections of Query objects.
+ * Does NOT manage query state — that's handled by SavedQueryManager.
  */
 export class SharedQueryManager {
   constructor(
@@ -25,7 +22,7 @@ export class SharedQueryManager {
   ) {}
 
   /**
-   * Get the queries base path for the active project (e.g., ".seaquel/projects/my-project/queries").
+   * Get the queries base path for the active project.
    */
   private getQueriesBasePath(): string | null {
     const project = this.state.projects.find((p) => p.id === this.state.activeProjectId);
@@ -35,8 +32,7 @@ export class SharedQueryManager {
   }
 
   /**
-   * Extract the queries base path from an existing filePath
-   * (e.g., ".seaquel/projects/my-project/queries" from ".seaquel/projects/my-project/queries/analytics/file.sql").
+   * Extract the queries base path from an existing filePath.
    */
   private extractQueriesBase(filePath: string): string {
     const match = filePath.match(/^(\.seaquel\/projects\/[^/]+\/queries)\//);
@@ -44,7 +40,179 @@ export class SharedQueryManager {
   }
 
   /**
-   * Create a new shared query in the active repository.
+   * Get the active repo and its path, or null if unavailable.
+   */
+  private getActiveRepo(): { repoId: string; repoPath: string } | null {
+    const repoId = this.state.activeRepoId;
+    if (!repoId) return null;
+    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
+    if (!repo) return null;
+    return { repoId, repoPath: repo.path };
+  }
+
+  /**
+   * Write a query as a .sql file in the git repo.
+   */
+  async writeQueryFile(query: Query): Promise<void> {
+    const activeRepo = this.getActiveRepo();
+    if (!activeRepo) return;
+
+    const queriesBase = this.getQueriesBasePath();
+    if (!queriesBase) return;
+
+    const filename = queryNameToFilename(query.name);
+    const folder = query.folder || "";
+    const relPath = folder ? `${folder}/${filename}` : filename;
+    const filePath = `${queriesBase}/${relPath}`;
+
+    if (!isValidQueryPath(filePath)) {
+      throw new Error("Invalid query file path");
+    }
+
+    const content = serializeQueryFile(query);
+    const fullPath = await join(activeRepo.repoPath, filePath);
+    const folderPath = await dirname(fullPath);
+
+    if (!(await exists(folderPath))) {
+      await mkdir(folderPath, { recursive: true });
+    }
+
+    await writeTextFile(fullPath, content);
+    await this.repoManager.refreshRepoStatus(activeRepo.repoId);
+  }
+
+  /**
+   * Delete the .sql file for a query from the git repo.
+   */
+  async deleteQueryFile(query: Query): Promise<void> {
+    const activeRepo = this.getActiveRepo();
+    if (!activeRepo) return;
+
+    const queriesBase = this.getQueriesBasePath();
+    if (!queriesBase) return;
+
+    const filename = queryNameToFilename(query.name);
+    const folder = query.folder || "";
+    const relPath = folder ? `${folder}/${filename}` : filename;
+    const filePath = `${queriesBase}/${relPath}`;
+
+    const fullPath = await join(activeRepo.repoPath, filePath);
+    try {
+      await remove(fullPath);
+    } catch {
+      // File may not exist (already deleted externally)
+    }
+
+    await this.repoManager.refreshRepoStatus(activeRepo.repoId);
+  }
+
+  /**
+   * Create a new folder in the repository's queries directory.
+   */
+  async createFolder(folderPath: string): Promise<boolean> {
+    const activeRepo = this.getActiveRepo();
+    if (!activeRepo) return false;
+
+    const queriesBase = this.getQueriesBasePath();
+    if (!queriesBase) return false;
+
+    const repoRelPath = `${queriesBase}/${folderPath}`;
+    const fullPath = await join(activeRepo.repoPath, repoRelPath);
+
+    if (await exists(fullPath)) {
+      return false;
+    }
+
+    await mkdir(fullPath, { recursive: true });
+
+    const gitkeepPath = await join(fullPath, ".gitkeep");
+    await writeTextFile(gitkeepPath, "");
+
+    return true;
+  }
+
+  /**
+   * Reconcile .sql files from the scan cache with SQLite queries.
+   * - New .sql files → create Query with shared=true
+   * - Missing .sql files for shared queries → set shared=false
+   * - Updated .sql files → update query content
+   * Returns the list of queries after reconciliation.
+   */
+  reconcileWithGitFiles(projectId: string, queries: Query[]): Query[] {
+    const activeRepo = this.getActiveRepo();
+    if (!activeRepo) return queries;
+
+    const queriesBase = this.getQueriesBasePath();
+    if (!queriesBase) return queries;
+
+    // Get scanned queries from the scan cache, filtered to this project's directory
+    const allScannedQueries = this.state.sharedQueriesByRepo[activeRepo.repoId] ?? [];
+    const gitQueries = allScannedQueries.filter((q) => q.filePath?.startsWith(queriesBase + "/"));
+
+    const result = [...queries];
+    const matchedGitNames = new Set<string>();
+
+    // Match existing shared queries to git files by name+folder
+    for (const gitQuery of gitQueries) {
+      const matchKey = `${gitQuery.folder || ""}/${gitQuery.name}`.toLowerCase();
+      const existingIdx = result.findIndex(
+        (q) => q.shared && `${q.folder || ""}/${q.name}`.toLowerCase() === matchKey,
+      );
+
+      if (existingIdx !== -1) {
+        // Update content if git file is newer
+        const existing = result[existingIdx];
+        if (gitQuery.query !== existing.query) {
+          result[existingIdx] = {
+            ...existing,
+            query: gitQuery.query,
+            description: gitQuery.description,
+            databaseType: gitQuery.databaseType,
+            tags: gitQuery.tags,
+            parameters: gitQuery.parameters,
+            updatedAt: new Date(),
+          };
+        }
+        matchedGitNames.add(matchKey);
+      } else {
+        // New .sql file → create a new shared Query
+        const newQuery: Query = {
+          id: `saved-${crypto.randomUUID()}`,
+          name: gitQuery.name,
+          query: gitQuery.query,
+          projectId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          parameters: gitQuery.parameters,
+          shared: true,
+          description: gitQuery.description,
+          databaseType: gitQuery.databaseType,
+          tags: gitQuery.tags,
+          folder: gitQuery.folder || undefined,
+        };
+        result.push(newQuery);
+        matchedGitNames.add(matchKey);
+      }
+    }
+
+    // Shared queries in SQLite with no matching .sql file → mark as unshared
+    for (let i = 0; i < result.length; i++) {
+      const q = result[i];
+      if (q.shared) {
+        const matchKey = `${q.folder || ""}/${q.name}`.toLowerCase();
+        if (!matchedGitNames.has(matchKey)) {
+          result[i] = { ...q, shared: false };
+        }
+      }
+    }
+
+    return result;
+  }
+
+  // === Legacy methods kept for backward compatibility during migration ===
+
+  /**
+   * @deprecated Use writeQueryFile instead
    */
   async createQuery(
     name: string,
@@ -57,16 +225,12 @@ export class SharedQueryManager {
       parameters?: QueryParameter[];
     },
   ): Promise<string | null> {
-    const repoId = this.state.activeRepoId;
-    if (!repoId) return null;
-
-    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
-    if (!repo) return null;
+    const activeRepo = this.getActiveRepo();
+    if (!activeRepo) return null;
 
     const queriesBase = this.getQueriesBasePath();
     if (!queriesBase) return null;
 
-    // Generate file path under .seaquel/projects/<name>/queries/
     const filename = queryNameToFilename(name);
     const relPath = folder ? `${folder}/${filename}` : filename;
     const filePath = `${queriesBase}/${relPath}`;
@@ -75,347 +239,42 @@ export class SharedQueryManager {
       throw new Error("Invalid query file path");
     }
 
-    // Create the SharedQuery object
-    const sharedQuery: SharedQuery = {
-      id: `${repoId}:${filePath}`,
-      repoId,
-      filePath,
+    const sharedQuery: Query = {
+      id: `saved-${crypto.randomUUID()}`,
       name,
-      description: options?.description,
       query,
-      parameters: options?.parameters,
-      databaseType: options?.databaseType,
-      tags: options?.tags ?? [],
-      folder,
+      projectId: this.state.activeProjectId ?? "",
+      createdAt: new Date(),
       updatedAt: new Date(),
+      parameters: options?.parameters,
+      shared: true,
+      description: options?.description,
+      databaseType: options?.databaseType,
+      tags: options?.tags,
+      folder: folder || undefined,
     };
 
-    // Serialize to file content
     const content = serializeQueryFile(sharedQuery);
+    const fullPath = await join(activeRepo.repoPath, filePath);
+    const folderPathStr = await dirname(fullPath);
 
-    // Ensure folder exists
-    const fullPath = await join(repo.path, filePath);
-    const folderPath = await dirname(fullPath);
-
-    if (!(await exists(folderPath))) {
-      await mkdir(folderPath, { recursive: true });
+    if (!(await exists(folderPathStr))) {
+      await mkdir(folderPathStr, { recursive: true });
     }
 
-    // Write file
     await writeTextFile(fullPath, content);
-
-    // Add to state
-    const queries = this.state.sharedQueriesByRepo[repoId] ?? [];
-    this.state.sharedQueriesByRepo = {
-      ...this.state.sharedQueriesByRepo,
-      [repoId]: [...queries, sharedQuery],
-    };
-
-    await this.repoManager.refreshRepoStatus(repoId);
+    await this.repoManager.refreshRepoStatus(activeRepo.repoId);
     return sharedQuery.id;
   }
 
   /**
-   * Update an existing shared query.
+   * @deprecated Queries are now looked up from state.queriesByProject
    */
-  async updateQuery(
-    queryId: string,
-    updates: {
-      name?: string;
-      query?: string;
-      description?: string;
-      databaseType?: string;
-      tags?: string[];
-      parameters?: QueryParameter[];
-    },
-  ): Promise<string | null> {
-    // Find the query
-    const { repoId, filePath } = parseCompositeId(queryId);
-
-    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
-    if (!repo) return null;
-
-    const queries = this.state.sharedQueriesByRepo[repoId] ?? [];
-    const queryIndex = queries.findIndex((q) => q.id === queryId);
-    if (queryIndex === -1) return null;
-
-    const existingQuery = queries[queryIndex];
-
-    // Create updated query
-    const updatedQuery: SharedQuery = {
-      ...existingQuery,
-      name: updates.name ?? existingQuery.name,
-      query: updates.query ?? existingQuery.query,
-      description: updates.description ?? existingQuery.description,
-      databaseType: updates.databaseType ?? existingQuery.databaseType,
-      tags: updates.tags ?? existingQuery.tags,
-      parameters: updates.parameters ?? existingQuery.parameters,
-    };
-
-    // Handle rename (file path change)
-    let newFilePath = filePath;
-    if (updates.name && updates.name !== existingQuery.name) {
-      const folder = existingQuery.folder;
-      const queriesBase = this.extractQueriesBase(filePath);
-      const newFilename = queryNameToFilename(updates.name);
-      const relPath = folder ? `${folder}/${newFilename}` : newFilename;
-      newFilePath = queriesBase ? `${queriesBase}/${relPath}` : relPath;
-
-      if (newFilePath !== filePath) {
-        // Rename file
-        const oldFullPath = await join(repo.path, filePath);
-        const newFullPath = await join(repo.path, newFilePath);
-
-        await rename(oldFullPath, newFullPath);
-
-        // Update query object
-        updatedQuery.id = `${repoId}:${newFilePath}`;
-        updatedQuery.filePath = newFilePath;
-      }
+  getQuery(queryId: string): Query | null {
+    for (const queries of Object.values(this.state.queriesByProject)) {
+      const found = queries.find((q) => q.id === queryId);
+      if (found) return found;
     }
-
-    // Serialize and write updated content
-    const content = serializeQueryFile(updatedQuery);
-    const fullPath = await join(repo.path, updatedQuery.filePath);
-    await writeTextFile(fullPath, content);
-
-    // Update state
-    const updatedQueries = [...queries];
-    updatedQueries[queryIndex] = updatedQuery;
-    this.state.sharedQueriesByRepo = {
-      ...this.state.sharedQueriesByRepo,
-      [repoId]: updatedQueries,
-    };
-
-    await this.repoManager.refreshRepoStatus(repoId);
-    return updatedQuery.id;
-  }
-
-  /**
-   * Delete a shared query.
-   */
-  async deleteQuery(queryId: string): Promise<boolean> {
-    const { repoId, filePath } = parseCompositeId(queryId);
-
-    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
-    if (!repo) return false;
-
-    const queries = this.state.sharedQueriesByRepo[repoId] ?? [];
-    const query = queries.find((q) => q.id === queryId);
-    if (!query) return false;
-
-    // Delete file
-    const fullPath = await join(repo.path, filePath);
-    await remove(fullPath);
-
-    // Remove from state
-    this.state.sharedQueriesByRepo = {
-      ...this.state.sharedQueriesByRepo,
-      [repoId]: queries.filter((q) => q.id !== queryId),
-    };
-
-    await this.repoManager.refreshRepoStatus(repoId);
-    return true;
-  }
-
-  /**
-   * Move a query to a different folder.
-   */
-  async moveQuery(queryId: string, newFolder: string): Promise<boolean> {
-    const { repoId, filePath } = parseCompositeId(queryId);
-
-    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
-    if (!repo) return false;
-
-    const queries = this.state.sharedQueriesByRepo[repoId] ?? [];
-    const queryIndex = queries.findIndex((q) => q.id === queryId);
-    if (queryIndex === -1) return false;
-
-    const query = queries[queryIndex];
-    const filename = filePath.split("/").pop() || "";
-    const queriesBase = this.extractQueriesBase(filePath);
-    const relPath = newFolder ? `${newFolder}/${filename}` : filename;
-    const newFilePath = queriesBase ? `${queriesBase}/${relPath}` : relPath;
-
-    if (!isValidQueryPath(newFilePath)) {
-      throw new Error("Invalid target folder");
-    }
-
-    // Ensure target folder exists
-    const targetDir = queriesBase
-      ? newFolder
-        ? `${queriesBase}/${newFolder}`
-        : queriesBase
-      : newFolder;
-    if (targetDir) {
-      const targetFolderPath = await join(repo.path, targetDir);
-      if (!(await exists(targetFolderPath))) {
-        await mkdir(targetFolderPath, { recursive: true });
-      }
-    }
-
-    // Move file
-    const oldFullPath = await join(repo.path, filePath);
-    const newFullPath = await join(repo.path, newFilePath);
-    await rename(oldFullPath, newFullPath);
-
-    // Update query object
-    const updatedQuery: SharedQuery = {
-      ...query,
-      id: `${repoId}:${newFilePath}`,
-      filePath: newFilePath,
-      folder: newFolder,
-    };
-
-    // Update state
-    const updatedQueries = [...queries];
-    updatedQueries[queryIndex] = updatedQuery;
-    this.state.sharedQueriesByRepo = {
-      ...this.state.sharedQueriesByRepo,
-      [repoId]: updatedQueries,
-    };
-
-    await this.repoManager.refreshRepoStatus(repoId);
-    return true;
-  }
-
-  /**
-   * Create a new folder in the repository's queries directory.
-   */
-  async createFolder(folderPath: string): Promise<boolean> {
-    const repoId = this.state.activeRepoId;
-    if (!repoId) return false;
-
-    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
-    if (!repo) return false;
-
-    const queriesBase = this.getQueriesBasePath();
-    if (!queriesBase) return false;
-
-    const repoRelPath = `${queriesBase}/${folderPath}`;
-    const fullPath = await join(repo.path, repoRelPath);
-
-    if (await exists(fullPath)) {
-      return false; // Already exists
-    }
-
-    await mkdir(fullPath, { recursive: true });
-
-    // Create .gitkeep to track empty folder
-    const gitkeepPath = await join(fullPath, ".gitkeep");
-    await writeTextFile(gitkeepPath, "");
-
-    return true;
-  }
-
-  /**
-   * Get a shared query by ID.
-   */
-  getQuery(queryId: string): SharedQuery | null {
-    const { repoId } = parseCompositeId(queryId);
-    const queries = this.state.sharedQueriesByRepo[repoId] ?? [];
-    return queries.find((q) => q.id === queryId) ?? null;
-  }
-
-  /**
-   * Get all queries in a specific folder.
-   */
-  getQueriesInFolder(repoId: string, folder: string): SharedQuery[] {
-    const queries = this.state.sharedQueriesByRepo[repoId] ?? [];
-    return queries.filter((q) => q.folder === folder);
-  }
-
-  /**
-   * Get all unique folder paths in a repository.
-   */
-  getFolders(repoId: string): string[] {
-    const queries = this.state.sharedQueriesByRepo[repoId] ?? [];
-    const folders = new Set<string>();
-
-    for (const query of queries) {
-      if (query.folder) {
-        // Add the folder and all parent folders
-        const parts = query.folder.split("/");
-        for (let i = 1; i <= parts.length; i++) {
-          folders.add(parts.slice(0, i).join("/"));
-        }
-      }
-    }
-
-    return Array.from(folders).sort();
-  }
-
-  /**
-   * Search queries across all repositories.
-   */
-  searchQueries(searchTerm: string, repoId?: string): SharedQuery[] {
-    const term = searchTerm.toLowerCase();
-    let queries: SharedQuery[];
-
-    if (repoId) {
-      queries = this.state.sharedQueriesByRepo[repoId] ?? [];
-    } else {
-      queries = this.state.allSharedQueries;
-    }
-
-    return queries.filter((q) => {
-      return (
-        q.name.toLowerCase().includes(term) ||
-        q.description?.toLowerCase().includes(term) ||
-        q.query.toLowerCase().includes(term) ||
-        q.tags.some((t) => t.toLowerCase().includes(term))
-      );
-    });
-  }
-
-  /**
-   * Reload a single query from disk.
-   */
-  async reloadQuery(queryId: string): Promise<void> {
-    const { repoId, filePath } = parseCompositeId(queryId);
-
-    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
-    if (!repo) return;
-
-    const fullPath = await join(repo.path, filePath);
-
-    try {
-      const content = await readTextFile(fullPath);
-      const query = parseQueryFile(content, repoId, filePath);
-
-      if (query) {
-        const queries = this.state.sharedQueriesByRepo[repoId] ?? [];
-        const index = queries.findIndex((q) => q.id === queryId);
-
-        if (index !== -1) {
-          const updatedQueries = [...queries];
-          updatedQueries[index] = query;
-          this.state.sharedQueriesByRepo = {
-            ...this.state.sharedQueriesByRepo,
-            [repoId]: updatedQueries,
-          };
-        }
-      }
-    } catch (error) {
-      console.error("Failed to reload query:", error);
-    }
-  }
-
-  /**
-   * Share a saved query by writing it as a .sql file to the active repo.
-   * Does not stage or commit — the user handles that manually.
-   */
-  async shareQuery(savedQuery: SavedQuery): Promise<string | null> {
-    return this.createQuery(savedQuery.name, savedQuery.query, "", {
-      parameters: savedQuery.parameters,
-    });
-  }
-
-  /**
-   * Unshare a shared query by deleting its .sql file from the repo.
-   * Does not stage or commit — the user handles that manually.
-   */
-  async unshareQuery(queryId: string): Promise<boolean> {
-    return this.deleteQuery(queryId);
+    return null;
   }
 }

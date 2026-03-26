@@ -181,23 +181,7 @@ export class ProjectManager {
               await this.sharedRepos.loadQueriesFromRepo(repo.id);
             }
 
-            // Update sharedQueryId on open tabs whose paths changed
-            if (oldDirName !== newDirName) {
-              const oldSegment = `projects/${oldDirName}/`;
-              const newSegment = `projects/${newDirName}/`;
-              for (const [_, tabs] of Object.entries(this.state.queryTabsByProject)) {
-                let changed = false;
-                for (const tab of tabs) {
-                  if (tab.sharedQueryId?.includes(oldSegment)) {
-                    tab.sharedQueryId = tab.sharedQueryId.replace(oldSegment, newSegment);
-                    changed = true;
-                  }
-                }
-                if (changed) {
-                  this.state.queryTabsByProject = { ...this.state.queryTabsByProject };
-                }
-              }
-            }
+            // Tab queryIds are stable SQLite IDs — no path updates needed on rename
           }
         } catch {
           // Directory may not exist yet
@@ -706,7 +690,7 @@ export class ProjectManager {
       id: t.id,
       name: t.name,
       query: t.query,
-      savedQueryId: t.savedQueryId,
+      queryId: t.queryId,
       isExecuting: false,
     }));
 
@@ -834,8 +818,7 @@ export class ProjectManager {
     this.state.activeDashboardTabIdByProject[projectId] =
       persistedState.activeDashboardTabId ?? null;
 
-    // Restore starred shared query IDs
-    this.state.starredSharedQueryIds = new Set(persistedState.starredSharedQueryIds ?? []);
+    // Starred shared query IDs are now on the Query object (migrated at load time)
     this.state.starredSharedDashboardIds = new Set(persistedState.starredSharedDashboardIds ?? []);
 
     // Restore pane layout (if saved); otherwise it will be auto-created on first access

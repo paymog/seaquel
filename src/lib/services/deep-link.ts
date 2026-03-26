@@ -186,15 +186,25 @@ async function resolveRepo(
 }
 
 function handleQueryDeepLink(repoId: string, filePath: string, db: DatabaseContext): void {
-  const queries = db.state.sharedQueriesByRepo[repoId] ?? [];
-  const query = queries.find((q) => q.filePath === filePath);
+  // Look up from scan cache first, then match to unified queries by name
+  const scannedQueries = db.state.sharedQueriesByRepo[repoId] ?? [];
+  const scannedQuery = scannedQueries.find((q) => q.filePath === filePath);
 
-  if (query) {
+  if (scannedQuery) {
     db.sharedRepos.setActiveRepo(repoId);
-    db.queryTabs.loadSharedQuery(query.id, query.name, query.query, () =>
-      db.ui.setActiveView("query"),
+    // Find the unified query by matching name
+    const unifiedQuery = db.state.projectQueries.find(
+      (q) => q.shared && q.name === scannedQuery.name,
     );
-    toast.success(`Opened shared query: ${query.name}`);
+    if (unifiedQuery) {
+      db.queryTabs.loadQuery(unifiedQuery.id, () => db.ui.setActiveView("query"));
+    } else {
+      // Fallback: open as a new tab with the scanned content
+      db.queryTabs.focusOrCreate(scannedQuery.query, scannedQuery.name, () =>
+        db.ui.setActiveView("query"),
+      );
+    }
+    toast.success(`Opened shared query: ${scannedQuery.name}`);
   } else {
     toast.error(`Query not found: ${filePath}`);
   }

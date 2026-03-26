@@ -15,7 +15,7 @@
 
 	const filteredHistory = $derived(db.state.activeConnectionQueryHistory.filter((item) => item.query.toLowerCase().includes(searchQuery.toLowerCase())));
 
-	const filteredSavedQueries = $derived(db.state.projectSavedQueries.filter((item) => item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.query.toLowerCase().includes(searchQuery.toLowerCase())));
+	const filteredSavedQueries = $derived(db.state.projectQueries.filter((item) => item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.query.toLowerCase().includes(searchQuery.toLowerCase())));
 
 </script>
 
@@ -27,7 +27,7 @@
 					<HistoryIcon class="size-4" />
 					{m.history_title()}
 				</CardTitle>
-				<CardDescription class="text-xs">{m.history_stats({ executed: db.state.activeConnectionQueryHistory.length, saved: db.state.projectSavedQueries.length })}</CardDescription>
+				<CardDescription class="text-xs">{m.history_stats({ executed: db.state.activeConnectionQueryHistory.length, saved: db.state.projectQueries.length })}</CardDescription>
 			</div>
 		</div>
 		<div class="relative mt-2">
@@ -98,8 +98,8 @@
 								class="w-full text-left p-3 rounded-lg border hover:bg-muted/50 transition-colors group cursor-pointer"
 								role="button"
 								tabindex="0"
-								onclick={() => db.queryTabs.loadSaved(item.id)}
-								onkeydown={(e) => e.key === 'Enter' && db.queryTabs.loadSaved(item.id)}
+								onclick={() => db.queryTabs.loadQuery(item.id)}
+								onkeydown={(e) => e.key === 'Enter' && db.queryTabs.loadQuery(item.id)}
 							>
 								<div class="flex items-start justify-between gap-2 mb-2">
 									<div class="flex items-center gap-2 flex-1 min-w-0">
@@ -113,7 +113,7 @@
 										aria-label={m.history_delete_saved()}
 										onclick={(e) => {
 											e.stopPropagation();
-											db.savedQueries.deleteSavedQuery(item.id);
+											db.savedQueries.deleteQuery(item.id);
 										}}
 									>
 										<Trash2Icon />

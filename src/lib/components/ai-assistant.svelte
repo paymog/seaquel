@@ -43,7 +43,7 @@
 		schemaSharing
 			? buildMentionItems(
 					db.state.activeSchema,
-					db.state.projectSavedQueries,
+					db.state.projectQueries,
 					db.state.projectDashboards,
 				)
 			: [],

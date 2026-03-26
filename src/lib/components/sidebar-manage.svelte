@@ -8,7 +8,7 @@
 	import { Input } from "$lib/components/ui/input";
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
 	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, WorkflowIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon } from "@lucide/svelte";
-	import type { SharedQuery, SharedDashboard, Dashboard } from "$lib/types";
+	import type { SharedDashboard, Dashboard } from "$lib/types";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -67,11 +67,7 @@
 
 	const confirmDeleteQuery = () => {
 		if (!queryToDelete) return;
-		if (queryToDelete.type === "shared") {
-			db.sharedQueries.deleteQuery(queryToDelete.id);
-		} else {
-			db.savedQueries.deleteSavedQuery(queryToDelete.id);
-		}
+		db.savedQueries.deleteQuery(queryToDelete.id);
 		showDeleteQueryDialog = false;
 		queryToDelete = null;
 	};
@@ -154,60 +150,47 @@
 		),
 	);
 
-	const filteredSharedQueries = $derived(
-		db.state.activeRepoQueries.filter(
+	// All queries filtered by search
+	const filteredQueries = $derived(
+		db.state.projectQueries.filter(
 			(item) =>
 				item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
 				item.query.toLowerCase().includes(searchQuery.toLowerCase()),
 		),
 	);
 
-	// Shared query names to exclude from saved list (shared version takes precedence)
-	const sharedQueryNames = $derived(
-		new Set(db.state.activeRepoQueries.map((q) => q.name.toLowerCase())),
-	);
+	// For backward compat: shared queries filtered by search
+	const filteredSharedQueries = $derived(filteredQueries.filter((q) => q.shared));
 
-	const filteredSavedQueries = $derived(
-		db.state.projectSavedQueries.filter(
-			(item) =>
-				!sharedQueryNames.has(item.name.toLowerCase()) &&
-				(item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-				item.query.toLowerCase().includes(searchQuery.toLowerCase())),
-		),
-	);
+	// For backward compat: local queries filtered by search
+	const filteredSavedQueries = $derived(filteredQueries.filter((q) => !q.shared));
 
-	// Starred queries: starred saved queries + starred shared queries
+	// Starred queries (both local and shared)
 	const starredSavedQueries = $derived(
 		filteredSavedQueries.filter((item) => item.starred),
 	);
 	const starredSharedQueries = $derived(
-		filteredSharedQueries.filter((item) => db.state.starredSharedQueryIds.has(item.id)),
+		filteredSharedQueries.filter((item) => item.starred),
 	);
 	const totalStarredCount = $derived(starredSavedQueries.length + starredSharedQueries.length);
 
-	// Local queries: non-shared, non-starred saved queries
+	// Local queries: non-shared, non-starred
 	const localQueries = $derived(
 		filteredSavedQueries.filter((item) => !item.starred),
 	);
 
-	// Shared queries: shared, non-starred queries
+	// Shared queries: shared, non-starred
 	const nonStarredSharedQueries = $derived(
-		filteredSharedQueries.filter((item) => !db.state.starredSharedQueryIds.has(item.id)),
+		filteredSharedQueries.filter((item) => !item.starred),
 	);
 
-	const handleSharedQueryClick = (query: SharedQuery) => {
-		db.queryTabs.loadSharedQuery(query.id, query.name, query.query, () => db.ui.setActiveView("query"));
+	const handleQueryClick = (query: typeof db.state.projectQueries[0]) => {
+		db.queryTabs.loadQuery(query.id, () => db.ui.setActiveView("query"));
 	};
 
-	const handleShareQuery = async (item: typeof db.state.projectSavedQueries[0]) => {
+	const handleShareQuery = async (item: typeof db.state.projectQueries[0]) => {
 		try {
-			const wasStarred = item.starred;
-			// Delete the local copy first so it disappears immediately
-			db.savedQueries.deleteSavedQuery(item.id);
-			const sharedId = await db.sharedQueries.shareQuery(item);
-			if (sharedId && wasStarred) {
-				db.savedQueries.toggleSharedQueryStarred(sharedId);
-			}
+			await db.savedQueries.shareQuery(item.id);
 		} catch (error) {
 			console.error("Failed to share query:", error);
 		}
@@ -215,19 +198,7 @@
 
 	const handleUnshareQuery = async (queryId: string) => {
 		try {
-			const wasStarred = db.state.starredSharedQueryIds.has(queryId);
-			// Create a local copy before removing from git
-			const sharedQuery = db.sharedQueries.getQuery(queryId);
-			if (sharedQuery) {
-				const savedId = db.savedQueries.saveQuery(sharedQuery.name, sharedQuery.query, undefined, sharedQuery.parameters);
-				if (savedId && wasStarred) {
-					db.savedQueries.toggleSavedQueryStarred(savedId);
-				}
-			}
-			await db.sharedQueries.unshareQuery(queryId);
-			if (wasStarred) {
-				db.savedQueries.toggleSharedQueryStarred(queryId);
-			}
+			await db.savedQueries.unshareQuery(queryId);
 		} catch (error) {
 			console.error("Failed to unshare query:", error);
 		}
@@ -289,13 +260,35 @@
 		showLabelsDialog = true;
 	};
 
-	const copyShareLink = async (resource: { repoId: string; filePath: string }) => {
-		const repo = db.state.sharedRepos.find((r) => r.id === resource.repoId);
+	const copyShareLink = async (resource: { repoId?: string; filePath?: string; name?: string; folder?: string }) => {
+		// For unified Query objects, derive repoId from active repo and filePath from name+folder
+		const repoId = resource.repoId ?? db.state.activeRepoId;
+		if (!repoId) {
+			toast.error("No repository configured");
+			return;
+		}
+		const repo = db.state.sharedRepos.find((r) => r.id === repoId);
 		if (!repo || !repo.remoteUrl) {
 			toast.error("This repository has no remote URL configured");
 			return;
 		}
-		const url = buildDeepLinkUrl(repo.remoteUrl, repo.branch, resource.filePath);
+		let filePath = resource.filePath;
+		if (!filePath && resource.name) {
+			// Derive filePath from query name and folder
+			const { queryNameToFilename } = await import("$lib/services/query-file-parser");
+			const { nameToFilename } = await import("$lib/services/config-file-parser");
+			const project = db.state.activeProject;
+			const projectDir = project ? nameToFilename(project.name) : "";
+			const filename = queryNameToFilename(resource.name);
+			const folder = resource.folder || "";
+			const relPath = folder ? `${folder}/${filename}` : filename;
+			filePath = `.seaquel/projects/${projectDir}/queries/${relPath}`;
+		}
+		if (!filePath) {
+			toast.error("Cannot generate share link");
+			return;
+		}
+		const url = buildDeepLinkUrl(repo.remoteUrl, repo.branch, filePath);
 		await navigator.clipboard.writeText(url);
 		toast.success("Link copied to clipboard");
 	};
@@ -766,7 +759,7 @@
 											<Sidebar.MenuItem>
 												<Sidebar.MenuButton
 													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
-													onclick={() => handleSharedQueryClick(item)}
+													onclick={() => handleQueryClick(item)}
 												>
 													<div class="flex items-center w-full gap-2">
 														<div class="flex items-center gap-2 flex-1 min-w-0">
@@ -793,7 +786,7 @@
 															aria-label={m.sidebar_unstar_query()}
 															onclick={(e) => {
 																e.stopPropagation();
-																db.savedQueries.toggleSharedQueryStarred(item.id);
+																db.savedQueries.toggleQueryStarred(item.id);
 															}}
 														>
 															<StarIcon class="fill-current" />
@@ -825,7 +818,7 @@
 											<Sidebar.MenuItem>
 												<Sidebar.MenuButton
 													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
-													onclick={() => db.queryTabs.loadSaved(item.id, () => db.ui.setActiveView("query"))}
+													onclick={() => db.queryTabs.loadQuery(item.id, () => db.ui.setActiveView("query"))}
 												>
 													<div class="flex items-center w-full gap-2">
 														<div class="flex items-center gap-2 flex-1 min-w-0">
@@ -852,7 +845,7 @@
 															aria-label={m.sidebar_unstar_query()}
 															onclick={(e) => {
 																e.stopPropagation();
-																db.savedQueries.toggleSavedQueryStarred(item.id);
+																db.savedQueries.toggleQueryStarred(item.id);
 															}}
 														>
 															<StarIcon class="fill-current" />
@@ -909,7 +902,7 @@
 											<Sidebar.MenuItem>
 												<Sidebar.MenuButton
 													class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
-													onclick={() => db.queryTabs.loadSaved(item.id, () => db.ui.setActiveView("query"))}
+													onclick={() => db.queryTabs.loadQuery(item.id, () => db.ui.setActiveView("query"))}
 												>
 													<div class="flex items-center w-full gap-2">
 														<div class="flex items-center gap-2 flex-1 min-w-0">
@@ -936,7 +929,7 @@
 															aria-label={m.sidebar_star_query()}
 															onclick={(e) => {
 																e.stopPropagation();
-																db.savedQueries.toggleSavedQueryStarred(item.id);
+																db.savedQueries.toggleQueryStarred(item.id);
 															}}
 														>
 															<StarIcon />
@@ -995,7 +988,7 @@
 													<ContextMenu.Trigger>
 														<Sidebar.MenuButton
 															class="h-auto py-2 flex-col items-start gap-1 group/query overflow-hidden"
-															onclick={() => handleSharedQueryClick(item)}
+															onclick={() => handleQueryClick(item)}
 														>
 															<div class="flex items-center w-full gap-2">
 																<div class="flex items-center gap-2 flex-1 min-w-0">
@@ -1022,7 +1015,7 @@
 																	aria-label={m.sidebar_star_query()}
 																	onclick={(e) => {
 																		e.stopPropagation();
-																		db.savedQueries.toggleSharedQueryStarred(item.id);
+																		db.savedQueries.toggleQueryStarred(item.id);
 																	}}
 																>
 																	<StarIcon />
@@ -1526,7 +1519,7 @@
 				{@const total = db.state.projectDashboards.length + db.state.activeRepoDashboards.length}
 				{total} dashboard{total !== 1 ? 's' : ''}
 			{:else if sidebarTab === "queries"}
-				{m.sidebar_queries_stats({ executed: db.state.activeConnectionQueryHistory.length, saved: db.state.projectSavedQueries.length })}
+				{m.sidebar_queries_stats({ executed: db.state.activeConnectionQueryHistory.length, saved: db.state.projectQueries.length })}
 			{:else}
 				{m.sidebar_no_connection_footer()}
 			{/if}

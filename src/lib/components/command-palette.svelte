@@ -42,7 +42,7 @@
 		db.state.activeConnectionId ? db.state.schemas[db.state.activeConnectionId] ?? [] : []
 	);
 	const connections = $derived(db.state.connections);
-	const savedQueries = $derived(db.state.projectSavedQueries);
+	const savedQueries = $derived(db.state.projectQueries);
 	const recentHistory = $derived(db.state.activeConnectionQueryHistory?.slice(0, 10) || []);
 	const openTabs = $derived(db.tabs.ordered);
 	const activeResult = $derived(db.state.activeQueryResult);
@@ -200,7 +200,7 @@
 	}
 
 	function loadSavedQuery(id: string) {
-		runAndClose(() => db.queryTabs.loadSaved(id));
+		runAndClose(() => db.queryTabs.loadQuery(id));
 	}
 
 	function loadHistoryItem(id: string) {

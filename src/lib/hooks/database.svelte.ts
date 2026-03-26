@@ -241,6 +241,12 @@ class UseDatabase {
     this.sharedDashboards = new SharedDashboardManager(this.state, this.sharedRepos);
     this.queryTabs.setSharedQueryManager(this.sharedQueries);
 
+    // Wire up file projection: SavedQueryManager delegates file I/O to SharedQueryManager
+    this.savedQueries.setFileProjection({
+      writeQueryFile: (query) => this.sharedQueries.writeQueryFile(query),
+      deleteQueryFile: (query) => this.sharedQueries.deleteQueryFile(query),
+    });
+
     // Connections (depends on other managers)
     this.connections = new ConnectionManager(
       this.state,

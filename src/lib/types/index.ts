@@ -32,6 +32,7 @@ export type {
   EmbeddedVisualizeResult,
   QueryTab,
   QueryHistoryItem,
+  Query,
   SavedQuery,
   QueryVersion,
   ResolvedQueryVersion,

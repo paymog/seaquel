@@ -1,5 +1,5 @@
 import type {
-  SavedQuery,
+  Query,
   QueryHistoryItem,
   Dashboard,
   AIChat,
@@ -90,7 +90,7 @@ export class StateRestorationManager {
    * Restore saved queries from persisted data (per-project).
    */
   restoreSavedQueries(projectId: string, data: PersistedSavedQuery[]): void {
-    const savedQueries: SavedQuery[] = data.map((q) => ({
+    const queries: Query[] = data.map((q) => ({
       id: q.id,
       name: q.name,
       query: q.query,
@@ -99,10 +99,15 @@ export class StateRestorationManager {
       updatedAt: new Date(q.updatedAt),
       parameters: q.parameters,
       starred: q.starred,
+      shared: q.shared ?? false,
+      description: q.description,
+      databaseType: q.databaseType,
+      tags: q.tags,
+      folder: q.folder,
     }));
-    this.state.savedQueriesByProject = {
-      ...this.state.savedQueriesByProject,
-      [projectId]: savedQueries,
+    this.state.queriesByProject = {
+      ...this.state.queriesByProject,
+      [projectId]: queries,
     };
   }
 
@@ -112,7 +117,7 @@ export class StateRestorationManager {
   restoreQueryVersions(projectId: string, data: PersistedQueryVersion[]): void {
     const versions: QueryVersion[] = data.map((v) => ({
       id: v.id,
-      savedQueryId: v.savedQueryId,
+      queryId: v.queryId,
       version: v.version,
       snapshot: v.snapshot,
       diff: v.diff,

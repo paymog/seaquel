@@ -17,7 +17,7 @@
  * ```
  */
 
-import type { QueryFrontmatter, SharedQuery, QueryParameter } from "$lib/types";
+import type { QueryFrontmatter, SharedQuery, Query, QueryParameter } from "$lib/types";
 import { parseYamlValue, parseYamlArray, escapeYamlString } from "./yaml-utils";
 import { nameToFilename } from "./config-file-parser.js";
 
@@ -75,9 +75,10 @@ export function parseQueryFile(
 }
 
 /**
- * Serializes a SharedQuery back to .sql file format with YAML frontmatter.
+ * Serializes a query to .sql file format with YAML frontmatter.
+ * Accepts both the unified Query type and legacy SharedQuery type.
  */
-export function serializeQueryFile(query: SharedQuery): string {
+export function serializeQueryFile(query: Query | SharedQuery): string {
   const frontmatter: QueryFrontmatter = {
     name: query.name,
   };
@@ -90,7 +91,7 @@ export function serializeQueryFile(query: SharedQuery): string {
     frontmatter.database = query.databaseType;
   }
 
-  if (query.tags.length > 0) {
+  if (query.tags && query.tags.length > 0) {
     frontmatter.tags = query.tags;
   }
 

@@ -6,7 +6,7 @@ import type {
   AIChat,
   AIMessage,
   SchemaTab,
-  SavedQuery,
+  Query,
   ExplainTab,
   ErdTab,
   StatisticsTab,
@@ -113,16 +113,15 @@ export class DatabaseState {
 
   // === QUERY DATA STATE ===
   queryHistoryByConnection = $state<Record<string, QueryHistoryItem[]>>({});
-  savedQueriesByProject = $state<Record<string, SavedQuery[]>>({});
+  queriesByProject = $state<Record<string, Query[]>>({});
   queryVersionsByProject = $state<Record<string, QueryVersion[]>>({});
-  /** Set of shared query IDs that the user has starred (persisted locally) */
-  starredSharedQueryIds = $state<Set<string>>(new Set());
   /** Set of shared dashboard IDs that the user has starred (persisted locally) */
   starredSharedDashboardIds = $state<Set<string>>(new Set());
 
   // === SHARED QUERY LIBRARY STATE ===
   sharedRepos = $state<SharedQueryRepo[]>([]);
   activeRepoId = $state<string | null>(null);
+  /** Internal scan cache: raw .sql file contents from git repos. Used for reconciliation only. */
   sharedQueriesByRepo = $state<Record<string, SharedQuery[]>>({});
   sharedDashboardsByRepo = $state<Record<string, SharedDashboard[]>>({});
   syncStateByRepo = $state<Record<string, SyncState>>({});
@@ -436,10 +435,16 @@ export class DatabaseState {
     this.activeConnectionId ? (this.queryHistoryByConnection[this.activeConnectionId] ?? []) : [],
   );
 
-  // Derived: saved queries for active project
-  projectSavedQueries = $derived(
-    this.activeProjectId ? (this.savedQueriesByProject[this.activeProjectId] ?? []) : [],
+  // Derived: all queries for active project
+  projectQueries = $derived(
+    this.activeProjectId ? (this.queriesByProject[this.activeProjectId] ?? []) : [],
   );
+
+  // Derived: local (non-shared) queries for active project
+  projectLocalQueries = $derived(this.projectQueries.filter((q) => !q.shared));
+
+  // Derived: shared queries for active project
+  projectSharedQueries = $derived(this.projectQueries.filter((q) => q.shared));
 
   // === PROJECT GIT DERIVED VALUES ===
 
@@ -456,11 +461,6 @@ export class DatabaseState {
   // Derived: active shared query repo object
   activeRepo = $derived(this.sharedRepos.find((r) => r.id === this.activeRepoId) || null);
 
-  // Derived: shared queries for active repo
-  activeRepoQueries = $derived(
-    this.activeRepoId ? (this.sharedQueriesByRepo[this.activeRepoId] ?? []) : [],
-  );
-
   // Derived: shared dashboards for active repo
   activeRepoDashboards = $derived(
     this.activeRepoId ? (this.sharedDashboardsByRepo[this.activeRepoId] ?? []) : [],
@@ -471,8 +471,12 @@ export class DatabaseState {
     this.activeRepoId ? (this.syncStateByRepo[this.activeRepoId] ?? null) : null,
   );
 
-  // Derived: all shared queries across all repos (for search)
-  allSharedQueries = $derived(Object.values(this.sharedQueriesByRepo).flat());
+  // Derived: all shared queries across all projects (for search)
+  allSharedQueries = $derived(
+    Object.values(this.queriesByProject)
+      .flat()
+      .filter((q) => q.shared),
+  );
 
   // Derived: all shared dashboards across all repos (for search)
   allSharedDashboards = $derived(Object.values(this.sharedDashboardsByRepo).flat());

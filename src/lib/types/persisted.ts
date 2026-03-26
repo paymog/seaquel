@@ -17,10 +17,8 @@ export interface PersistedQueryTab {
   name: string;
   /** SQL query text */
   query: string;
-  /** ID of the saved query this tab was loaded from */
-  savedQueryId?: string;
-  /** ID of the shared query this tab was loaded from */
-  sharedQueryId?: string;
+  /** ID of the query this tab was loaded from */
+  queryId?: string;
 }
 
 /**
@@ -127,7 +125,7 @@ export interface PersistedQueryParameter {
 }
 
 /**
- * Persisted saved query.
+ * Persisted query (local or shared).
  * Uses ISO strings for dates.
  */
 export interface PersistedSavedQuery {
@@ -147,6 +145,16 @@ export interface PersistedSavedQuery {
   parameters?: PersistedQueryParameter[];
   /** Whether this query is starred */
   starred?: boolean;
+  /** Whether this query is shared via git */
+  shared?: boolean;
+  /** Optional description */
+  description?: string;
+  /** Target database type */
+  databaseType?: string;
+  /** Tags for categorization */
+  tags?: string[];
+  /** Folder path within queries directory */
+  folder?: string;
 }
 
 /**
@@ -156,8 +164,8 @@ export interface PersistedSavedQuery {
 export interface PersistedQueryVersion {
   /** Version identifier */
   id: string;
-  /** The saved query this version belongs to */
-  savedQueryId: string;
+  /** The query this version belongs to */
+  queryId: string;
   /** Monotonically increasing version number */
   version: number;
   /** Full query text on keyframes, null otherwise */

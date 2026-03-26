@@ -157,7 +157,7 @@ export class PersistenceManager {
       id: tab.id,
       name: tab.name,
       query: tab.query,
-      savedQueryId: tab.savedQueryId,
+      queryId: tab.queryId,
     }));
   }
 
@@ -244,7 +244,7 @@ export class PersistenceManager {
   }
 
   serializeSavedQueries(projectId: string): PersistedSavedQuery[] {
-    const queries = this.state.savedQueriesByProject[projectId] ?? [];
+    const queries = this.state.queriesByProject[projectId] ?? [];
     return queries.map((q) => ({
       id: q.id,
       name: q.name,
@@ -254,6 +254,11 @@ export class PersistenceManager {
       updatedAt: q.updatedAt.toISOString(),
       parameters: q.parameters,
       starred: q.starred,
+      shared: q.shared,
+      description: q.description,
+      databaseType: q.databaseType,
+      tags: q.tags,
+      folder: q.folder,
     }));
   }
 
@@ -356,7 +361,7 @@ export class PersistenceManager {
         activeConnectionTabId: null,
         dashboardTabs: this.serializeDashboardTabs(projectId),
         activeDashboardTabId: this.state.activeDashboardTabIdByProject[projectId] ?? null,
-        starredSharedQueryIds: Array.from(this.state.starredSharedQueryIds),
+        starredSharedQueryIds: [], // Legacy: starring is now on the Query object
         starredSharedDashboardIds: Array.from(this.state.starredSharedDashboardIds),
         paneLayout: this.serializePaneLayout(projectId),
       };
@@ -455,10 +460,10 @@ export class PersistenceManager {
     }
   }
 
-  async pruneQueryVersions(savedQueryId: string, keepCount: number): Promise<void> {
+  async pruneQueryVersions(queryId: string, keepCount: number): Promise<void> {
     try {
       const db = await getDatabase();
-      await queryVersionsRepo.pruneOldVersions(db, savedQueryId, keepCount);
+      await queryVersionsRepo.pruneOldVersions(db, queryId, keepCount);
     } catch (error) {
       void log.error(`Failed to prune query versions:`, error);
     }

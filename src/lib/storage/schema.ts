@@ -112,7 +112,7 @@ const DDL_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_tabs_project ON tabs(project_id)`,
 
-  // Saved queries
+  // Saved queries (unified: local + shared)
   `CREATE TABLE IF NOT EXISTS saved_queries (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -120,6 +120,11 @@ const DDL_STATEMENTS = [
     query TEXT NOT NULL,
     parameters TEXT,
     starred INTEGER NOT NULL DEFAULT 0,
+    shared INTEGER NOT NULL DEFAULT 0,
+    description TEXT,
+    database_type TEXT,
+    tags TEXT,
+    folder TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
@@ -351,6 +356,31 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
       table: "project_state",
       column: "pane_layout",
       sql: "ALTER TABLE project_state ADD COLUMN pane_layout TEXT",
+    },
+    {
+      table: "saved_queries",
+      column: "shared",
+      sql: "ALTER TABLE saved_queries ADD COLUMN shared INTEGER NOT NULL DEFAULT 0",
+    },
+    {
+      table: "saved_queries",
+      column: "description",
+      sql: "ALTER TABLE saved_queries ADD COLUMN description TEXT",
+    },
+    {
+      table: "saved_queries",
+      column: "database_type",
+      sql: "ALTER TABLE saved_queries ADD COLUMN database_type TEXT",
+    },
+    {
+      table: "saved_queries",
+      column: "tags",
+      sql: "ALTER TABLE saved_queries ADD COLUMN tags TEXT",
+    },
+    {
+      table: "saved_queries",
+      column: "folder",
+      sql: "ALTER TABLE saved_queries ADD COLUMN folder TEXT",
     },
   ];
 

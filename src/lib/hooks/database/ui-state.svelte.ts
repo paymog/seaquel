@@ -87,7 +87,7 @@ export class UIStateManager {
     const enrichedContent = resolveMentions(
       content,
       this.state.activeSchema,
-      this.state.savedQueriesByProject[this.state.activeProjectId ?? ""] ?? [],
+      this.state.queriesByProject[this.state.activeProjectId ?? ""] ?? [],
       this.state.dashboardsByProject[this.state.activeProjectId ?? ""] ?? [],
     );
 

@@ -141,10 +141,8 @@ export interface QueryTab {
   activeResultIndex?: number;
   /** Whether a query is currently executing */
   isExecuting: boolean;
-  /** ID of the saved query this tab was loaded from, if any */
-  savedQueryId?: string;
-  /** ID of the shared query this tab was loaded from, if any */
-  sharedQueryId?: string;
+  /** ID of the query this tab was loaded from, if any */
+  queryId?: string;
   /** Embedded explain result displayed below the editor */
   explainResult?: EmbeddedExplainResult;
   /** Embedded visualize result displayed below the editor */
@@ -176,10 +174,11 @@ export interface QueryHistoryItem {
 }
 
 /**
- * A saved query for quick access.
+ * A query (local or shared). SQLite is the source of truth.
+ * When shared=true, a .sql file is also maintained as a git projection.
  */
-export interface SavedQuery {
-  /** Unique identifier */
+export interface Query {
+  /** Unique identifier (stable across share/unshare) */
   id: string;
   /** User-defined name for the query */
   name: string;
@@ -195,7 +194,20 @@ export interface SavedQuery {
   parameters?: QueryParameter[];
   /** Whether this query is starred for quick access */
   starred?: boolean;
+  /** Whether this query is shared via git */
+  shared: boolean;
+  /** Optional description (used in shared .sql frontmatter) */
+  description?: string;
+  /** Target database type (postgresql, mysql, etc.) */
+  databaseType?: string;
+  /** Tags for categorization */
+  tags?: string[];
+  /** Folder path for organization within the queries directory */
+  folder?: string;
 }
+
+/** @deprecated Use Query instead */
+export type SavedQuery = Query;
 
 /**
  * A single version entry for a saved query.
@@ -204,8 +216,8 @@ export interface SavedQuery {
 export interface QueryVersion {
   /** Unique identifier */
   id: string;
-  /** The saved query this version belongs to */
-  savedQueryId: string;
+  /** The query this version belongs to */
+  queryId: string;
   /** Monotonically increasing version number (1-based) */
   version: number;
   /** Full query text on keyframes, null otherwise */
@@ -222,8 +234,8 @@ export interface QueryVersion {
 export interface ResolvedQueryVersion {
   /** Unique identifier */
   id: string;
-  /** The saved query this version belongs to */
-  savedQueryId: string;
+  /** The query this version belongs to */
+  queryId: string;
   /** Version number */
   version: number;
   /** Reconstructed full query text */
