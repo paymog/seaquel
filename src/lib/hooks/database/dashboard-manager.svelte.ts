@@ -20,12 +20,22 @@ export function stripWidgetRuntimeState(
  */
 export class DashboardManager {
   private autoRefreshTimers = new Map<string, ReturnType<typeof setInterval>>();
+  private writeDashboardFile: ((dashboard: Dashboard) => Promise<void>) | null = null;
+  private deleteDashboardFile: ((dashboard: Dashboard) => Promise<void>) | null = null;
 
   constructor(
     private state: DatabaseState,
     private executeQuery: (query: string) => Promise<Record<string, unknown>[]>,
     private scheduleProjectPersistence: (projectId: string | null) => void,
   ) {}
+
+  setFileProjection(fns: {
+    writeDashboardFile: (dashboard: Dashboard) => Promise<void>;
+    deleteDashboardFile: (dashboard: Dashboard) => Promise<void>;
+  }) {
+    this.writeDashboardFile = fns.writeDashboardFile;
+    this.deleteDashboardFile = fns.deleteDashboardFile;
+  }
 
   // === CRUD ===
 
@@ -43,6 +53,7 @@ export class DashboardManager {
       dateFilter: null,
       createdAt: now,
       updatedAt: now,
+      shared: false,
     };
 
     const dashboards = this.state.dashboardsByProject[projectId] ?? [];
@@ -296,6 +307,8 @@ export class DashboardManager {
         viewport: JSON.parse(r.viewport),
         dateFilter: r.dateFilter ? JSON.parse(r.dateFilter) : null,
         starred: r.starred,
+        shared: r.shared ?? false,
+        description: r.description,
         createdAt: new Date(r.createdAt),
         updatedAt: new Date(r.updatedAt),
       }));
@@ -323,15 +336,50 @@ export class DashboardManager {
     this.scheduleProjectPersistence(projectId);
   }
 
+  /** @deprecated Use toggleDashboardStarred instead */
   toggleSharedDashboardStarred(id: string): void {
-    const newSet = new Set(this.state.starredSharedDashboardIds);
-    if (newSet.has(id)) {
-      newSet.delete(id);
-    } else {
-      newSet.add(id);
-    }
-    this.state.starredSharedDashboardIds = newSet;
-    this.scheduleProjectPersistence(this.state.activeProjectId);
+    this.toggleDashboardStarred(id);
+  }
+
+  // === SHARE / UNSHARE ===
+
+  async shareDashboardById(id: string): Promise<void> {
+    const projectId = this.state.activeProjectId;
+    if (!projectId) return;
+
+    const dashboards = this.state.dashboardsByProject[projectId] ?? [];
+    const dashboard = dashboards.find((d) => d.id === id);
+    if (!dashboard || dashboard.shared) return;
+
+    const updated = { ...dashboard, shared: true, updatedAt: new Date() };
+    this.state.dashboardsByProject = {
+      ...this.state.dashboardsByProject,
+      [projectId]: dashboards.map((d) => (d.id === id ? updated : d)),
+    };
+
+    await this.writeDashboardFile?.(updated);
+    await this.persistDashboard(updated);
+    this.scheduleProjectPersistence(projectId);
+  }
+
+  async unshareDashboardById(id: string): Promise<void> {
+    const projectId = this.state.activeProjectId;
+    if (!projectId) return;
+
+    const dashboards = this.state.dashboardsByProject[projectId] ?? [];
+    const dashboard = dashboards.find((d) => d.id === id);
+    if (!dashboard || !dashboard.shared) return;
+
+    await this.deleteDashboardFile?.(dashboard);
+
+    const updated = { ...dashboard, shared: false, updatedAt: new Date() };
+    this.state.dashboardsByProject = {
+      ...this.state.dashboardsByProject,
+      [projectId]: dashboards.map((d) => (d.id === id ? updated : d)),
+    };
+
+    await this.persistDashboard(updated);
+    this.scheduleProjectPersistence(projectId);
   }
 
   // === HELPERS ===
@@ -341,25 +389,6 @@ export class DashboardManager {
       const found = dashboards.find((d) => d.id === id);
       if (found) return found;
     }
-
-    // Also search shared dashboards (their IDs contain ":" as repoId:filePath)
-    for (const dashboards of Object.values(this.state.sharedDashboardsByRepo)) {
-      const found = dashboards.find((d) => d.id === id);
-      if (found) {
-        // Convert SharedDashboard to Dashboard shape for the view
-        return {
-          id: found.id,
-          name: found.name,
-          projectId: found.repoId,
-          widgets: found.widgets,
-          viewport: found.viewport,
-          dateFilter: found.dateFilter ?? null,
-          createdAt: found.updatedAt ?? new Date(),
-          updatedAt: found.updatedAt ?? new Date(),
-        };
-      }
-    }
-
     return undefined;
   }
 
@@ -403,6 +432,8 @@ export class DashboardManager {
         widgets: JSON.stringify(widgetsForStorage),
         dateFilter: dashboard.dateFilter ? JSON.stringify(dashboard.dateFilter) : null,
         starred: dashboard.starred,
+        shared: dashboard.shared,
+        description: dashboard.description,
         createdAt: dashboard.createdAt.toISOString(),
         updatedAt: dashboard.updatedAt.toISOString(),
       };

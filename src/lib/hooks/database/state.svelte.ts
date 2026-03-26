@@ -115,8 +115,6 @@ export class DatabaseState {
   queryHistoryByConnection = $state<Record<string, QueryHistoryItem[]>>({});
   queriesByProject = $state<Record<string, Query[]>>({});
   queryVersionsByProject = $state<Record<string, QueryVersion[]>>({});
-  /** Set of shared dashboard IDs that the user has starred (persisted locally) */
-  starredSharedDashboardIds = $state<Set<string>>(new Set());
 
   // === SHARED QUERY LIBRARY STATE ===
   sharedRepos = $state<SharedQueryRepo[]>([]);
@@ -362,6 +360,12 @@ export class DatabaseState {
     this.activeProjectId ? (this.dashboardsByProject[this.activeProjectId] ?? []) : [],
   );
 
+  // Derived: local (non-shared) dashboards for active project
+  projectLocalDashboards = $derived(this.projectDashboards.filter((d) => !d.shared));
+
+  // Derived: shared dashboards for active project
+  projectSharedDashboards = $derived(this.projectDashboards.filter((d) => d.shared));
+
   // === STARTER TAB DERIVED VALUES ===
 
   // Derived: starter tabs for active project
@@ -478,8 +482,12 @@ export class DatabaseState {
       .filter((q) => q.shared),
   );
 
-  // Derived: all shared dashboards across all repos (for search)
-  allSharedDashboards = $derived(Object.values(this.sharedDashboardsByRepo).flat());
+  // Derived: all shared dashboards across all projects (for search)
+  allSharedDashboards = $derived(
+    Object.values(this.dashboardsByProject)
+      .flat()
+      .filter((d) => d.shared),
+  );
 
   // === SHARED CONFIG DERIVED VALUES ===
 

@@ -221,7 +221,7 @@ const DDL_STATEMENTS = [
     save_ssh_key_passphrase INTEGER NOT NULL DEFAULT 0
   )`,
 
-  // Dashboards
+  // Dashboards (unified: local + shared)
   `CREATE TABLE IF NOT EXISTS dashboards (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -230,6 +230,8 @@ const DDL_STATEMENTS = [
     widgets TEXT NOT NULL DEFAULT '[]',
     date_filter TEXT,
     starred INTEGER DEFAULT 0,
+    shared INTEGER NOT NULL DEFAULT 0,
+    description TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
@@ -356,6 +358,16 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
       table: "project_state",
       column: "pane_layout",
       sql: "ALTER TABLE project_state ADD COLUMN pane_layout TEXT",
+    },
+    {
+      table: "dashboards",
+      column: "shared",
+      sql: "ALTER TABLE dashboards ADD COLUMN shared INTEGER NOT NULL DEFAULT 0",
+    },
+    {
+      table: "dashboards",
+      column: "description",
+      sql: "ALTER TABLE dashboards ADD COLUMN description TEXT",
     },
     {
       table: "saved_queries",

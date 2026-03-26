@@ -211,13 +211,21 @@ function handleQueryDeepLink(repoId: string, filePath: string, db: DatabaseConte
 }
 
 function handleDashboardDeepLink(repoId: string, filePath: string, db: DatabaseContext): void {
-  const dashboards = db.state.sharedDashboardsByRepo[repoId] ?? [];
-  const dashboard = dashboards.find((d) => d.filePath === filePath);
+  // Look up from scan cache, then match to unified dashboard by name
+  const scannedDashboards = db.state.sharedDashboardsByRepo[repoId] ?? [];
+  const scannedDashboard = scannedDashboards.find((d) => d.filePath === filePath);
 
-  if (dashboard) {
+  if (scannedDashboard) {
     db.sharedRepos.setActiveRepo(repoId);
-    db.dashboardTabs.add(dashboard.id, dashboard.name);
-    toast.success(`Opened shared dashboard: ${dashboard.name}`);
+    const unifiedDashboard = db.state.projectDashboards.find(
+      (d) => d.shared && d.name === scannedDashboard.name,
+    );
+    if (unifiedDashboard) {
+      db.dashboardTabs.add(unifiedDashboard.id, unifiedDashboard.name);
+    } else {
+      db.dashboardTabs.add(scannedDashboard.id, scannedDashboard.name);
+    }
+    toast.success(`Opened shared dashboard: ${scannedDashboard.name}`);
   } else {
     toast.error(`Dashboard not found: ${filePath}`);
   }

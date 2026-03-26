@@ -362,7 +362,7 @@ export class PersistenceManager {
         dashboardTabs: this.serializeDashboardTabs(projectId),
         activeDashboardTabId: this.state.activeDashboardTabIdByProject[projectId] ?? null,
         starredSharedQueryIds: [], // Legacy: starring is now on the Query object
-        starredSharedDashboardIds: Array.from(this.state.starredSharedDashboardIds),
+        starredSharedDashboardIds: [], // Legacy: starring is now on the Dashboard object
         paneLayout: this.serializePaneLayout(projectId),
       };
 

@@ -202,6 +202,8 @@ export class StateRestorationManager {
       widgets: JSON.parse(r.widgets),
       viewport: JSON.parse(r.viewport),
       dateFilter: r.dateFilter ? JSON.parse(r.dateFilter) : null,
+      shared: r.shared ?? false,
+      description: r.description,
       createdAt: new Date(r.createdAt),
       updatedAt: new Date(r.updatedAt),
     }));

@@ -8,7 +8,7 @@
 	import { Input } from "$lib/components/ui/input";
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
 	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, WorkflowIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon } from "@lucide/svelte";
-	import type { SharedDashboard, Dashboard } from "$lib/types";
+	import type { Dashboard } from "$lib/types";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -78,9 +78,7 @@
 
 	const confirmDeleteDashboard = () => {
 		if (!dashboardToDelete) return;
-		if (dashboardToDelete.type === "shared") {
-			db.sharedDashboards.deleteDashboard(dashboardToDelete.id);
-		} else {
+		{
 			db.dashboards.deleteDashboard(dashboardToDelete.id);
 			const tabsToClose = db.state.dashboardTabs.filter(
 				(t) => t.dashboardId === dashboardToDelete!.id
@@ -299,33 +297,25 @@
 	let dashboardSharedExpanded = $state(true);
 	let dashboardSearchQuery = $state("");
 
-	// Filtered shared dashboards
-	const filteredSharedDashboards = $derived(
-		db.state.activeRepoDashboards.filter(
+	// All dashboards filtered by search
+	const filteredAllDashboards = $derived(
+		db.state.projectDashboards.filter(
 			(item) => item.name.toLowerCase().includes(dashboardSearchQuery.toLowerCase()),
 		),
 	);
 
-	// Shared dashboard names to exclude from local list
-	const sharedDashboardNames = $derived(
-		new Set(db.state.activeRepoDashboards.map((d) => d.name.toLowerCase())),
-	);
+	// Shared dashboards filtered by search
+	const filteredSharedDashboards = $derived(filteredAllDashboards.filter((d) => d.shared));
 
-	// Local dashboards (exclude those that exist as shared, filter by search)
-	const filteredLocalDashboards = $derived(
-		db.state.projectDashboards.filter(
-			(item) =>
-				!sharedDashboardNames.has(item.name.toLowerCase()) &&
-				item.name.toLowerCase().includes(dashboardSearchQuery.toLowerCase()),
-		),
-	);
+	// Local dashboards filtered by search
+	const filteredLocalDashboards = $derived(filteredAllDashboards.filter((d) => !d.shared));
 
 	// Starred dashboards
 	const starredLocalDashboards = $derived(
 		filteredLocalDashboards.filter((item) => item.starred),
 	);
 	const starredSharedDashboards = $derived(
-		filteredSharedDashboards.filter((item) => db.state.starredSharedDashboardIds.has(item.id)),
+		filteredSharedDashboards.filter((item) => item.starred),
 	);
 	const totalStarredDashboardCount = $derived(starredLocalDashboards.length + starredSharedDashboards.length);
 
@@ -336,17 +326,12 @@
 
 	// Non-starred shared dashboards
 	const nonStarredSharedDashboards = $derived(
-		filteredSharedDashboards.filter((item) => !db.state.starredSharedDashboardIds.has(item.id)),
+		filteredSharedDashboards.filter((item) => !item.starred),
 	);
 
 	const handleShareDashboard = async (dashboard: Dashboard) => {
 		try {
-			const wasStarred = dashboard.starred;
-			db.dashboards.deleteDashboard(dashboard.id);
-			const sharedId = await db.sharedDashboards.shareDashboard(dashboard);
-			if (sharedId && wasStarred) {
-				db.dashboards.toggleSharedDashboardStarred(sharedId);
-			}
+			await db.dashboards.shareDashboardById(dashboard.id);
 		} catch (error) {
 			console.error("Failed to share dashboard:", error);
 		}
@@ -354,30 +339,13 @@
 
 	const handleUnshareDashboard = async (dashboardId: string) => {
 		try {
-			const wasStarred = db.state.starredSharedDashboardIds.has(dashboardId);
-			const sharedDashboard = db.sharedDashboards.getDashboard(dashboardId);
-			if (sharedDashboard) {
-				const local = await db.dashboards.createDashboard(sharedDashboard.name);
-				if (local) {
-					for (const widget of sharedDashboard.widgets) {
-						await db.dashboards.addWidget(local.id, { ...widget, id: `widget-${crypto.randomUUID()}` });
-					}
-					await db.dashboards.updateViewport(local.id, sharedDashboard.viewport);
-					if (wasStarred) {
-						db.dashboards.toggleDashboardStarred(local.id);
-					}
-				}
-			}
-			await db.sharedDashboards.unshareDashboard(dashboardId);
-			if (wasStarred) {
-				db.dashboards.toggleSharedDashboardStarred(dashboardId);
-			}
+			await db.dashboards.unshareDashboardById(dashboardId);
 		} catch (error) {
 			console.error("Failed to unshare dashboard:", error);
 		}
 	};
 
-	const handleSharedDashboardClick = (dashboard: SharedDashboard) => {
+	const handleSharedDashboardClick = (dashboard: Dashboard) => {
 		db.dashboardTabs.add(dashboard.id, dashboard.name);
 	};
 </script>
@@ -1216,7 +1184,7 @@
 															class={["size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 text-yellow-500"]}
 															onclick={(e) => {
 																e.stopPropagation();
-																db.dashboards.toggleSharedDashboardStarred(item.id);
+																db.dashboards.toggleDashboardStarred(item.id);
 															}}
 														>
 															<StarIcon class="fill-current" />
@@ -1439,7 +1407,7 @@
 																	class="size-5 shrink-0 [&_svg:not([class*='size-'])]:size-3 opacity-0 group-hover/query:opacity-100 transition-opacity"
 																	onclick={(e) => {
 																		e.stopPropagation();
-																		db.dashboards.toggleSharedDashboardStarred(item.id);
+																		db.dashboards.toggleDashboardStarred(item.id);
 																	}}
 																>
 																	<StarIcon />
@@ -1516,7 +1484,7 @@
 			{#if sidebarTab === "schema" && db.state.activeConnection}
 				{m.sidebar_tables_count({ count: db.state.activeSchema.length })}
 			{:else if sidebarTab === "dashboards"}
-				{@const total = db.state.projectDashboards.length + db.state.activeRepoDashboards.length}
+				{@const total = db.state.projectDashboards.length}
 				{total} dashboard{total !== 1 ? 's' : ''}
 			{:else if sidebarTab === "queries"}
 				{m.sidebar_queries_stats({ executed: db.state.activeConnectionQueryHistory.length, saved: db.state.projectQueries.length })}

@@ -56,6 +56,10 @@ export interface DashboardWidget {
 /**
  * A dashboard containing multiple widgets.
  */
+/**
+ * A dashboard containing multiple widgets.
+ * SQLite is the source of truth. When shared=true, a .json file is maintained as a git projection.
+ */
 export interface Dashboard {
   id: string;
   name: string;
@@ -66,6 +70,10 @@ export interface Dashboard {
   createdAt: Date;
   updatedAt: Date;
   starred?: boolean;
+  /** Whether this dashboard is shared via git */
+  shared: boolean;
+  /** Optional description (used in shared .json file) */
+  description?: string;
 }
 
 /**

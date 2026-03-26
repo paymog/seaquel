@@ -108,6 +108,60 @@ export class SharedDashboardManager {
     return dashboards.find((d) => d.id === dashboardId) ?? null;
   }
 
+  /**
+   * Write a dashboard as a .json file in the git repo.
+   */
+  async writeDashboardFile(dashboard: Dashboard): Promise<void> {
+    const repoId = this.state.activeRepoId;
+    if (!repoId) return;
+
+    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
+    if (!repo) return;
+
+    const dashboardsBase = this.getDashboardsBasePath();
+    if (!dashboardsBase) return;
+
+    const filename = dashboardNameToFilename(dashboard.name);
+    const filePath = `${dashboardsBase}/${filename}`;
+
+    const content = serializeDashboardFile(dashboard);
+    const fullPath = await join(repo.path, filePath);
+    const folderPath = await dirname(fullPath);
+
+    if (!(await exists(folderPath))) {
+      await mkdir(folderPath, { recursive: true });
+    }
+
+    await writeTextFile(fullPath, content);
+    await this.repoManager.refreshRepoStatus(repoId);
+  }
+
+  /**
+   * Delete the .json file for a dashboard from the git repo.
+   */
+  async deleteDashboardFile(dashboard: Dashboard): Promise<void> {
+    const repoId = this.state.activeRepoId;
+    if (!repoId) return;
+
+    const repo = this.state.sharedRepos.find((r) => r.id === repoId);
+    if (!repo) return;
+
+    const dashboardsBase = this.getDashboardsBasePath();
+    if (!dashboardsBase) return;
+
+    const filename = dashboardNameToFilename(dashboard.name);
+    const filePath = `${dashboardsBase}/${filename}`;
+    const fullPath = await join(repo.path, filePath);
+
+    try {
+      await remove(fullPath);
+    } catch {
+      // File may not exist
+    }
+
+    await this.repoManager.refreshRepoStatus(repoId);
+  }
+
   async shareDashboard(dashboard: Dashboard): Promise<string | null> {
     // Strip runtime state from widgets
     const widgets = dashboard.widgets.map(stripWidgetRuntimeState);

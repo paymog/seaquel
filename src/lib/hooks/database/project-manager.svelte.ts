@@ -818,8 +818,7 @@ export class ProjectManager {
     this.state.activeDashboardTabIdByProject[projectId] =
       persistedState.activeDashboardTabId ?? null;
 
-    // Starred shared query IDs are now on the Query object (migrated at load time)
-    this.state.starredSharedDashboardIds = new Set(persistedState.starredSharedDashboardIds ?? []);
+    // Starred shared IDs are now on the Query/Dashboard objects (migrated at load time)
 
     // Restore pane layout (if saved); otherwise it will be auto-created on first access
     if (persistedState.paneLayout && persistedState.paneLayout.panes.length > 0) {

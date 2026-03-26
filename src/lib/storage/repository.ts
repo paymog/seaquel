@@ -996,6 +996,8 @@ export interface PersistedDashboard {
   widgets: string; // JSON blob
   dateFilter?: string | null;
   starred?: boolean;
+  shared?: boolean;
+  description?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -1010,6 +1012,8 @@ export const dashboardsRepo = {
       widgets: string;
       date_filter: string | null;
       starred: number | null;
+      shared: number;
+      description: string | null;
       created_at: string;
       updated_at: string;
     }>("SELECT * FROM dashboards WHERE project_id = ?", [projectId]);
@@ -1022,6 +1026,8 @@ export const dashboardsRepo = {
       widgets: r.widgets,
       dateFilter: r.date_filter,
       starred: (r.starred ?? 0) === 1,
+      shared: !!r.shared,
+      description: r.description ?? undefined,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));
@@ -1029,14 +1035,16 @@ export const dashboardsRepo = {
 
   async save(db: SqliteDatabase, dashboard: PersistedDashboard): Promise<void> {
     await db.execute(
-      `INSERT INTO dashboards (id, project_id, name, viewport, widgets, date_filter, starred, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO dashboards (id, project_id, name, viewport, widgets, date_filter, starred, shared, description, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          viewport = excluded.viewport,
          widgets = excluded.widgets,
          date_filter = excluded.date_filter,
          starred = excluded.starred,
+         shared = excluded.shared,
+         description = excluded.description,
          updated_at = excluded.updated_at`,
       [
         dashboard.id,
@@ -1046,6 +1054,8 @@ export const dashboardsRepo = {
         dashboard.widgets,
         dashboard.dateFilter ?? null,
         dashboard.starred ? 1 : 0,
+        dashboard.shared ? 1 : 0,
+        dashboard.description ?? null,
         dashboard.createdAt,
         dashboard.updatedAt,
       ],

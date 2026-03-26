@@ -1,7 +1,7 @@
 /**
  * Parser for dashboard .json files in shared repos.
  */
-import type { SharedDashboard } from "$lib/types";
+import type { SharedDashboard, Dashboard } from "$lib/types";
 import type { DashboardWidget } from "$lib/types/dashboard";
 import { log } from "$lib/utils/logger";
 import { stripWidgetRuntimeState } from "$lib/hooks/database/dashboard-manager.svelte.js";
@@ -53,7 +53,7 @@ export function parseDashboardFile(
 /**
  * Serialize a SharedDashboard to JSON file content.
  */
-export function serializeDashboardFile(dashboard: SharedDashboard): string {
+export function serializeDashboardFile(dashboard: Dashboard | SharedDashboard): string {
   // Strip runtime state from widgets
   const widgets = dashboard.widgets.map(stripWidgetRuntimeState);
 
