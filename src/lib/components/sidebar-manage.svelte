@@ -78,14 +78,12 @@
 
 	const confirmDeleteDashboard = () => {
 		if (!dashboardToDelete) return;
-		{
-			db.dashboards.deleteDashboard(dashboardToDelete.id);
-			const tabsToClose = db.state.dashboardTabs.filter(
-				(t) => t.dashboardId === dashboardToDelete!.id
-			);
-			for (const t of tabsToClose) {
-				db.dashboardTabs.remove(t.id);
-			}
+		db.dashboards.deleteDashboard(dashboardToDelete.id);
+		const tabsToClose = db.state.dashboardTabs.filter(
+			(t) => t.dashboardId === dashboardToDelete!.id
+		);
+		for (const t of tabsToClose) {
+			db.dashboardTabs.remove(t.id);
 		}
 		showDeleteDashboardDialog = false;
 		dashboardToDelete = null;
@@ -258,8 +256,8 @@
 		showLabelsDialog = true;
 	};
 
-	const copyShareLink = async (resource: { repoId?: string; filePath?: string; name?: string; folder?: string }) => {
-		// For unified Query objects, derive repoId from active repo and filePath from name+folder
+	const copyShareLink = async (resource: { repoId?: string; filePath?: string; name?: string; folder?: string }, resourceType: "query" | "dashboard" | "connection" = "query") => {
+		// For unified Query/Dashboard objects, derive repoId from active repo and filePath from name+folder
 		const repoId = resource.repoId ?? db.state.activeRepoId;
 		if (!repoId) {
 			toast.error("No repository configured");
@@ -272,15 +270,20 @@
 		}
 		let filePath = resource.filePath;
 		if (!filePath && resource.name) {
-			// Derive filePath from query name and folder
-			const { queryNameToFilename } = await import("$lib/services/query-file-parser");
 			const { nameToFilename } = await import("$lib/services/config-file-parser");
 			const project = db.state.activeProject;
 			const projectDir = project ? nameToFilename(project.name) : "";
-			const filename = queryNameToFilename(resource.name);
-			const folder = resource.folder || "";
-			const relPath = folder ? `${folder}/${filename}` : filename;
-			filePath = `.seaquel/projects/${projectDir}/queries/${relPath}`;
+			if (resourceType === "dashboard") {
+				const { dashboardNameToFilename } = await import("$lib/services/dashboard-file-parser");
+				const filename = dashboardNameToFilename(resource.name);
+				filePath = `.seaquel/projects/${projectDir}/dashboards/${filename}`;
+			} else {
+				const { queryNameToFilename } = await import("$lib/services/query-file-parser");
+				const filename = queryNameToFilename(resource.name);
+				const folder = resource.folder || "";
+				const relPath = folder ? `${folder}/${filename}` : filename;
+				filePath = `.seaquel/projects/${projectDir}/queries/${relPath}`;
+			}
 		}
 		if (!filePath) {
 			toast.error("Cannot generate share link");
@@ -1455,7 +1458,7 @@
 														</Sidebar.MenuButton>
 													</ContextMenu.Trigger>
 													<ContextMenu.Content class="w-44">
-														<ContextMenu.Item onclick={() => copyShareLink(item)}>
+														<ContextMenu.Item onclick={() => copyShareLink(item, "dashboard")}>
 															<LinkIcon class="size-4 me-2" />
 															{m.share_dashboard()}
 														</ContextMenu.Item>

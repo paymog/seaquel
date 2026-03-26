@@ -87,6 +87,10 @@ export class DashboardManager {
       for (const widget of dashboard.widgets) {
         this.stopAutoRefresh(id, widget.id);
       }
+      // Clean up git file for shared dashboards
+      if (dashboard.shared) {
+        await this.deleteDashboardFile?.(dashboard);
+      }
     }
 
     const dashboards = this.state.dashboardsByProject[projectId] ?? [];
@@ -510,6 +514,17 @@ export class DashboardManager {
 
     // Prune old versions if over limit
     const DEFAULT_VERSION_LIMIT = 100;
+    const allVersions = this.state.dashboardVersionsByProject[projectId] ?? [];
+    const dashVersions = allVersions.filter((v) => v.dashboardId === dashboard.id);
+    if (dashVersions.length > DEFAULT_VERSION_LIMIT) {
+      const sorted = [...dashVersions].sort((a, b) => b.version - a.version);
+      const keepIds = new Set(sorted.slice(0, DEFAULT_VERSION_LIMIT).map((v) => v.id));
+      this.state.dashboardVersionsByProject = {
+        ...this.state.dashboardVersionsByProject,
+        [projectId]: allVersions.filter((v) => v.dashboardId !== dashboard.id || keepIds.has(v.id)),
+      };
+    }
+
     this.persistence
       .pruneDashboardVersions(dashboard.id, DEFAULT_VERSION_LIMIT)
       .catch((err) =>

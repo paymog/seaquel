@@ -767,17 +767,39 @@ export const queryVersionsRepo = {
   },
 
   async pruneOldVersions(db: SqliteDatabase, queryId: string, keepCount: number): Promise<void> {
+    // Resolve all versions BEFORE pruning so we can promote the oldest survivor to a keyframe
+    const allVersions = await this.loadByQuery(db, queryId);
+    if (allVersions.length <= keepCount) return;
+
+    // Find the version threshold — versions at or below this will be deleted
+    const sorted = [...allVersions].sort((a, b) => b.version - a.version);
+    const cutoffVersion = sorted[keepCount - 1]?.version;
+    if (cutoffVersion === undefined) return;
+
+    // Resolve texts before deleting, so we can recover the oldest survivor's full text
+    const { resolveVersions } = await import("$lib/utils/query-versions");
+    const resolved = resolveVersions(
+      allVersions.map((v) => ({ ...v, createdAt: new Date(v.createdAt) })),
+    );
+
+    // Find the oldest survivor and its resolved text
+    const oldestSurvivor = sorted[keepCount - 1];
+    const resolvedSurvivor = resolved.find((r) => r.id === oldestSurvivor.id);
+
     await db.execute(
       `DELETE FROM query_versions
        WHERE saved_query_id = ?
-         AND version <= (
-           SELECT version FROM query_versions
-           WHERE saved_query_id = ?
-           ORDER BY version DESC
-           LIMIT 1 OFFSET ?
-         )`,
-      [queryId, queryId, keepCount],
+         AND version < ?`,
+      [queryId, cutoffVersion],
     );
+
+    // Promote the oldest surviving version to a keyframe if it's a delta
+    if (oldestSurvivor.snapshot === null && resolvedSurvivor) {
+      await db.execute(`UPDATE query_versions SET snapshot = ?, diff = NULL WHERE id = ?`, [
+        resolvedSurvivor.query,
+        oldestSurvivor.id,
+      ]);
+    }
   },
 };
 

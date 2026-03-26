@@ -55,9 +55,6 @@ export interface DashboardWidget {
 
 /**
  * A dashboard containing multiple widgets.
- */
-/**
- * A dashboard containing multiple widgets.
  * SQLite is the source of truth. When shared=true, a .json file is maintained as a git projection.
  */
 export interface Dashboard {
