@@ -27,8 +27,6 @@
 
 	let { items, filter, onSelect, onClose }: Props = $props();
 
-	let selectedIndex = $state(0);
-
 	const filtered = $derived.by(() => {
 		const lower = filter.toLowerCase();
 		const result = lower
@@ -54,11 +52,8 @@
 	// Flat list for keyboard navigation index
 	const flatItems = $derived(groups.flatMap((g) => g.items));
 
-	// Reset selection when filter text changes
-	$effect(() => {
-		void filter;
-		selectedIndex = 0;
-	});
+	// Reset selection when filter text changes (overridable derived resets on filter change)
+	let selectedIndex = $derived.by(() => { void filter; return 0; });
 
 	export function handleKeydown(e: KeyboardEvent): boolean {
 		if (flatItems.length === 0) return false;

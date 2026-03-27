@@ -582,44 +582,7 @@
 	const darkThemeLabel = $derived(themeStore.selectedDarkTheme.name);
 
 	// Scroll spy for highlighting visible section in sidebar nav
-	let scrollContainer = $state<HTMLElement | null>(null);
 	let visibleSectionId = $state<string | null>(null);
-
-	$effect(() => {
-		const container = scrollContainer;
-		if (!container) return;
-
-		// Re-run when activeView changes (sections get mounted/unmounted)
-		const _view = activeView;
-
-		const sectionEls = container.querySelectorAll<HTMLElement>("[data-section]");
-		if (sectionEls.length === 0) return;
-
-		const observer = new IntersectionObserver(
-			(entries) => {
-				// Find the topmost visible section
-				let topSection: { id: string; top: number } | null = null;
-				for (const entry of entries) {
-					if (entry.isIntersecting) {
-						const rect = entry.boundingClientRect;
-						if (!topSection || rect.top < topSection.top) {
-							topSection = { id: entry.target.getAttribute("data-section")!, top: rect.top };
-						}
-					}
-				}
-				if (topSection) {
-					visibleSectionId = topSection.id;
-				}
-			},
-			{ root: container, rootMargin: "0px 0px -60% 0px", threshold: 0 },
-		);
-
-		for (const el of sectionEls) {
-			observer.observe(el);
-		}
-
-		return () => observer.disconnect();
-	});
 </script>
 
 <Sidebar.Provider style="min-height: 0;" class="h-full">
@@ -696,7 +659,30 @@
 				</Breadcrumb.Root>
 			</div>
 		</header>
-		<div class="flex flex-1 flex-col gap-6 overflow-y-auto p-4 pt-4" bind:this={scrollContainer}>
+		<div class="flex flex-1 flex-col gap-6 overflow-y-auto p-4 pt-4" {@attach (container) => {
+			const _view = activeView;
+			const sectionEls = container.querySelectorAll<HTMLElement>("[data-section]");
+			if (sectionEls.length === 0) return;
+			const observer = new IntersectionObserver(
+				(entries) => {
+					let topSection: { id: string; top: number } | null = null;
+					for (const entry of entries) {
+						if (entry.isIntersecting) {
+							const rect = entry.boundingClientRect;
+							if (!topSection || rect.top < topSection.top) {
+								topSection = { id: entry.target.getAttribute("data-section")!, top: rect.top };
+							}
+						}
+					}
+					if (topSection) {
+						visibleSectionId = topSection.id;
+					}
+				},
+				{ root: container, rootMargin: "0px 0px -60% 0px", threshold: 0 },
+			);
+			for (const el of sectionEls) observer.observe(el);
+			return () => observer.disconnect();
+		}}>
 			{#if shouldShowSection("app-info")}
 				<div class="space-y-6" data-section="app-info">
 					<div>

@@ -40,7 +40,7 @@
 	const qb = enableVisualSync ? useQueryBuilder() : null;
 
 	// Local state
-	let editorValue = $state('');
+	let editorValue = $derived(value);
 	let isExecuting = $state(false);
 	let queryResults = $state<Record<string, unknown>[] | null>(null);
 	let queryError = $state<string | null>(null);
@@ -49,11 +49,6 @@
 	// Parameter dialog state
 	let showParamsDialog = $state(false);
 	let pendingParams = $state<QueryParameter[]>([]);
-
-	// Sync external value prop changes to local editor state
-	$effect(() => {
-		editorValue = value;
-	});
 
 	// Derived
 	const resultColumns = $derived(

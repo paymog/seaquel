@@ -30,14 +30,8 @@
 
 	const qb = useQueryBuilder();
 
-	let showHint = $state(false);
-
-	// Reset hint visibility when challenge changes
-	$effect(() => {
-	    // oxlint-disable-next-line eslint(no-unused-expressions)
-		challengeIndex;
-		showHint = false;
-	});
+	// Reset hint visibility when challenge changes (overridable derived resets on index change)
+	let showHint = $derived.by(() => { void challengeIndex; return false; });
 
 	// The SQL to validate - use custom SQL if user has typed something, otherwise use generated SQL
 	const activeSql = $derived(qb.customSql ?? qb.generatedSql);

@@ -178,13 +178,8 @@ let showParamsDialog = $state(false);
 		visualPanelOpen = !visualPanelOpen;
 	}
 
-	// Track query content for live statement count (synced via $effect below)
-	let currentQuery = $state('');
-
-	// Update currentQuery when active tab changes
-	$effect(() => {
-		currentQuery = activeTab?.query ?? '';
-	});
+	// Track query content for live statement count (overridable derived resets on tab switch)
+	let currentQuery = $derived(activeTab?.query ?? '');
 
 	// Check staleness for explain/visualize results
 	const isExplainStale = $derived(

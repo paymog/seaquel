@@ -25,17 +25,6 @@
     const db = useDatabase();
     const dragState = usePaneDragState();
 
-    // Register this pane's DOM element for split-zone hit testing
-    let paneEl = $state<HTMLElement | null>(null);
-    $effect(() => {
-        if (paneEl && dragState) {
-            const id = pane.id;
-            dragState.registerPane(id, paneEl);
-            return () => {
-                dragState.unregisterPane(id);
-            };
-        }
-    });
 
     // Determine active view type for this pane's active tab
     const paneViewType = $derived(pane.activeTabId ? db.panes.getTabViewType(pane.activeTabId) : null);
@@ -71,12 +60,18 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div
-    bind:this={paneEl}
     class={[
         "flex flex-col h-full min-w-0 relative",
         totalPanes > 1 && isActive && "ring-1 ring-primary/30",
     ]}
     onclick={handlePaneClick}
+    {@attach (el) => {
+        if (dragState) {
+            const id = pane.id;
+            dragState.registerPane(id, el);
+            return () => dragState.unregisterPane(id);
+        }
+    }}
 >
     {#if dragState}
         <DragSplitOverlay paneId={pane.id} {dragState} />

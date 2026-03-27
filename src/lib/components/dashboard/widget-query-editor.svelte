@@ -12,11 +12,7 @@
 
 	let { query, isExecuting, onQueryChange, onRun }: Props = $props();
 
-	let editorValue = $state('');
-
-	$effect(() => {
-		editorValue = query;
-	});
+	let editorValue = $derived(query);
 </script>
 
 <div class="flex flex-col gap-2">

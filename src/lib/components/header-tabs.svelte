@@ -28,16 +28,6 @@
     const shortcuts = useShortcuts();
     const paneDragState = usePaneDragState();
 
-    let tabBarEl = $state<HTMLElement | null>(null);
-    $effect(() => {
-        if (tabBarEl && paneDragState && paneId) {
-            const id = paneId;
-            paneDragState.registerTabBar(id, tabBarEl);
-            return () => {
-                paneDragState.unregisterTabBar(id);
-            };
-        }
-    });
 
     const isManagePage = $derived(
         page.url.pathname === resolve("/manage") || page.url.pathname === resolve("/")
@@ -395,7 +385,13 @@
     {:else if db.state.activeProjectId}
         <!-- Regular tabs (project has connections) -->
         <div class="flex items-center gap-1 h-full min-w-0">
-            <div bind:this={tabBarEl} class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide h-full">
+            <div class="flex-1 overflow-x-auto overflow-y-hidden min-w-0 scrollbar-hide h-full" {@attach (el) => {
+                if (paneDragState && paneId) {
+                    const id = paneId;
+                    paneDragState.registerTabBar(id, el);
+                    return () => paneDragState.unregisterTabBar(id);
+                }
+            }}>
                 <div
                     class="flex items-end gap-2 w-max h-full"
                     use:dndzone={{

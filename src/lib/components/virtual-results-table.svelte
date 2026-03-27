@@ -47,7 +47,6 @@
 
 	let scrollTop = $state(0);
 	let containerHeight = $state(0);
-	let scrollContainerRef: HTMLDivElement | undefined = $state();
 
 	// Column widths state - initialize with default width for each column
 	let columnWidths = $state<number[]>([]);
@@ -88,16 +87,6 @@
 		scrollTop = target.scrollTop;
 	}
 
-	// Track container height
-	$effect(() => {
-		if (scrollContainerRef) {
-			const observer = new ResizeObserver((entries) => {
-				containerHeight = entries[0]?.contentRect.height ?? 0;
-			});
-			observer.observe(scrollContainerRef);
-			return () => observer.disconnect();
-		}
-	});
 
 	// Column resize handlers
 	function startResize(index: number, e: MouseEvent) {
@@ -132,9 +121,15 @@
 {#snippet tableContent()}
 	<!-- Single scroll container for both header and body -->
 	<div
-		bind:this={scrollContainerRef}
 		class={["h-full overflow-auto isolate", compact && "nowheel"]}
 		onscroll={handleScroll}
+		{@attach (el) => {
+			const observer = new ResizeObserver((entries) => {
+				containerHeight = entries[0]?.contentRect.height ?? 0;
+			});
+			observer.observe(el);
+			return () => observer.disconnect();
+		}}
 	>
 		<!-- Inner wrapper that can expand horizontally -->
 		<div class="min-w-fit">

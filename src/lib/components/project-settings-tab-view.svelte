@@ -184,42 +184,7 @@
 	};
 
 	// Scroll spy for highlighting visible section in sidebar nav
-	let scrollContainer = $state<HTMLElement | null>(null);
 	let visibleSectionId = $state<string | null>(null);
-
-	$effect(() => {
-		const container = scrollContainer;
-		if (!container) return;
-
-		const _view = activeSection;
-
-		const sectionEls = container.querySelectorAll<HTMLElement>("[data-section]");
-		if (sectionEls.length === 0) return;
-
-		const observer = new IntersectionObserver(
-			(entries) => {
-				let topSection: { id: string; top: number } | null = null;
-				for (const entry of entries) {
-					if (entry.isIntersecting) {
-						const rect = entry.boundingClientRect;
-						if (!topSection || rect.top < topSection.top) {
-							topSection = { id: entry.target.getAttribute("data-section")!, top: rect.top };
-						}
-					}
-				}
-				if (topSection) {
-					visibleSectionId = topSection.id;
-				}
-			},
-			{ root: container, rootMargin: "0px 0px -60% 0px", threshold: 0 },
-		);
-
-		for (const el of sectionEls) {
-			observer.observe(el);
-		}
-
-		return () => observer.disconnect();
-	});
 
 	const canDelete = $derived(projectId !== DEFAULT_PROJECT_ID && db.state.projects.length > 1);
 	let showDeleteConfirm = $state(false);
@@ -281,7 +246,30 @@
 				</Breadcrumb.Root>
 			</div>
 		</header>
-		<div class="flex flex-1 flex-col gap-6 overflow-y-auto p-4 pt-4" bind:this={scrollContainer}>
+		<div class="flex flex-1 flex-col gap-6 overflow-y-auto p-4 pt-4" {@attach (container) => {
+			const _view = activeSection;
+			const sectionEls = container.querySelectorAll<HTMLElement>("[data-section]");
+			if (sectionEls.length === 0) return;
+			const observer = new IntersectionObserver(
+				(entries) => {
+					let topSection: { id: string; top: number } | null = null;
+					for (const entry of entries) {
+						if (entry.isIntersecting) {
+							const rect = entry.boundingClientRect;
+							if (!topSection || rect.top < topSection.top) {
+								topSection = { id: entry.target.getAttribute("data-section")!, top: rect.top };
+							}
+						}
+					}
+					if (topSection) {
+						visibleSectionId = topSection.id;
+					}
+				},
+				{ root: container, rootMargin: "0px 0px -60% 0px", threshold: 0 },
+			);
+			for (const el of sectionEls) observer.observe(el);
+			return () => observer.disconnect();
+		}}>
 			{#if activeSection === "all" || activeSection === "general"}
 				<div class="space-y-6" data-section="general">
 					<div>
