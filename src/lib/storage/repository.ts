@@ -1,4 +1,6 @@
 import type { SqliteDatabase } from "./sqlite-types";
+import { createRepo, col, nullable, bool, optBool, json, safeJsonParse } from "./create-repo";
+import type { ColumnDef } from "./create-repo";
 import type {
   PersistedProject,
   PersistedProjectState,
@@ -13,28 +15,24 @@ import type {
 import type { PersistedConnection } from "$lib/hooks/database/types";
 import type { SavedWorkflow } from "$lib/types/workflow";
 
-function safeJsonParse<T>(json: string | null | undefined, fallback: T): T {
-  if (!json) return fallback;
-  try {
-    return JSON.parse(json);
-  } catch {
-    return fallback;
-  }
-}
-
 // === Projects ===
+
+const _projectRepo = createRepo<Omit<PersistedProject, "customLabels">>({
+  table: "projects",
+  id: "id",
+  columns: {
+    id: col("id"),
+    name: col("name"),
+    description: nullable("description"),
+    createdAt: col("created_at"),
+    updatedAt: col("updated_at"),
+    gitRepoPath: nullable("git_repo_path"),
+  },
+});
 
 export const projectsRepo = {
   async loadAll(db: SqliteDatabase): Promise<PersistedProject[]> {
-    const rows = await db.query<{
-      id: string;
-      name: string;
-      description: string | null;
-      created_at: string;
-      updated_at: string;
-      git_repo_path: string | null;
-    }>("SELECT id, name, description, created_at, updated_at, git_repo_path FROM projects");
-
+    const rows = await _projectRepo.loadAll(db);
     const projects: PersistedProject[] = [];
     for (const row of rows) {
       const labels = await db.query<{
@@ -47,12 +45,7 @@ export const projectsRepo = {
       ]);
 
       projects.push({
-        id: row.id,
-        name: row.name,
-        description: row.description ?? undefined,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        gitRepoPath: row.git_repo_path ?? undefined,
+        ...row,
         customLabels: labels.map((l) => ({
           id: l.id,
           name: l.name,
@@ -65,27 +58,12 @@ export const projectsRepo = {
   },
 
   async save(db: SqliteDatabase, project: PersistedProject): Promise<void> {
-    await db.execute(
-      `INSERT INTO projects (id, name, description, created_at, updated_at, git_repo_path)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         name = excluded.name,
-         description = excluded.description,
-         updated_at = excluded.updated_at,
-         git_repo_path = excluded.git_repo_path`,
-      [
-        project.id,
-        project.name,
-        project.description ?? null,
-        project.createdAt,
-        project.updatedAt,
-        project.gitRepoPath ?? null,
-      ],
-    );
+    const { customLabels, ...base } = project;
+    await _projectRepo.save(db, base);
 
     // Replace labels
     await db.execute("DELETE FROM project_labels WHERE project_id = ?", [project.id]);
-    for (const label of project.customLabels) {
+    for (const label of customLabels) {
       await db.execute(
         `INSERT INTO project_labels (id, project_id, name, is_predefined, color)
          VALUES (?, ?, ?, ?, ?)`,
@@ -101,7 +79,7 @@ export const projectsRepo = {
   },
 
   async remove(db: SqliteDatabase, projectId: string): Promise<void> {
-    await db.execute("DELETE FROM projects WHERE id = ?", [projectId]);
+    await _projectRepo.remove(db, projectId);
   },
 };
 
@@ -124,132 +102,72 @@ export const appStateRepo = {
 
 // === Connections ===
 
+type ConnectionRow = Omit<PersistedConnection, "labelIds">;
+
+const _connectionRepo = createRepo<ConnectionRow>({
+  table: "connections",
+  id: "id",
+  columns: {
+    id: col("id"),
+    projectId: col("project_id"),
+    name: col("name"),
+    type: col("type"),
+    host: col("host"),
+    port: col("port"),
+    databaseName: col("database_name"),
+    username: col("username"),
+    sslMode: nullable("ssl_mode"),
+    connectionString: nullable("connection_string"),
+    lastConnected: {
+      dbColumn: "last_connected",
+      toDb: (v) => (v instanceof Date ? v.toISOString() : (v ?? null)),
+      fromDb: (v) => (v ? new Date(v as string) : undefined),
+    } as ColumnDef,
+    sshTunnel: {
+      dbColumn: "ssh_tunnel",
+      toDb: (v) => (v ? JSON.stringify(v) : null),
+      fromDb: (v) => safeJsonParse(v as string | null, undefined),
+    } as ColumnDef,
+    savePassword: bool("save_password"),
+    saveSshPassword: bool("save_ssh_password"),
+    saveSshKeyPassphrase: bool("save_ssh_key_passphrase"),
+    isLocalOnly: {
+      dbColumn: "is_local_only",
+      toDb: (v) => (v ? 1 : 0),
+      fromDb: (v) => (v === 1 ? true : undefined),
+    } as ColumnDef,
+    sharedConnectionId: nullable("shared_connection_id"),
+    aiShareSchema: optBool("ai_share_schema"),
+    aiShareData: optBool("ai_share_data"),
+    activeAIProviderId: nullable("active_ai_provider_id"),
+    activeAIModel: nullable("active_ai_model"),
+  },
+});
+
 export const connectionsRepo = {
   async loadAll(db: SqliteDatabase): Promise<PersistedConnection[]> {
-    const rows = await db.query<{
-      id: string;
-      project_id: string;
-      name: string;
-      type: string;
-      host: string;
-      port: number;
-      database_name: string;
-      username: string;
-      ssl_mode: string | null;
-      connection_string: string | null;
-      last_connected: string | null;
-      ssh_tunnel: string | null;
-      save_password: number;
-      save_ssh_password: number;
-      save_ssh_key_passphrase: number;
-      is_local_only: number;
-      shared_connection_id: string | null;
-      ai_share_schema: number | null;
-      ai_share_data: number | null;
-      active_ai_provider_id: string | null;
-      active_ai_model: string | null;
-    }>("SELECT * FROM connections");
-
+    const rows = await _connectionRepo.loadAll(db);
     const connections: PersistedConnection[] = [];
     for (const row of rows) {
       const labelRows = await db.query<{ label_id: string }>(
         "SELECT label_id FROM connection_labels WHERE connection_id = ?",
         [row.id],
       );
-
       connections.push({
-        id: row.id,
-        projectId: row.project_id,
-        name: row.name,
-        type: row.type as PersistedConnection["type"],
-        host: row.host,
-        port: row.port,
-        databaseName: row.database_name,
-        username: row.username,
-        sslMode: row.ssl_mode ?? undefined,
-        connectionString: row.connection_string ?? undefined,
-        lastConnected: row.last_connected ? new Date(row.last_connected) : undefined,
-        sshTunnel: safeJsonParse(row.ssh_tunnel, undefined),
-        savePassword: row.save_password === 1,
-        saveSshPassword: row.save_ssh_password === 1,
-        saveSshKeyPassphrase: row.save_ssh_key_passphrase === 1,
+        ...row,
         labelIds: labelRows.map((l) => l.label_id),
-        isLocalOnly: row.is_local_only === 1 ? true : undefined,
-        sharedConnectionId: row.shared_connection_id ?? undefined,
-        aiShareSchema:
-          row.ai_share_schema === null || row.ai_share_schema === undefined
-            ? undefined
-            : Boolean(row.ai_share_schema),
-        aiShareData:
-          row.ai_share_data === null || row.ai_share_data === undefined
-            ? undefined
-            : Boolean(row.ai_share_data),
-        activeAIProviderId: row.active_ai_provider_id ?? undefined,
-        activeAIModel: row.active_ai_model ?? undefined,
       });
     }
     return connections;
   },
 
   async save(db: SqliteDatabase, conn: PersistedConnection): Promise<void> {
-    await db.execute(
-      `INSERT INTO connections
-       (id, project_id, name, type, host, port, database_name, username, ssl_mode,
-        connection_string, last_connected, ssh_tunnel, save_password, save_ssh_password,
-        save_ssh_key_passphrase, is_local_only, shared_connection_id, ai_share_schema, ai_share_data,
-        active_ai_provider_id, active_ai_model)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         project_id = excluded.project_id,
-         name = excluded.name,
-         type = excluded.type,
-         host = excluded.host,
-         port = excluded.port,
-         database_name = excluded.database_name,
-         username = excluded.username,
-         ssl_mode = excluded.ssl_mode,
-         connection_string = excluded.connection_string,
-         last_connected = excluded.last_connected,
-         ssh_tunnel = excluded.ssh_tunnel,
-         save_password = excluded.save_password,
-         save_ssh_password = excluded.save_ssh_password,
-         save_ssh_key_passphrase = excluded.save_ssh_key_passphrase,
-         is_local_only = excluded.is_local_only,
-         shared_connection_id = excluded.shared_connection_id,
-         ai_share_schema = excluded.ai_share_schema,
-         ai_share_data = excluded.ai_share_data,
-         active_ai_provider_id = excluded.active_ai_provider_id,
-         active_ai_model = excluded.active_ai_model`,
-      [
-        conn.id,
-        conn.projectId,
-        conn.name,
-        conn.type,
-        conn.host,
-        conn.port,
-        conn.databaseName,
-        conn.username,
-        conn.sslMode ?? null,
-        conn.connectionString ?? null,
-        conn.lastConnected instanceof Date
-          ? conn.lastConnected.toISOString()
-          : (conn.lastConnected ?? null),
-        conn.sshTunnel ? JSON.stringify(conn.sshTunnel) : null,
-        conn.savePassword ? 1 : 0,
-        conn.saveSshPassword ? 1 : 0,
-        conn.saveSshKeyPassphrase ? 1 : 0,
-        conn.isLocalOnly ? 1 : 0,
-        conn.sharedConnectionId ?? null,
-        conn.aiShareSchema === undefined ? null : conn.aiShareSchema ? 1 : 0,
-        conn.aiShareData === undefined ? null : conn.aiShareData ? 1 : 0,
-        conn.activeAIProviderId ?? null,
-        conn.activeAIModel ?? null,
-      ],
-    );
+    const { labelIds, ...base } = conn;
+    await _connectionRepo.save(db, base);
 
     // Replace labels
     await db.execute("DELETE FROM connection_labels WHERE connection_id = ?", [conn.id]);
-    for (const labelId of conn.labelIds) {
+    for (const labelId of labelIds) {
       await db.execute("INSERT INTO connection_labels (connection_id, label_id) VALUES (?, ?)", [
         conn.id,
         labelId,
@@ -258,7 +176,7 @@ export const connectionsRepo = {
   },
 
   async remove(db: SqliteDatabase, connectionId: string): Promise<void> {
-    await db.execute("DELETE FROM connections WHERE id = ?", [connectionId]);
+    await _connectionRepo.remove(db, connectionId);
   },
 };
 
@@ -611,39 +529,29 @@ export const projectStateRepo = {
 
 // === Saved Queries ===
 
+const _savedQueryRepo = createRepo<PersistedSavedQuery>({
+  table: "saved_queries",
+  id: "id",
+  columns: {
+    id: col("id"),
+    projectId: col("project_id"),
+    name: col("name"),
+    query: col("query"),
+    parameters: json("parameters", undefined),
+    starred: bool("starred"),
+    shared: bool("shared"),
+    description: nullable("description"),
+    databaseType: nullable("database_type"),
+    tags: json("tags", undefined),
+    folder: nullable("folder"),
+    createdAt: col("created_at"),
+    updatedAt: col("updated_at"),
+  },
+});
+
 export const savedQueriesRepo = {
   async loadByProject(db: SqliteDatabase, projectId: string): Promise<PersistedSavedQuery[]> {
-    const rows = await db.query<{
-      id: string;
-      project_id: string;
-      name: string;
-      query: string;
-      parameters: string | null;
-      starred: number;
-      shared: number;
-      description: string | null;
-      database_type: string | null;
-      tags: string | null;
-      folder: string | null;
-      created_at: string;
-      updated_at: string;
-    }>("SELECT * FROM saved_queries WHERE project_id = ?", [projectId]);
-
-    return rows.map((r) => ({
-      id: r.id,
-      projectId: r.project_id,
-      name: r.name,
-      query: r.query,
-      parameters: safeJsonParse(r.parameters, undefined),
-      starred: !!r.starred,
-      shared: !!r.shared,
-      description: r.description ?? undefined,
-      databaseType: r.database_type ?? undefined,
-      tags: safeJsonParse(r.tags, undefined),
-      folder: r.folder ?? undefined,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-    }));
+    return _savedQueryRepo.loadBy(db, "project_id = ?", [projectId]);
   },
 
   async saveAll(
@@ -664,106 +572,52 @@ export const savedQueriesRepo = {
       await db.execute("DELETE FROM saved_queries WHERE project_id = ?", [projectId]);
     }
     for (const q of queries) {
-      await db.execute(
-        `INSERT INTO saved_queries (id, project_id, name, query, parameters, starred, shared, description, database_type, tags, folder, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           name = excluded.name,
-           query = excluded.query,
-           parameters = excluded.parameters,
-           starred = excluded.starred,
-           shared = excluded.shared,
-           description = excluded.description,
-           database_type = excluded.database_type,
-           tags = excluded.tags,
-           folder = excluded.folder,
-           updated_at = excluded.updated_at`,
-        [
-          q.id,
-          projectId,
-          q.name,
-          q.query,
-          q.parameters ? JSON.stringify(q.parameters) : null,
-          q.starred ? 1 : 0,
-          q.shared ? 1 : 0,
-          q.description ?? null,
-          q.databaseType ?? null,
-          q.tags ? JSON.stringify(q.tags) : null,
-          q.folder ?? null,
-          q.createdAt,
-          q.updatedAt,
-        ],
-      );
+      await db.execute(_savedQueryRepo.upsertSql, _savedQueryRepo.toParams(q));
     }
   },
 
   async removeByProject(db: SqliteDatabase, projectId: string): Promise<void> {
-    await db.execute("DELETE FROM saved_queries WHERE project_id = ?", [projectId]);
+    return _savedQueryRepo.removeBy(db, "project_id = ?", [projectId]);
   },
 };
 
 // === Query Versions ===
 
+const _queryVersionRepo = createRepo<PersistedQueryVersion>({
+  table: "query_versions",
+  id: "id",
+  columns: {
+    id: col("id"),
+    queryId: col("saved_query_id"),
+    version: col("version"),
+    snapshot: col("snapshot"),
+    diff: col("diff"),
+    createdAt: col("created_at"),
+  },
+});
+
 export const queryVersionsRepo = {
   async loadByQuery(db: SqliteDatabase, queryId: string): Promise<PersistedQueryVersion[]> {
-    const rows = await db.query<{
-      id: string;
-      saved_query_id: string;
-      version: number;
-      snapshot: string | null;
-      diff: string | null;
-      created_at: string;
-    }>("SELECT * FROM query_versions WHERE saved_query_id = ? ORDER BY version ASC", [queryId]);
-
-    return rows.map((r) => ({
-      id: r.id,
-      queryId: r.saved_query_id,
-      version: r.version,
-      snapshot: r.snapshot,
-      diff: r.diff,
-      createdAt: r.created_at,
-    }));
+    const rows = await db.query<Record<string, unknown>>(
+      "SELECT * FROM query_versions WHERE saved_query_id = ? ORDER BY version ASC",
+      [queryId],
+    );
+    return rows.map((r) => _queryVersionRepo.mapRow(r));
   },
 
   async loadByProject(db: SqliteDatabase, projectId: string): Promise<PersistedQueryVersion[]> {
-    const rows = await db.query<{
-      id: string;
-      saved_query_id: string;
-      version: number;
-      snapshot: string | null;
-      diff: string | null;
-      created_at: string;
-    }>(
+    const rows = await db.query<Record<string, unknown>>(
       `SELECT qv.* FROM query_versions qv
        JOIN saved_queries sq ON sq.id = qv.saved_query_id
        WHERE sq.project_id = ?
        ORDER BY qv.saved_query_id, qv.version ASC`,
       [projectId],
     );
-
-    return rows.map((r) => ({
-      id: r.id,
-      queryId: r.saved_query_id,
-      version: r.version,
-      snapshot: r.snapshot,
-      diff: r.diff,
-      createdAt: r.created_at,
-    }));
+    return rows.map((r) => _queryVersionRepo.mapRow(r));
   },
 
   async insert(db: SqliteDatabase, version: PersistedQueryVersion): Promise<void> {
-    await db.execute(
-      `INSERT INTO query_versions (id, saved_query_id, version, snapshot, diff, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        version.id,
-        version.queryId,
-        version.version,
-        version.snapshot,
-        version.diff,
-        version.createdAt,
-      ],
-    );
+    await db.execute(_queryVersionRepo.insertSql, _queryVersionRepo.toParams(version));
   },
 
   async pruneOldVersions(db: SqliteDatabase, queryId: string, keepCount: number): Promise<void> {
@@ -805,36 +659,32 @@ export const queryVersionsRepo = {
 
 // === Query History ===
 
+const _historyRepo = createRepo<PersistedQueryHistoryItem>({
+  table: "query_history",
+  id: "id",
+  columns: {
+    id: col("id"),
+    query: col("query"),
+    timestamp: col("timestamp"),
+    executionTime: col("execution_time"),
+    rowCount: col("row_count"),
+    connectionId: col("connection_id"),
+    favorite: bool("favorite"),
+    connectionLabelsSnapshot: json("connection_labels_snapshot", []),
+    connectionNameSnapshot: col("connection_name_snapshot"),
+  },
+});
+
 export const queryHistoryRepo = {
   async loadByConnection(
     db: SqliteDatabase,
     connectionId: string,
   ): Promise<PersistedQueryHistoryItem[]> {
-    const rows = await db.query<{
-      id: string;
-      connection_id: string;
-      query: string;
-      timestamp: string;
-      execution_time: number;
-      row_count: number;
-      favorite: number;
-      connection_labels_snapshot: string | null;
-      connection_name_snapshot: string;
-    }>("SELECT * FROM query_history WHERE connection_id = ? ORDER BY timestamp DESC", [
-      connectionId,
-    ]);
-
-    return rows.map((r) => ({
-      id: r.id,
-      connectionId: r.connection_id,
-      query: r.query,
-      timestamp: r.timestamp,
-      executionTime: r.execution_time,
-      rowCount: r.row_count,
-      favorite: r.favorite === 1,
-      connectionLabelsSnapshot: safeJsonParse(r.connection_labels_snapshot, []),
-      connectionNameSnapshot: r.connection_name_snapshot,
-    }));
+    const rows = await db.query(
+      `SELECT * FROM query_history WHERE connection_id = ? ORDER BY timestamp DESC`,
+      [connectionId],
+    );
+    return rows.map((r) => _historyRepo.mapRow(r as Record<string, unknown>));
   },
 
   async replaceAll(
@@ -844,28 +694,12 @@ export const queryHistoryRepo = {
   ): Promise<void> {
     await db.execute("DELETE FROM query_history WHERE connection_id = ?", [connectionId]);
     for (const h of items) {
-      await db.execute(
-        `INSERT INTO query_history
-         (id, connection_id, query, timestamp, execution_time, row_count, favorite,
-          connection_labels_snapshot, connection_name_snapshot)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          h.id,
-          connectionId,
-          h.query,
-          h.timestamp,
-          h.executionTime,
-          h.rowCount,
-          h.favorite ? 1 : 0,
-          h.connectionLabelsSnapshot ? JSON.stringify(h.connectionLabelsSnapshot) : null,
-          h.connectionNameSnapshot,
-        ],
-      );
+      await db.execute(_historyRepo.insertSql, _historyRepo.toParams(h));
     }
   },
 
   async removeByConnection(db: SqliteDatabase, connectionId: string): Promise<void> {
-    await db.execute("DELETE FROM query_history WHERE connection_id = ?", [connectionId]);
+    await _historyRepo.removeBy(db, "connection_id = ?", [connectionId]);
   },
 };
 
@@ -1025,131 +859,87 @@ export interface PersistedDashboard {
   updatedAt: string;
 }
 
+/** Passes through on read; coerces `undefined` to `null` on write. */
+function nullablePassthrough(dbColumn: string): ColumnDef {
+  return {
+    dbColumn,
+    toDb: (v) => v ?? null,
+    fromDb: (v) => v,
+  };
+}
+
+const _dashboardsRepo = createRepo<PersistedDashboard>({
+  table: "dashboards",
+  id: "id",
+  columns: {
+    id: col("id"),
+    projectId: col("project_id"),
+    name: col("name"),
+    viewport: col("viewport"),
+    widgets: col("widgets"),
+    dateFilter: nullablePassthrough("date_filter"),
+    starred: bool("starred"),
+    shared: bool("shared"),
+    description: nullable("description"),
+    createdAt: col("created_at"),
+    updatedAt: col("updated_at"),
+  },
+});
+
 export const dashboardsRepo = {
-  async loadByProject(db: SqliteDatabase, projectId: string): Promise<PersistedDashboard[]> {
-    const rows = await db.query<{
-      id: string;
-      project_id: string;
-      name: string;
-      viewport: string;
-      widgets: string;
-      date_filter: string | null;
-      starred: number | null;
-      shared: number;
-      description: string | null;
-      created_at: string;
-      updated_at: string;
-    }>("SELECT * FROM dashboards WHERE project_id = ?", [projectId]);
-
-    return rows.map((r) => ({
-      id: r.id,
-      projectId: r.project_id,
-      name: r.name,
-      viewport: r.viewport,
-      widgets: r.widgets,
-      dateFilter: r.date_filter,
-      starred: (r.starred ?? 0) === 1,
-      shared: !!r.shared,
-      description: r.description ?? undefined,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-    }));
+  loadByProject(db: SqliteDatabase, projectId: string): Promise<PersistedDashboard[]> {
+    return _dashboardsRepo.loadBy(db, "project_id = ?", [projectId]);
   },
-
-  async save(db: SqliteDatabase, dashboard: PersistedDashboard): Promise<void> {
-    await db.execute(
-      `INSERT INTO dashboards (id, project_id, name, viewport, widgets, date_filter, starred, shared, description, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         name = excluded.name,
-         viewport = excluded.viewport,
-         widgets = excluded.widgets,
-         date_filter = excluded.date_filter,
-         starred = excluded.starred,
-         shared = excluded.shared,
-         description = excluded.description,
-         updated_at = excluded.updated_at`,
-      [
-        dashboard.id,
-        dashboard.projectId,
-        dashboard.name,
-        dashboard.viewport,
-        dashboard.widgets,
-        dashboard.dateFilter ?? null,
-        dashboard.starred ? 1 : 0,
-        dashboard.shared ? 1 : 0,
-        dashboard.description ?? null,
-        dashboard.createdAt,
-        dashboard.updatedAt,
-      ],
-    );
+  save(db: SqliteDatabase, dashboard: PersistedDashboard): Promise<void> {
+    return _dashboardsRepo.save(db, dashboard);
   },
-
-  async remove(db: SqliteDatabase, id: string): Promise<void> {
-    await db.execute("DELETE FROM dashboards WHERE id = ?", [id]);
+  remove(db: SqliteDatabase, id: string): Promise<void> {
+    return _dashboardsRepo.remove(db, id);
   },
-
-  async removeByProject(db: SqliteDatabase, projectId: string): Promise<void> {
-    await db.execute("DELETE FROM dashboards WHERE project_id = ?", [projectId]);
+  removeByProject(db: SqliteDatabase, projectId: string): Promise<void> {
+    return _dashboardsRepo.removeBy(db, "project_id = ?", [projectId]);
   },
 };
 
 // === Dashboard Versions ===
+
+const _dashboardVersionRepo = createRepo<PersistedDashboardVersion>({
+  table: "dashboard_versions",
+  id: "id",
+  columns: {
+    id: col("id"),
+    dashboardId: col("dashboard_id"),
+    version: col("version"),
+    snapshot: col("snapshot"),
+    createdAt: col("created_at"),
+  },
+});
 
 export const dashboardVersionsRepo = {
   async loadByDashboard(
     db: SqliteDatabase,
     dashboardId: string,
   ): Promise<PersistedDashboardVersion[]> {
-    const rows = await db.query<{
-      id: string;
-      dashboard_id: string;
-      version: number;
-      snapshot: string;
-      created_at: string;
-    }>("SELECT * FROM dashboard_versions WHERE dashboard_id = ? ORDER BY version ASC", [
-      dashboardId,
-    ]);
-
-    return rows.map((r) => ({
-      id: r.id,
-      dashboardId: r.dashboard_id,
-      version: r.version,
-      snapshot: r.snapshot,
-      createdAt: r.created_at,
-    }));
+    const rows = await db.query<Record<string, unknown>>(
+      "SELECT * FROM dashboard_versions WHERE dashboard_id = ? ORDER BY version ASC",
+      [dashboardId],
+    );
+    return rows.map((r) => _dashboardVersionRepo.mapRow(r));
   },
 
   async loadByProject(db: SqliteDatabase, projectId: string): Promise<PersistedDashboardVersion[]> {
-    const rows = await db.query<{
-      id: string;
-      dashboard_id: string;
-      version: number;
-      snapshot: string;
-      created_at: string;
-    }>(
+    const rows = await db.query<Record<string, unknown>>(
       `SELECT dv.* FROM dashboard_versions dv
        JOIN dashboards d ON d.id = dv.dashboard_id
        WHERE d.project_id = ?
        ORDER BY dv.dashboard_id, dv.version ASC`,
       [projectId],
     );
-
-    return rows.map((r) => ({
-      id: r.id,
-      dashboardId: r.dashboard_id,
-      version: r.version,
-      snapshot: r.snapshot,
-      createdAt: r.created_at,
-    }));
+    return rows.map((r) => _dashboardVersionRepo.mapRow(r));
   },
 
   async insert(db: SqliteDatabase, version: PersistedDashboardVersion): Promise<void> {
-    await db.execute(
-      `INSERT INTO dashboard_versions (id, dashboard_id, version, snapshot, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [version.id, version.dashboardId, version.version, version.snapshot, version.createdAt],
-    );
+    await db.execute(_dashboardVersionRepo.insertSql, _dashboardVersionRepo.toParams(version));
   },
 
   async pruneOldVersions(
@@ -1183,85 +973,35 @@ export interface PersistedConnectionOverride {
   saveSshKeyPassphrase: boolean;
 }
 
+const _connectionOverridesRepo = createRepo<PersistedConnectionOverride>({
+  table: "connection_overrides",
+  id: "sharedConnectionId",
+  columns: {
+    sharedConnectionId: col("shared_connection_id"),
+    username: nullable("username"),
+    hostOverride: nullable("host_override"),
+    portOverride: nullable("port_override"),
+    savePassword: bool("save_password"),
+    saveSshPassword: bool("save_ssh_password"),
+    saveSshKeyPassphrase: bool("save_ssh_key_passphrase"),
+  },
+});
+
 export const connectionOverridesRepo = {
-  async load(
+  load(
     db: SqliteDatabase,
     sharedConnectionId: string,
   ): Promise<PersistedConnectionOverride | null> {
-    const rows = await db.query<{
-      shared_connection_id: string;
-      username: string | null;
-      host_override: string | null;
-      port_override: number | null;
-      save_password: number;
-      save_ssh_password: number;
-      save_ssh_key_passphrase: number;
-    }>("SELECT * FROM connection_overrides WHERE shared_connection_id = ?", [sharedConnectionId]);
-
-    if (rows.length === 0) return null;
-    const r = rows[0];
-    return {
-      sharedConnectionId: r.shared_connection_id,
-      username: r.username ?? undefined,
-      hostOverride: r.host_override ?? undefined,
-      portOverride: r.port_override ?? undefined,
-      savePassword: r.save_password === 1,
-      saveSshPassword: r.save_ssh_password === 1,
-      saveSshKeyPassphrase: r.save_ssh_key_passphrase === 1,
-    };
+    return _connectionOverridesRepo.loadOneBy(db, "shared_connection_id = ?", [sharedConnectionId]);
   },
-
-  async loadAll(db: SqliteDatabase): Promise<PersistedConnectionOverride[]> {
-    const rows = await db.query<{
-      shared_connection_id: string;
-      username: string | null;
-      host_override: string | null;
-      port_override: number | null;
-      save_password: number;
-      save_ssh_password: number;
-      save_ssh_key_passphrase: number;
-    }>("SELECT * FROM connection_overrides");
-
-    return rows.map((r) => ({
-      sharedConnectionId: r.shared_connection_id,
-      username: r.username ?? undefined,
-      hostOverride: r.host_override ?? undefined,
-      portOverride: r.port_override ?? undefined,
-      savePassword: r.save_password === 1,
-      saveSshPassword: r.save_ssh_password === 1,
-      saveSshKeyPassphrase: r.save_ssh_key_passphrase === 1,
-    }));
+  loadAll(db: SqliteDatabase): Promise<PersistedConnectionOverride[]> {
+    return _connectionOverridesRepo.loadAll(db);
   },
-
-  async save(db: SqliteDatabase, override: PersistedConnectionOverride): Promise<void> {
-    await db.execute(
-      `INSERT INTO connection_overrides
-       (shared_connection_id, username, host_override, port_override,
-        save_password, save_ssh_password, save_ssh_key_passphrase)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(shared_connection_id) DO UPDATE SET
-         username = excluded.username,
-         host_override = excluded.host_override,
-         port_override = excluded.port_override,
-         save_password = excluded.save_password,
-         save_ssh_password = excluded.save_ssh_password,
-         save_ssh_key_passphrase = excluded.save_ssh_key_passphrase`,
-      [
-        override.sharedConnectionId,
-        override.username ?? null,
-        override.hostOverride ?? null,
-        override.portOverride ?? null,
-        override.savePassword ? 1 : 0,
-        override.saveSshPassword ? 1 : 0,
-        override.saveSshKeyPassphrase ? 1 : 0,
-      ],
-    );
+  save(db: SqliteDatabase, override: PersistedConnectionOverride): Promise<void> {
+    return _connectionOverridesRepo.save(db, override);
   },
-
-  async remove(db: SqliteDatabase, sharedConnectionId: string): Promise<void> {
-    await db.execute("DELETE FROM connection_overrides WHERE shared_connection_id = ?", [
-      sharedConnectionId,
-    ]);
+  remove(db: SqliteDatabase, sharedConnectionId: string): Promise<void> {
+    return _connectionOverridesRepo.remove(db, sharedConnectionId);
   },
 };
 
@@ -1301,60 +1041,58 @@ export const importStateRepo = {
 
 // === AI Chats ===
 
+const _chatRepo = createRepo<PersistedAIChat>({
+  table: "ai_chats",
+  id: "id",
+  columns: {
+    id: col("id"),
+    connectionId: col("connection_id"),
+    title: col("title"),
+    createdAt: col("created_at"),
+    updatedAt: col("updated_at"),
+  },
+});
+
+const _messageRepo = createRepo<PersistedAIMessage>({
+  table: "ai_messages",
+  id: "id",
+  columns: {
+    id: col("id"),
+    chatId: col("chat_id"),
+    role: col("role"),
+    content: col("content"),
+    timestamp: col("timestamp"),
+    query: nullable("query"),
+  },
+});
+
 export const aiChatsRepo = {
   async loadByConnection(db: SqliteDatabase, connectionId: string): Promise<PersistedAIChat[]> {
-    const rows = await db.query<{
-      id: string;
-      connection_id: string;
-      title: string;
-      created_at: string;
-      updated_at: string;
-    }>("SELECT * FROM ai_chats WHERE connection_id = ? ORDER BY updated_at DESC", [connectionId]);
-    return rows.map((r) => ({
-      id: r.id,
-      connectionId: r.connection_id,
-      title: r.title,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-    }));
-  },
-
-  async saveChat(db: SqliteDatabase, chat: PersistedAIChat): Promise<void> {
-    await db.execute(
-      `INSERT INTO ai_chats (id, connection_id, title, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         title = excluded.title,
-         updated_at = excluded.updated_at`,
-      [chat.id, chat.connectionId, chat.title, chat.createdAt, chat.updatedAt],
+    const rows = await db.query(
+      "SELECT * FROM ai_chats WHERE connection_id = ? ORDER BY updated_at DESC",
+      [connectionId],
     );
+    return rows.map((r) => _chatRepo.mapRow(r as Record<string, unknown>));
   },
 
-  async removeChat(db: SqliteDatabase, chatId: string): Promise<void> {
-    await db.execute("DELETE FROM ai_chats WHERE id = ?", [chatId]);
+  saveChat(db: SqliteDatabase, chat: PersistedAIChat): Promise<void> {
+    return _chatRepo.save(db, chat);
   },
 
-  async removeByConnection(db: SqliteDatabase, connectionId: string): Promise<void> {
-    await db.execute("DELETE FROM ai_chats WHERE connection_id = ?", [connectionId]);
+  removeChat(db: SqliteDatabase, chatId: string): Promise<void> {
+    return _chatRepo.remove(db, chatId);
+  },
+
+  removeByConnection(db: SqliteDatabase, connectionId: string): Promise<void> {
+    return _chatRepo.removeBy(db, "connection_id = ?", [connectionId]);
   },
 
   async loadMessages(db: SqliteDatabase, chatId: string): Promise<PersistedAIMessage[]> {
-    const rows = await db.query<{
-      id: string;
-      chat_id: string;
-      role: string;
-      content: string;
-      timestamp: string;
-      query: string | null;
-    }>("SELECT * FROM ai_messages WHERE chat_id = ? ORDER BY timestamp ASC", [chatId]);
-    return rows.map((r) => ({
-      id: r.id,
-      chatId: r.chat_id,
-      role: r.role as "user" | "assistant",
-      content: r.content,
-      timestamp: r.timestamp,
-      query: r.query ?? undefined,
-    }));
+    const rows = await db.query(
+      "SELECT * FROM ai_messages WHERE chat_id = ? ORDER BY timestamp ASC",
+      [chatId],
+    );
+    return rows.map((r) => _messageRepo.mapRow(r as Record<string, unknown>));
   },
 
   async replaceAllMessages(
@@ -1362,13 +1100,9 @@ export const aiChatsRepo = {
     chatId: string,
     messages: PersistedAIMessage[],
   ): Promise<void> {
-    await db.execute("DELETE FROM ai_messages WHERE chat_id = ?", [chatId]);
+    await _messageRepo.removeBy(db, "chat_id = ?", [chatId]);
     for (const m of messages) {
-      await db.execute(
-        `INSERT INTO ai_messages (id, chat_id, role, content, timestamp, query)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [m.id, chatId, m.role, m.content, m.timestamp, m.query ?? null],
-      );
+      await db.execute(_messageRepo.insertSql, _messageRepo.toParams(m));
     }
   },
 };
