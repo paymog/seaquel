@@ -782,20 +782,22 @@
 														>
 															<StarIcon class="fill-current" />
 														</Button>
-														<Tooltip.Root>
-															<Tooltip.Trigger>
-																{#snippet child({ props })}
-																	<button
-																		{...props}
-																		class="shrink-0 cursor-pointer text-green-500 hover:text-muted-foreground transition-colors"
-																		onclick={(e) => { e.stopPropagation(); handleUnshareQuery(item.id); }}
-																	>
-																		<GitBranchIcon class="size-3!" />
-																	</button>
-																{/snippet}
-															</Tooltip.Trigger>
-															<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
-														</Tooltip.Root>
+														{#if db.state.activeProjectHasGit}
+															<Tooltip.Root>
+																<Tooltip.Trigger>
+																	{#snippet child({ props })}
+																		<button
+																			{...props}
+																			class="shrink-0 cursor-pointer text-green-500 hover:text-muted-foreground transition-colors"
+																			onclick={(e) => { e.stopPropagation(); handleUnshareQuery(item.id); }}
+																		>
+																			<GitBranchIcon class="size-3!" />
+																		</button>
+																	{/snippet}
+																</Tooltip.Trigger>
+																<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
+															</Tooltip.Root>
+														{/if}
 													</div>
 													{#if item.updatedAt}
 														<p class="text-xs text-muted-foreground w-full text-start">
@@ -959,6 +961,7 @@
 						</Collapsible>
 
 						<!-- Shared folder (shared, non-starred queries) -->
+						{#if db.state.activeProjectHasGit}
 						<Collapsible bind:open={sharedExpanded}>
 							<Sidebar.MenuItem>
 								<CollapsibleTrigger>
@@ -1069,6 +1072,7 @@
 								</CollapsibleContent>
 							</Sidebar.MenuItem>
 						</Collapsible>
+						{/if}
 
 						<!-- History folder (per-connection) -->
 						{#if db.state.activeConnectionId}
@@ -1212,20 +1216,22 @@
 														>
 															<StarIcon class="fill-current" />
 														</Button>
-														<Tooltip.Root>
-															<Tooltip.Trigger>
-																{#snippet child({ props })}
-																	<button
-																		{...props}
-																		class="shrink-0 cursor-pointer text-green-500 hover:text-muted-foreground transition-colors"
-																		onclick={(e) => { e.stopPropagation(); handleUnshareDashboard(item.id); }}
-																	>
-																		<GitBranchIcon class="size-3!" />
-																	</button>
-																{/snippet}
-															</Tooltip.Trigger>
-															<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
-														</Tooltip.Root>
+														{#if db.state.activeProjectHasGit}
+															<Tooltip.Root>
+																<Tooltip.Trigger>
+																	{#snippet child({ props })}
+																		<button
+																			{...props}
+																			class="shrink-0 cursor-pointer text-green-500 hover:text-muted-foreground transition-colors"
+																			onclick={(e) => { e.stopPropagation(); handleUnshareDashboard(item.id); }}
+																		>
+																			<GitBranchIcon class="size-3!" />
+																		</button>
+																	{/snippet}
+																</Tooltip.Trigger>
+																<Tooltip.Content>{m.connection_mark_local_only()}</Tooltip.Content>
+															</Tooltip.Root>
+														{/if}
 													</div>
 													{#if item.updatedAt}
 														<p class="text-xs text-muted-foreground w-full text-start">
@@ -1385,6 +1391,7 @@
 						</Collapsible>
 
 						<!-- Shared folder -->
+						{#if db.state.activeProjectHasGit}
 						<Collapsible bind:open={dashboardSharedExpanded}>
 							<Sidebar.MenuItem>
 								<CollapsibleTrigger>
@@ -1493,6 +1500,7 @@
 								</CollapsibleContent>
 							</Sidebar.MenuItem>
 						</Collapsible>
+						{/if}
 					</Sidebar.Menu>
 				</Sidebar.GroupContent>
 			</Sidebar.Group>
