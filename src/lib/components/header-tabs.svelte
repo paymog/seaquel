@@ -17,8 +17,9 @@
     import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
     import BatchUnsavedDialog from "$lib/components/batch-unsaved-dialog.svelte";
     import SaveQueryDialog from "$lib/components/save-query-dialog.svelte";
-    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, WorkflowTab, VisualizeTab, ConnectionTab, DashboardTab, ActiveViewType } from "$lib/types";
+    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, WorkflowTab, VisualizeTab, ConnectionTab, DashboardTab, StarterTab, SettingsTab, ActiveViewType } from "$lib/types";
     import type { Pane } from "$lib/types";
+    import type { Component } from "svelte";
     import { usePaneDragState } from "$lib/components/pane-drag-context.svelte.js";
 
     let { paneId = undefined, pane = undefined }: { paneId?: string; pane?: Pane } = $props();
@@ -104,71 +105,73 @@
         }
     };
 
-    const handleQueryTabClick = (tabId: string) => {
-        db.queryTabs.setActive(tabId);
-        db.ui.setActiveView("query");
+    type TabType = ActiveViewType;
+
+    type TabConfig = {
+        icon: Component<{ class?: string }>;
+        label: (tab: any) => string;
+        renameable?: boolean;
+        unsavedIndicator?: (id: string) => string;
+        closable?: (tab: any) => boolean;
+        switchesConnection?: boolean;
+        extraClass?: string;
     };
 
-    const handleSchemaTabClick = (tabId: string) => {
-        db.schemaTabs.setActive(tabId);
-        db.ui.setActiveView("schema");
+    const tabConfigs: Record<TabType, TabConfig> = {
+        query: {
+            icon: FileCodeIcon,
+            label: (t: QueryTab) => t.name,
+            renameable: true,
+            unsavedIndicator: (id) => db.queryTabs.hasUnsavedChanges(id) ? " *" : "",
+        },
+        schema: {
+            icon: TableIcon,
+            label: (t: SchemaTab) => `${t.table.schema}.${t.table.name}`,
+        },
+        explain: { icon: ActivityIcon, label: (t: ExplainTab) => t.name },
+        erd: { icon: NetworkIcon, label: (t: ErdTab) => t.name, switchesConnection: true },
+        statistics: { icon: BarChart3Icon, label: (t: StatisticsTab) => t.name, switchesConnection: true },
+        workflow: { icon: WorkflowIcon, label: (t: WorkflowTab) => t.name, switchesConnection: true },
+        visualize: { icon: GitBranchIcon, label: (t: VisualizeTab) => t.name },
+        connection: { icon: CableIcon, label: (t: ConnectionTab) => t.name },
+        dashboard: {
+            icon: LayoutDashboardIcon,
+            label: (t: DashboardTab) => t.name,
+            renameable: true,
+        },
+        starter: {
+            icon: RocketIcon,
+            label: (t: StarterTab) => t.name,
+            closable: (t: StarterTab) => t.closable,
+            extraClass: "cursor-pointer",
+        },
+        settings: {
+            icon: SettingsIcon,
+            label: (t: SettingsTab) => t.name,
+            extraClass: "cursor-pointer",
+        },
     };
 
-    const handleExplainTabClick = (tabId: string) => {
-        db.explainTabs.setActive(tabId);
-        db.ui.setActiveView("explain");
+    const tabManagers: Record<TabType, { setActive: (id: string) => void; remove: (id: string) => void }> = {
+        query: db.queryTabs,
+        schema: db.schemaTabs,
+        explain: db.explainTabs,
+        erd: db.erdTabs,
+        statistics: db.statisticsTabs,
+        workflow: db.workflowTabs,
+        visualize: db.visualizeTabs,
+        connection: db.connectionTabs,
+        dashboard: db.dashboardTabs,
+        starter: db.starterTabs,
+        settings: db.settingsTabs,
     };
 
-    const handleErdTabClick = (tabId: string) => {
-        const erdTab = db.state.erdTabs.find(t => t.id === tabId);
-        if (erdTab?.connectionId) {
-            db.connections.setActive(erdTab.connectionId);
+    const handleTabClick = (tabId: string, type: TabType, tab: any) => {
+        if (tabConfigs[type].switchesConnection && tab.connectionId) {
+            db.connections.setActive(tab.connectionId);
         }
-        db.erdTabs.setActive(tabId);
-        db.ui.setActiveView("erd");
-    };
-
-    const handleStatisticsTabClick = (tabId: string) => {
-        const statsTab = db.state.statisticsTabs.find(t => t.id === tabId);
-        if (statsTab?.connectionId) {
-            db.connections.setActive(statsTab.connectionId);
-        }
-        db.statisticsTabs.setActive(tabId);
-        db.ui.setActiveView("statistics");
-    };
-
-    const handleWorkflowTabClick = (tabId: string) => {
-        const workflowTab = db.state.workflowTabs.find(t => t.id === tabId);
-        if (workflowTab?.connectionId) {
-            db.connections.setActive(workflowTab.connectionId);
-        }
-        db.workflowTabs.setActive(tabId);
-        db.ui.setActiveView("workflow");
-    };
-
-    const handleVisualizeTabClick = (tabId: string) => {
-        db.visualizeTabs.setActive(tabId);
-        db.ui.setActiveView("visualize");
-    };
-
-    const handleConnectionTabClick = (tabId: string) => {
-        db.connectionTabs.setActive(tabId);
-        db.ui.setActiveView("connection");
-    };
-
-    const handleDashboardTabClick = (tabId: string) => {
-        db.dashboardTabs.setActive(tabId);
-        db.ui.setActiveView("dashboard");
-    };
-
-    const handleStarterTabClick = (tabId: string) => {
-        db.starterTabs.setActive(tabId);
-        db.ui.setActiveView("starter");
-    };
-
-    const handleSettingsTabClick = (tabId: string) => {
-        db.settingsTabs.setActive(tabId);
-        db.ui.setActiveView("settings");
+        tabManagers[type].setActive(tabId);
+        db.ui.setActiveView(type);
     };
 
     const allTabs = $derived.by(() => {
@@ -180,8 +183,7 @@
         return Array.isArray(ordered) ? [...ordered] : [];
     });
 
-    type TabType = ActiveViewType;
-    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | WorkflowTab | VisualizeTab | ConnectionTab | DashboardTab | import('$lib/types').StarterTab | import('$lib/types').SettingsTab };
+    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | WorkflowTab | VisualizeTab | ConnectionTab | DashboardTab | StarterTab | SettingsTab };
 
     let draggedItems = $state<DndItem[]>([]);
     let isDragging = $state(false);
@@ -232,24 +234,10 @@
         return allTabs.findIndex(t => t.type === db.state.activeView && t.id === activeId);
     });
 
-    const tabClickHandlers: Record<TabType, (id: string) => void> = {
-        query: handleQueryTabClick,
-        schema: handleSchemaTabClick,
-        explain: handleExplainTabClick,
-        erd: handleErdTabClick,
-        statistics: handleStatisticsTabClick,
-        workflow: handleWorkflowTabClick,
-        visualize: handleVisualizeTabClick,
-        connection: handleConnectionTabClick,
-        dashboard: handleDashboardTabClick,
-        starter: handleStarterTabClick,
-        settings: handleSettingsTabClick,
-    };
-
     const switchToTab = (index: number) => {
         if (index < 0 || index >= allTabs.length) return;
-        const tab = allTabs[index];
-        tabClickHandlers[tab.type](tab.id);
+        const { id, type, tab } = allTabs[index];
+        handleTabClick(id, type, tab);
     };
 
     let pendingCloseTabId = $state<string | null>(null);
@@ -260,22 +248,8 @@
     let unsavedTabsInBatch = $state<string[]>([]);
     let showBatchUnsavedDialog = $state(false);
 
-    const tabRemovers: Record<TabType, { remove: (id: string) => void }> = {
-        query: db.queryTabs,
-        schema: db.schemaTabs,
-        explain: db.explainTabs,
-        erd: db.erdTabs,
-        statistics: db.statisticsTabs,
-        workflow: db.workflowTabs,
-        visualize: db.visualizeTabs,
-        connection: db.connectionTabs,
-        dashboard: db.dashboardTabs,
-        starter: db.starterTabs,
-        settings: db.settingsTabs,
-    };
-
     const closeTabDirect = (id: string, type: TabType) => {
-        tabRemovers[type].remove(id);
+        tabManagers[type].remove(id);
     };
 
     const tryCloseQueryTab = (tabId: string) => {
@@ -434,23 +408,28 @@
                     onfinalize={handleDndFinalize}
                 >
                     {#each displayTabs as { id, type, tab } (id)}
+                        {@const config = tabConfigs[type]}
+                        {@const TabIcon = config.icon}
+                        {@const label = config.label(tab)}
+                        {@const isRenameable = config.renameable ?? false}
+                        {@const showClose = config.closable ? config.closable(tab) : true}
+                        {@const unsaved = config.unsavedIndicator?.(id) ?? ""}
                         <div>
                         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-                        {#if type === 'query'}
-                            {@const queryTab = tab as import('$lib/types').QueryTab}
                             <ContextMenu.Root>
                                 <ContextMenu.Trigger>
                                     <div
                                         class={[
                                             "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            isTabActive(id, 'query')
+                                            config.extraClass,
+                                            isTabActive(id, type)
                                                 ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
                                                 : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
                                         ]}
-                                        onclick={() => handleQueryTabClick(id)}
+                                        onclick={() => handleTabClick(id, type, tab)}
                                     >
-                                        <FileCodeIcon class="size-3 text-muted-foreground" />
-                                        {#if editingTabId === id}
+                                        <TabIcon class="size-3 text-muted-foreground" />
+                                        {#if isRenameable && editingTabId === id}
                                             <input
                                                 bind:value={editingTabName}
                                                 class="h-5 px-1 text-xs pr-4 outline-none ring-0"
@@ -460,441 +439,27 @@
                                                 onclick={(e) => e.stopPropagation()}
                                                 {@attach autofocus()}
                                             />
-                                        {:else}
+                                        {:else if isRenameable}
                                             <span
                                                 class="pr-4"
                                                 ondblclick={(e) => {
                                                     e.stopPropagation();
-                                                    startEditing(id, queryTab.name, e.currentTarget);
+                                                    startEditing(id, label, e.currentTarget);
                                                 }}
                                             >
-                                                {queryTab.name}{db.queryTabs.hasUnsavedChanges(id) ? " *" : ""}
+                                                {label}{unsaved}
                                             </span>
-                                        {/if}
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                            onclick={(e) => {
-                                                e.stopPropagation();
-                                                tryCloseQueryTab(id);
-                                            }}
-                                        >
-                                            <XIcon />
-                                        </Button>
-                                    </div>
-                                </ContextMenu.Trigger>
-                                <ContextMenu.Portal>
-                                    <ContextMenu.Content class="w-40">
-                                        <ContextMenu.Item onclick={() => tryCloseQueryTab(id)}>Close</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
-                                        <ContextMenu.Separator />
-                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
-                                        {#if paneId}
-                                            <ContextMenu.Separator />
-                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
-                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
-                                        {/if}
-                                    </ContextMenu.Content>
-                                </ContextMenu.Portal>
-                            </ContextMenu.Root>
-                        {:else if type === 'schema'}
-                            {@const schemaTab = tab as import('$lib/types').SchemaTab}
-                            <ContextMenu.Root>
-                                <ContextMenu.Trigger>
-                                    <div
-                                        class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            isTabActive(id, 'schema')
-                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                                        ]}
-                                        onclick={() => handleSchemaTabClick(id)}
-                                    >
-                                        <TableIcon class="size-3 text-muted-foreground" />
-                                        <span class="pr-4">{schemaTab.table.schema}.{schemaTab.table.name}</span>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                            onclick={(e) => {
-                                                e.stopPropagation();
-                                                db.schemaTabs.remove(id);
-                                            }}
-                                        >
-                                            <XIcon />
-                                        </Button>
-                                    </div>
-                                </ContextMenu.Trigger>
-                                <ContextMenu.Portal>
-                                    <ContextMenu.Content class="w-40">
-                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
-                                        <ContextMenu.Separator />
-                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
-                                        {#if paneId}
-                                            <ContextMenu.Separator />
-                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
-                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
-                                        {/if}
-                                    </ContextMenu.Content>
-                                </ContextMenu.Portal>
-                            </ContextMenu.Root>
-                        {:else if type === 'explain'}
-                            {@const explainTab = tab as import('$lib/types').ExplainTab}
-                            <ContextMenu.Root>
-                                <ContextMenu.Trigger>
-                                    <div
-                                        class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            isTabActive(id, 'explain')
-                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                                        ]}
-                                        onclick={() => handleExplainTabClick(id)}
-                                    >
-                                        <ActivityIcon class="size-3 text-muted-foreground" />
-                                        <span class="pr-4">{explainTab.name}</span>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                            onclick={(e) => {
-                                                e.stopPropagation();
-                                                db.explainTabs.remove(id);
-                                            }}
-                                        >
-                                            <XIcon />
-                                        </Button>
-                                    </div>
-                                </ContextMenu.Trigger>
-                                <ContextMenu.Portal>
-                                    <ContextMenu.Content class="w-40">
-                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
-                                        <ContextMenu.Separator />
-                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
-                                        {#if paneId}
-                                            <ContextMenu.Separator />
-                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
-                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
-                                        {/if}
-                                    </ContextMenu.Content>
-                                </ContextMenu.Portal>
-                            </ContextMenu.Root>
-                        {:else if type === 'erd'}
-                            {@const erdTab = tab as import('$lib/types').ErdTab}
-                            <ContextMenu.Root>
-                                <ContextMenu.Trigger>
-                                    <div
-                                        class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            isTabActive(id, 'erd')
-                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                                        ]}
-                                        onclick={() => handleErdTabClick(id)}
-                                    >
-                                        <NetworkIcon class="size-3 text-muted-foreground" />
-                                        <span class="pr-4">{erdTab.name}</span>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                            onclick={(e) => {
-                                                e.stopPropagation();
-                                                db.erdTabs.remove(id);
-                                            }}
-                                        >
-                                            <XIcon />
-                                        </Button>
-                                    </div>
-                                </ContextMenu.Trigger>
-                                <ContextMenu.Portal>
-                                    <ContextMenu.Content class="w-40">
-                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
-                                        <ContextMenu.Separator />
-                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
-                                        {#if paneId}
-                                            <ContextMenu.Separator />
-                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
-                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
-                                        {/if}
-                                    </ContextMenu.Content>
-                                </ContextMenu.Portal>
-                            </ContextMenu.Root>
-                        {:else if type === 'statistics'}
-                            {@const statsTab = tab as import('$lib/types').StatisticsTab}
-                            <ContextMenu.Root>
-                                <ContextMenu.Trigger>
-                                    <div
-                                        class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            isTabActive(id, 'statistics')
-                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                                        ]}
-                                        onclick={() => handleStatisticsTabClick(id)}
-                                    >
-                                        <BarChart3Icon class="size-3 text-muted-foreground" />
-                                        <span class="pr-4">{statsTab.name}</span>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                            onclick={(e) => {
-                                                e.stopPropagation();
-                                                db.statisticsTabs.remove(id);
-                                            }}
-                                        >
-                                            <XIcon />
-                                        </Button>
-                                    </div>
-                                </ContextMenu.Trigger>
-                                <ContextMenu.Portal>
-                                    <ContextMenu.Content class="w-40">
-                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
-                                        <ContextMenu.Separator />
-                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
-                                        {#if paneId}
-                                            <ContextMenu.Separator />
-                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
-                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
-                                        {/if}
-                                    </ContextMenu.Content>
-                                </ContextMenu.Portal>
-                            </ContextMenu.Root>
-                        {:else if type === 'workflow'}
-                            {@const workflowTab = tab as import('$lib/types').WorkflowTab}
-                            <ContextMenu.Root>
-                                <ContextMenu.Trigger>
-                                    <div
-                                        class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            isTabActive(id, 'workflow')
-                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                                        ]}
-                                        onclick={() => handleWorkflowTabClick(id)}
-                                    >
-                                        <WorkflowIcon class="size-3 text-muted-foreground" />
-                                        <span class="pr-4">{workflowTab.name}</span>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                            onclick={(e) => {
-                                                e.stopPropagation();
-                                                db.workflowTabs.remove(id);
-                                            }}
-                                        >
-                                            <XIcon />
-                                        </Button>
-                                    </div>
-                                </ContextMenu.Trigger>
-                                <ContextMenu.Portal>
-                                    <ContextMenu.Content class="w-40">
-                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
-                                        <ContextMenu.Separator />
-                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
-                                        {#if paneId}
-                                            <ContextMenu.Separator />
-                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
-                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
-                                        {/if}
-                                    </ContextMenu.Content>
-                                </ContextMenu.Portal>
-                            </ContextMenu.Root>
-                        {:else if type === 'visualize'}
-                            {@const visualizeTab = tab as import('$lib/types').VisualizeTab}
-                            <ContextMenu.Root>
-                                <ContextMenu.Trigger>
-                                    <div
-                                        class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            isTabActive(id, 'visualize')
-                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                                        ]}
-                                        onclick={() => handleVisualizeTabClick(id)}
-                                    >
-                                        <GitBranchIcon class="size-3 text-muted-foreground" />
-                                        <span class="pr-4">{visualizeTab.name}</span>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                            onclick={(e) => {
-                                                e.stopPropagation();
-                                                db.visualizeTabs.remove(id);
-                                            }}
-                                        >
-                                            <XIcon />
-                                        </Button>
-                                    </div>
-                                </ContextMenu.Trigger>
-                                <ContextMenu.Portal>
-                                    <ContextMenu.Content class="w-40">
-                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
-                                        <ContextMenu.Separator />
-                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
-                                        {#if paneId}
-                                            <ContextMenu.Separator />
-                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
-                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
-                                        {/if}
-                                    </ContextMenu.Content>
-                                </ContextMenu.Portal>
-                            </ContextMenu.Root>
-                        {:else if type === 'connection'}
-                            {@const connectionTab = tab as ConnectionTab}
-                            <ContextMenu.Root>
-                                <ContextMenu.Trigger>
-                                    <div
-                                        class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            isTabActive(id, 'connection')
-                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                                        ]}
-                                        onclick={() => handleConnectionTabClick(id)}
-                                    >
-                                        <CableIcon class="size-3 text-muted-foreground" />
-                                        <span class="pr-4">{connectionTab.name}</span>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                            onclick={(e) => {
-                                                e.stopPropagation();
-                                                db.connectionTabs.remove(id);
-                                            }}
-                                        >
-                                            <XIcon />
-                                        </Button>
-                                    </div>
-                                </ContextMenu.Trigger>
-                                <ContextMenu.Portal>
-                                    <ContextMenu.Content class="w-40">
-                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
-                                        <ContextMenu.Separator />
-                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
-                                        {#if paneId}
-                                            <ContextMenu.Separator />
-                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
-                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
-                                        {/if}
-                                    </ContextMenu.Content>
-                                </ContextMenu.Portal>
-                            </ContextMenu.Root>
-                        {:else if type === 'dashboard'}
-                            {@const dashboardTab = tab as DashboardTab}
-                            <ContextMenu.Root>
-                                <ContextMenu.Trigger>
-                                    <div
-                                        class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors",
-                                            isTabActive(id, 'dashboard')
-                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                                        ]}
-                                        onclick={() => handleDashboardTabClick(id)}
-                                    >
-                                        <LayoutDashboardIcon class="size-3 text-muted-foreground" />
-                                        {#if editingTabId === id}
-                                            <input
-                                                bind:value={editingTabName}
-                                                class="h-5 px-1 text-xs pr-4 outline-none ring-0"
-                                                style="width: {editingInputWidth}px"
-                                                onkeydown={handleKeydown}
-                                                onblur={finishEditing}
-                                                onclick={(e) => e.stopPropagation()}
-                                                {@attach autofocus()}
-                                            />
                                         {:else}
-                                            <span
-                                                class="pr-4"
-                                                ondblclick={(e) => {
-                                                    e.stopPropagation();
-                                                    startEditing(id, dashboardTab.name, e.currentTarget);
-                                                }}
-                                            >
-                                                {dashboardTab.name}
-                                            </span>
+                                            <span class="pr-4">{label}</span>
                                         {/if}
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                            onclick={(e) => {
-                                                e.stopPropagation();
-                                                db.dashboardTabs.remove(id);
-                                            }}
-                                        >
-                                            <XIcon />
-                                        </Button>
-                                    </div>
-                                </ContextMenu.Trigger>
-                                <ContextMenu.Portal>
-                                    <ContextMenu.Content class="w-40">
-                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
-                                        <ContextMenu.Separator />
-                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
-                                        {#if paneId}
-                                            <ContextMenu.Separator />
-                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
-                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
-                                        {/if}
-                                    </ContextMenu.Content>
-                                </ContextMenu.Portal>
-                            </ContextMenu.Root>
-                        {:else if type === 'starter'}
-                            {@const starterTab = tab as import('$lib/types').StarterTab}
-                            <ContextMenu.Root>
-                                <ContextMenu.Trigger>
-                                    <div
-                                        class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors cursor-pointer",
-                                            isTabActive(id, 'starter')
-                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                                        ]}
-                                        onclick={() => handleStarterTabClick(id)}
-                                    >
-                                        <RocketIcon class="size-3 text-muted-foreground" />
-                                        <span class="pr-4">{starterTab.name}</span>
-                                        {#if starterTab.closable}
+                                        {#if showClose}
                                             <Button
                                                 size="icon"
                                                 variant="ghost"
                                                 class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
                                                 onclick={(e) => {
                                                     e.stopPropagation();
-                                                    db.starterTabs.remove(id);
+                                                    closeTab(id, type);
                                                 }}
                                             >
                                                 <XIcon />
@@ -918,51 +483,6 @@
                                     </ContextMenu.Content>
                                 </ContextMenu.Portal>
                             </ContextMenu.Root>
-                        {:else if type === 'settings'}
-                            {@const settingsTab = tab as import('$lib/types').SettingsTab}
-                            <ContextMenu.Root>
-                                <ContextMenu.Trigger>
-                                    <div
-                                        class={[
-                                            "relative group shrink-0 flex items-center gap-2 px-3 h-7 text-xs transition-colors cursor-pointer",
-                                            isTabActive(id, 'settings')
-                                                ? "bg-muted border-t border-l border-r border-border rounded-t-md -mb-px"
-                                                : "hover:bg-muted/50 rounded-t-md -mb-px border-t border-l border-r border-transparent",
-                                        ]}
-                                        onclick={() => handleSettingsTabClick(id)}
-                                    >
-                                        <SettingsIcon class="size-3 text-muted-foreground" />
-                                        <span class="pr-4">{settingsTab.name}</span>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
-                                            onclick={(e) => {
-                                                e.stopPropagation();
-                                                db.settingsTabs.remove(id);
-                                            }}
-                                        >
-                                            <XIcon />
-                                        </Button>
-                                    </div>
-                                </ContextMenu.Trigger>
-                                <ContextMenu.Portal>
-                                    <ContextMenu.Content class="w-40">
-                                        <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>
-                                        <ContextMenu.Item onclick={() => closeTabsToLeft(id)}>Close Left</ContextMenu.Item>
-                                        <ContextMenu.Separator />
-                                        <ContextMenu.Item onclick={closeAllTabs}>Close All</ContextMenu.Item>
-                                        {#if paneId}
-                                            <ContextMenu.Separator />
-                                            <ContextMenu.Item onclick={() => db.panes.splitLeft(paneId, id)}>Split Left</ContextMenu.Item>
-                                            <ContextMenu.Item onclick={() => db.panes.splitRight(paneId, id)}>Split Right</ContextMenu.Item>
-                                        {/if}
-                                    </ContextMenu.Content>
-                                </ContextMenu.Portal>
-                            </ContextMenu.Root>
-                        {/if}
                         </div>
                     {/each}
                 </div>
