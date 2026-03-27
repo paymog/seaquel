@@ -62,6 +62,8 @@
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
 	import { getDataDir } from "$lib/api/tauri";
 	import DatabaseIcon from "@lucide/svelte/icons/database";
+	import FileTextIcon from "@lucide/svelte/icons/file-text";
+	import { openLogViewer } from "$lib/utils/log-viewer-window";
 
 	interface Props {
 		tab: SettingsTab;
@@ -122,6 +124,9 @@
 	// Query version limit
 	let queryVersionLimit = $state<number>(100);
 
+	// Dashboard version limit
+	let dashboardVersionLimit = $state<number>(100);
+
 	// Delete confirmation state
 	let deleteDialogOpen = $state(false);
 	let themeToDelete = $state<Theme | null>(null);
@@ -134,7 +139,15 @@
 	onMount(async () => {
 		loadAppInfo();
 		const savedLimit = await appStateRepo.get(await getDatabase(), "query_version_limit");
-		if (savedLimit) queryVersionLimit = parseInt(savedLimit, 10);
+		if (savedLimit) {
+			const parsed = parseInt(savedLimit, 10);
+			if (!isNaN(parsed)) queryVersionLimit = parsed;
+		}
+		const savedDashboardLimit = await appStateRepo.get(await getDatabase(), "dashboard_version_limit");
+		if (savedDashboardLimit) {
+			const parsed = parseInt(savedDashboardLimit, 10);
+			if (!isNaN(parsed)) dashboardVersionLimit = parsed;
+		}
 	});
 
 	async function loadAppInfo() {
@@ -522,6 +535,7 @@
 
 	async function connectToInternalDatabase() {
 		isConnectingInternal = true;
+		const tabId = tab.id;
 		try {
 			const existing = db.state.projects.find((p) => p.name === "Seaquel Internal");
 			if (existing) {
@@ -555,7 +569,7 @@
 					projectId: project.id,
 				});
 			}
-			db.settingsTabs.remove(tab.id);
+			db.settingsTabs.remove(tabId);
 		} catch (error) {
 			errorToast(`Failed to connect: ${error instanceof Error ? error.message : String(error)}`);
 		} finally {
@@ -711,15 +725,25 @@
 						</div>
 					</div>
 
-					<Button
-						variant="outline"
-						size="sm"
-						onclick={connectToInternalDatabase}
-						disabled={isConnectingInternal}
-					>
-						<DatabaseIcon class="size-4 mr-1" />
-						Connect to Internal Database
-					</Button>
+					<div class="flex gap-2">
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={connectToInternalDatabase}
+							disabled={isConnectingInternal}
+						>
+							<DatabaseIcon class="size-4 mr-1" />
+							Connect to Internal Database
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={openLogViewer}
+						>
+							<FileTextIcon class="size-4 mr-1" />
+							{m.settings_view_logs()}
+						</Button>
+					</div>
 				</div>
 			{/if}
 
@@ -921,6 +945,23 @@
 						onchange={async () => {
 							const db = await getDatabase();
 							await appStateRepo.set(db, "query_version_limit", String(queryVersionLimit));
+						}}
+						class="w-24 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+					/>
+				</div>
+				<div class="flex items-center justify-between">
+					<div>
+						<p class="text-sm font-medium">{m.settings_dashboard_version_limit()}</p>
+						<p class="text-sm text-muted-foreground">{m.settings_dashboard_version_limit_description()}</p>
+					</div>
+					<input
+						type="number"
+						min="10"
+						max="1000"
+						bind:value={dashboardVersionLimit}
+						onchange={async () => {
+							const db = await getDatabase();
+							await appStateRepo.set(db, "dashboard_version_limit", String(dashboardVersionLimit));
 						}}
 						class="w-24 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
 					/>

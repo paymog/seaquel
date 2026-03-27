@@ -173,4 +173,84 @@ export class SharedDashboardManager {
   async unshareDashboard(dashboardId: string): Promise<boolean> {
     return this.deleteDashboard(dashboardId);
   }
+
+  /**
+   * Reconcile .json files from the scan cache with SQLite dashboards.
+   * - New .json files → create Dashboard with shared=true
+   * - Missing .json files for shared dashboards → set shared=false
+   * - Updated .json files → update dashboard content
+   * Returns the list of dashboards after reconciliation.
+   */
+  reconcileWithGitFiles(projectId: string, dashboards: Dashboard[]): Dashboard[] {
+    const repoId = this.state.activeRepoId;
+    if (!repoId) return dashboards;
+
+    const dashboardsBase = this.getDashboardsBasePath();
+    if (!dashboardsBase) return dashboards;
+
+    const allScannedDashboards = this.state.sharedDashboardsByRepo[repoId] ?? [];
+    const gitDashboards = allScannedDashboards.filter((d) =>
+      d.filePath?.startsWith(dashboardsBase + "/"),
+    );
+
+    const result = [...dashboards];
+    const matchedGitNames = new Set<string>();
+
+    // Match existing shared dashboards to git files by name
+    for (const gitDashboard of gitDashboards) {
+      const matchKey = gitDashboard.name.toLowerCase();
+      const existingIdx = result.findIndex((d) => d.shared && d.name.toLowerCase() === matchKey);
+
+      const updatedAt =
+        gitDashboard.updatedAt instanceof Date
+          ? gitDashboard.updatedAt
+          : gitDashboard.updatedAt
+            ? new Date(gitDashboard.updatedAt)
+            : new Date();
+
+      if (existingIdx !== -1) {
+        // Update content if git file is newer
+        const existing = result[existingIdx];
+        result[existingIdx] = {
+          ...existing,
+          widgets: gitDashboard.widgets,
+          viewport: gitDashboard.viewport,
+          description: gitDashboard.description,
+          dateFilter: gitDashboard.dateFilter,
+          updatedAt,
+        };
+        matchedGitNames.add(matchKey);
+      } else {
+        // New .json file → create a new shared Dashboard
+        const newDashboard: Dashboard = {
+          id: `dashboard-${crypto.randomUUID()}`,
+          name: gitDashboard.name,
+          projectId,
+          widgets: gitDashboard.widgets,
+          viewport: gitDashboard.viewport,
+          dateFilter: gitDashboard.dateFilter,
+          createdAt: new Date(),
+          updatedAt,
+          shared: true,
+          starred: false,
+          description: gitDashboard.description,
+        };
+        result.push(newDashboard);
+        matchedGitNames.add(matchKey);
+      }
+    }
+
+    // Shared dashboards in SQLite with no matching .json file → mark as unshared
+    for (let i = 0; i < result.length; i++) {
+      const d = result[i];
+      if (d.shared) {
+        const matchKey = d.name.toLowerCase();
+        if (!matchedGitNames.has(matchKey)) {
+          result[i] = { ...d, shared: false };
+        }
+      }
+    }
+
+    return result;
+  }
 }

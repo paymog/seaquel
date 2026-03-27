@@ -378,6 +378,31 @@ export class PersistenceManager {
     }
   }
 
+  async persistProjectDashboards(projectId: string): Promise<void> {
+    try {
+      const db = await getDatabase();
+      const dashboards = this.state.dashboardsByProject[projectId] ?? [];
+      for (const d of dashboards) {
+        const persisted: import("$lib/storage/repository").PersistedDashboard = {
+          id: d.id,
+          projectId: d.projectId,
+          name: d.name,
+          viewport: JSON.stringify(d.viewport),
+          widgets: JSON.stringify(d.widgets),
+          dateFilter: d.dateFilter ? JSON.stringify(d.dateFilter) : null,
+          starred: d.starred,
+          shared: d.shared,
+          description: d.description,
+          createdAt: d.createdAt.toISOString(),
+          updatedAt: d.updatedAt.toISOString(),
+        };
+        await dashboardsRepo.save(db, persisted);
+      }
+    } catch (error) {
+      void log.error(`Failed to persist dashboards for project ${projectId}:`, error);
+    }
+  }
+
   async loadProjectState(projectId: string): Promise<PersistedProjectState | null> {
     try {
       const db = await getDatabase();

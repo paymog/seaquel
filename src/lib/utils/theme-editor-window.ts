@@ -1,7 +1,7 @@
-import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { Theme } from "$lib/types/theme";
+import { openChildWindow, closeChildWindow, isChildWindowOpen } from "./child-window";
 
-let themeEditorWindow: WebviewWindow | null = null;
+const LABEL = "theme-editor";
 
 /**
  * Opens the theme editor in a separate window.
@@ -9,65 +9,31 @@ let themeEditorWindow: WebviewWindow | null = null;
  * @param theme - The theme to edit, or null to create a new theme
  */
 export async function openThemeEditor(theme: Theme | null): Promise<void> {
-  try {
-    // Check if window already exists
-    const existing = await WebviewWindow.getByLabel("theme-editor");
-    if (existing) {
-      await existing.setFocus();
-      return;
-    }
+  const url = theme
+    ? `/windows/theme-editor?themeId=${encodeURIComponent(theme.id)}`
+    : "/windows/theme-editor";
 
-    // Build URL with query params
-    const url = theme
-      ? `/windows/theme-editor?themeId=${encodeURIComponent(theme.id)}`
-      : "/windows/theme-editor";
-
-    // Get the main window to set as parent
-    const mainWindow = getCurrentWebviewWindow();
-
-    // Create new window
-    themeEditorWindow = new WebviewWindow("theme-editor", {
-      url,
-      title: theme ? `Edit Theme: ${theme.name}` : "Create New Theme",
-      width: 800,
-      height: 600,
-      minWidth: 700,
-      minHeight: 500,
-      center: true,
-      resizable: true,
-      decorations: true,
-      alwaysOnTop: false,
-      parent: mainWindow,
-    });
-
-    // Handle window creation error
-    void themeEditorWindow.once("tauri://error", (e) => {
-      console.error("Failed to create theme editor window:", e);
-      themeEditorWindow = null;
-    });
-
-    // Handle window close
-    void themeEditorWindow.once("tauri://destroyed", () => {
-      themeEditorWindow = null;
-    });
-  } catch (error) {
-    console.error("Error opening theme editor:", error);
-  }
+  await openChildWindow({
+    label: LABEL,
+    url,
+    title: theme ? `Edit Theme: ${theme.name}` : "Create New Theme",
+    width: 800,
+    height: 600,
+    minWidth: 700,
+    minHeight: 500,
+  });
 }
 
 /**
  * Closes the theme editor window if it's open.
  */
 export async function closeThemeEditor(): Promise<void> {
-  if (themeEditorWindow) {
-    await themeEditorWindow.close();
-    themeEditorWindow = null;
-  }
+  await closeChildWindow(LABEL);
 }
 
 /**
  * Checks if the theme editor window is currently open.
  */
 export function isThemeEditorOpen(): boolean {
-  return themeEditorWindow !== null;
+  return isChildWindowOpen(LABEL);
 }

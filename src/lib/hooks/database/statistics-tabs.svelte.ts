@@ -50,7 +50,7 @@ export class StatisticsTabManager extends BaseTabManager<StatisticsTab> {
     const existingTab = tabs.find((t) => t.connectionId === this.state.activeConnectionId);
     if (existingTab) {
       // Just switch to the existing tab
-      this.setActiveTabId(existingTab.id);
+      this.setActive(existingTab.id);
       this.viewFallbackFn!("statistics");
       // Refresh the data
       await this.refresh(existingTab.id);

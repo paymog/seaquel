@@ -41,9 +41,9 @@
     const shortcuts = setShortcuts();
     let { children } = $props();
 
-    // Check if we're in the theme editor window (no app shell needed)
-    const isThemeEditor = $derived(
-        page.url.pathname.startsWith("/windows/theme-editor"),
+    // Check if we're in a standalone window (no app shell needed)
+    const isStandaloneWindow = $derived(
+        page.url.pathname.startsWith("/windows/"),
     );
 
     // Initialize stores on mount
@@ -191,8 +191,8 @@
 <ModeWatcher />
 <Toaster position="bottom-right" richColors expand />
 
-{#if isThemeEditor}
-    <!-- Theme editor window: minimal layout, no app shell -->
+{#if isStandaloneWindow}
+    <!-- Standalone window: minimal layout, no app shell -->
     {@render children()}
 {:else}
     <!-- Main app window: full app shell with header and sidebars -->

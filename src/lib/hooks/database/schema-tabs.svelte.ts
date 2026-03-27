@@ -78,7 +78,6 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
     )
       return null;
 
-    const projectId = this.state.activeProjectId;
     const connectionId = this.state.activeConnectionId;
     const tabs = this.getProjectTabs();
     const adapter = getAdapter(this.state.activeConnection.type);
@@ -113,8 +112,7 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
     if (existingTab) {
       // Update existing tab with new metadata
       this.updateTab(existingTab.id, (t) => ({ ...t, table: updatedTable }));
-      this.setActiveTabId(existingTab.id);
-      this.schedulePersistence(projectId);
+      this.setActive(existingTab.id);
       return existingTab.id;
     }
 

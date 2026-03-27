@@ -11,17 +11,13 @@ import type { DatabaseState } from "./state.svelte.js";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
 import type { StateRestorationManager } from "./state-restoration.svelte.js";
 import { SEAQUEL_DIR, type SharedRepoManager } from "./shared-repo-manager.svelte.js";
+import type { SharedQueryManager } from "./shared-query-manager.svelte.js";
+import type { SharedDashboardManager } from "./shared-dashboard-manager.svelte.js";
 import type { StarterTabManager } from "./starter-tabs.svelte.js";
 import { MigrationManager } from "./migration.svelte.js";
 import { isTauri } from "$lib/utils/environment";
 import { log } from "$lib/utils/logger";
-import {
-  mkdir,
-  remove as removeDir,
-  rename as renameFs,
-  exists,
-  writeTextFile,
-} from "@tauri-apps/plugin-fs";
+import { mkdir, rename as renameFs, exists, writeTextFile } from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
 import { nameToFilename, serializeProjectFile } from "$lib/services/config-file-parser";
 import type { PersistedWorkflowTab } from "$lib/types/persisted";
@@ -44,6 +40,8 @@ export class ProjectManager {
   private removeConnection: ((connectionId: string) => Promise<void>) | null = null;
   private starterTabManager: StarterTabManager | null = null;
   private sharedRepos: SharedRepoManager | null = null;
+  private sharedQueryManager: SharedQueryManager | null = null;
+  private sharedDashboardManager: SharedDashboardManager | null = null;
 
   constructor(
     private state: DatabaseState,
@@ -59,6 +57,22 @@ export class ProjectManager {
    */
   setSharedRepoManager(manager: SharedRepoManager): void {
     this.sharedRepos = manager;
+  }
+
+  /**
+   * Set the shared query manager reference.
+   * Called by the main database class after SharedQueryManager is created.
+   */
+  setSharedQueryManager(manager: SharedQueryManager): void {
+    this.sharedQueryManager = manager;
+  }
+
+  /**
+   * Set the shared dashboard manager reference.
+   * Called by the main database class after SharedDashboardManager is created.
+   */
+  setSharedDashboardManager(manager: SharedDashboardManager): void {
+    this.sharedDashboardManager = manager;
   }
 
   /**
@@ -341,8 +355,6 @@ export class ProjectManager {
       return false;
     }
 
-    const project = this.state.projects.find((p) => p.id === id);
-
     // Delete all connections in the project (must await to avoid race conditions
     // where setActiveForProject schedules persistence for the soon-to-be-deleted project)
     const projectConnections = this.state.connections.filter((c) => c.projectId === id);
@@ -353,20 +365,6 @@ export class ProjectManager {
         // (e.g. via setActiveForProject) before the next iteration's await
         // gives the timer a chance to fire against the soon-to-be-deleted project
         this.persistence.cancelPendingPersistence();
-      }
-    }
-
-    // Remove project directory from the git repo if linked
-    if (project?.gitRepoPath && this.sharedRepos) {
-      const repo = this.state.sharedRepos.find((r) => r.path === project.gitRepoPath);
-      if (repo) {
-        try {
-          const dirName = nameToFilename(project.name);
-          const projectDir = await join(repo.path, SEAQUEL_DIR, "projects", dirName);
-          await removeDir(projectDir, { recursive: true });
-        } catch {
-          // Directory may not exist
-        }
       }
     }
 
@@ -414,6 +412,7 @@ export class ProjectManager {
         const repo = this.state.sharedRepos.find((r) => r.path === project.gitRepoPath);
         if (repo) {
           this.state.activeRepoId = repo.id;
+          await this.reconcileGitState(id);
         }
       }
     }
@@ -521,6 +520,9 @@ export class ProjectManager {
 
       // Import shared connections as local entries
       await this.importSharedConnections(project.id);
+
+      // Reconcile git queries and dashboards into local state
+      await this.reconcileGitState(project.id);
     }
 
     // Switch to first created project
@@ -532,6 +534,38 @@ export class ProjectManager {
   }
 
   // === PRIVATE METHODS ===
+
+  /**
+   * Reconcile git .sql and .json files with local saved queries and dashboards.
+   * Called after git repo is linked and queries/dashboards are scanned.
+   */
+  async reconcileGitState(projectId: string): Promise<void> {
+    // Reconcile queries
+    if (this.sharedQueryManager) {
+      const queries = this.state.queriesByProject[projectId] ?? [];
+      const reconciled = this.sharedQueryManager.reconcileWithGitFiles(projectId, queries);
+      if (reconciled !== queries) {
+        this.state.queriesByProject = {
+          ...this.state.queriesByProject,
+          [projectId]: reconciled,
+        };
+        this.persistence.scheduleProject(projectId);
+      }
+    }
+
+    // Reconcile dashboards
+    if (this.sharedDashboardManager) {
+      const dashboards = this.state.dashboardsByProject[projectId] ?? [];
+      const reconciled = this.sharedDashboardManager.reconcileWithGitFiles(projectId, dashboards);
+      if (reconciled !== dashboards) {
+        this.state.dashboardsByProject = {
+          ...this.state.dashboardsByProject,
+          [projectId]: reconciled,
+        };
+        await this.persistence.persistProjectDashboards(projectId);
+      }
+    }
+  }
 
   /**
    * Import shared connections from the linked repo as local DatabaseConnection entries.

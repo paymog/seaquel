@@ -45,7 +45,7 @@ export class ErdTabManager extends BaseTabManager<ErdTab> {
     const existingTab = tabs.find((t) => t.name === `ERD: ${this.state.activeConnection!.name}`);
     if (existingTab) {
       // Just switch to the existing tab
-      this.setActiveTabId(existingTab.id);
+      this.setActive(existingTab.id);
       this.viewFallbackFn!("erd");
       return existingTab.id;
     }

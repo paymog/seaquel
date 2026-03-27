@@ -24,6 +24,10 @@ export async function getDataDir(): Promise<string> {
   return invoke<string>("get_data_dir");
 }
 
+export async function readLogFile(): Promise<string> {
+  return invoke<string>("read_log_file");
+}
+
 export interface UpdateInfo {
   version: string;
   date: string | null;

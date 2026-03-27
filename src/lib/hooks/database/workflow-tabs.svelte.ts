@@ -45,7 +45,7 @@ export class WorkflowTabManager extends BaseTabManager<WorkflowTab> {
     const existingTab = tabs.find((t) => t.connectionId === this.state.activeConnectionId);
     if (existingTab) {
       // Just switch to the existing tab
-      this.setActiveTabId(existingTab.id);
+      this.setActive(existingTab.id);
       this.viewFallbackFn!("workflow");
       return existingTab.id;
     }

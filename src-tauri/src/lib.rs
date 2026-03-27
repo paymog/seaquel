@@ -159,6 +159,54 @@ fn get_username() -> String {
 }
 
 #[tauri::command]
+fn read_log_file(app: tauri::AppHandle) -> Result<String, CommandError> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let log_dir = app.path().app_log_dir().map_err(|e| CommandError {
+        message: format!("Failed to get log dir: {}", e),
+        code: "DIR_ERROR".to_string(),
+    })?;
+    let log_path = log_dir.join("seaquel.log");
+
+    let mut file = std::fs::File::open(&log_path).map_err(|e| CommandError {
+        message: format!("Failed to read log file: {}", e),
+        code: "READ_ERROR".to_string(),
+    })?;
+
+    let metadata = file.metadata().map_err(|e| CommandError {
+        message: format!("Failed to read log file metadata: {}", e),
+        code: "READ_ERROR".to_string(),
+    })?;
+
+    // Read only the last 512KB to avoid memory/rendering issues with large logs
+    const MAX_BYTES: u64 = 512 * 1024;
+    let file_size = metadata.len();
+    let truncated = file_size > MAX_BYTES;
+
+    if truncated {
+        file.seek(SeekFrom::End(-(MAX_BYTES as i64))).map_err(|e| CommandError {
+            message: format!("Failed to seek log file: {}", e),
+            code: "READ_ERROR".to_string(),
+        })?;
+    }
+
+    let mut content = String::new();
+    file.read_to_string(&mut content).map_err(|e| CommandError {
+        message: format!("Failed to read log file: {}", e),
+        code: "READ_ERROR".to_string(),
+    })?;
+
+    if truncated {
+        // Skip to the first complete line after the seek point
+        if let Some(newline_pos) = content.find('\n') {
+            content = format!("… (showing last 512KB of log)\n{}", &content[newline_pos + 1..]);
+        }
+    }
+
+    Ok(content)
+}
+
+#[tauri::command]
 fn get_data_dir(app: tauri::AppHandle) -> Result<String, CommandError> {
     if let Ok(custom_dir) = std::env::var("SEAQUEL_DATA_DIR") {
         let path = std::path::PathBuf::from(&custom_dir);
@@ -396,6 +444,7 @@ pub fn run() {
             copy_image_to_clipboard,
             open_path,
             get_data_dir,
+            read_log_file,
             get_username,
             install_update,
             check_for_update_command,

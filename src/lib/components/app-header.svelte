@@ -83,6 +83,7 @@
     // Project management state
     let showNewProjectDialog = $state(false);
     let showRemoveProjectDialog = $state(false);
+    let projectDropdownOpen = $state(false);
     let newProjectName = $state("");
     let projectToRemove = $state<string | null>(null);
     let projectToRemoveName = $state("");
@@ -162,7 +163,7 @@
                 <SidebarIcon />
             </Button>
             <!-- Project Dropdown -->
-            <DropdownMenu.Root>
+            <DropdownMenu.Root bind:open={projectDropdownOpen}>
                 <DropdownMenu.Trigger>
                     {#snippet child({ props })}
                         <Button
@@ -193,7 +194,7 @@
                             </DropdownMenu.Item>
                             <button
                                 class="size-6 flex items-center justify-center rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent shrink-0 opacity-0 group-hover:opacity-100 me-1"
-                                onclick={() => openProjectSettings(project.id)}
+                                onclick={() => { projectDropdownOpen = false; openProjectSettings(project.id); }}
                                 title={m.project_settings()}
                             >
                                 <SettingsIcon class="size-3" />

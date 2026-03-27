@@ -287,6 +287,8 @@ class UseDatabase {
     });
 
     this.projects.setSharedRepoManager(this.sharedRepos);
+    this.projects.setSharedQueryManager(this.sharedQueries);
+    this.projects.setSharedDashboardManager(this.sharedDashboards);
     this.projects.setStarterTabManager(this.starterTabs);
     this.connections.setSharedRepoManager(this.sharedRepos);
 
@@ -366,6 +368,11 @@ class UseDatabase {
       for (const repo of this.state.sharedRepos) {
         await this.sharedRepos.loadQueriesFromRepo(repo.id);
         await this.sharedRepos.refreshRepoStatus(repo.id);
+      }
+
+      // Reconcile git files with local state for the active project
+      if (this.state.activeProjectId && this.state.activeRepoId) {
+        await this.projects.reconcileGitState(this.state.activeProjectId);
       }
 
       // Start background refresh if there are repos
