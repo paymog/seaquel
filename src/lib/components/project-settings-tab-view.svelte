@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
-	import * as Dialog from "$lib/components/ui/dialog/index.js";
 	import * as Breadcrumb from "$lib/components/ui/breadcrumb/index.js";
+	import DeleteConfirmDialog from "$lib/components/delete-confirm-dialog.svelte";
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import { Button } from "$lib/components/ui/button";
 	import { Input } from "$lib/components/ui/input";
@@ -445,21 +445,11 @@
 </Sidebar.Provider>
 
 <!-- Delete Project Confirmation -->
-<Dialog.Root bind:open={showDeleteConfirm}>
-	<Dialog.Content class="max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>{m.project_delete_dialog_title()}</Dialog.Title>
-			<Dialog.Description>
-				{m.project_delete_dialog_description({ name: project?.name ?? "" })}
-			</Dialog.Description>
-		</Dialog.Header>
-		<Dialog.Footer class="gap-2">
-			<Button variant="outline" onclick={() => showDeleteConfirm = false}>
-				{m.header_button_cancel()}
-			</Button>
-			<Button variant="destructive" onclick={handleDeleteProject}>
-				{m.project_delete_confirm()}
-			</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
+<DeleteConfirmDialog
+	bind:open={showDeleteConfirm}
+	title={m.project_delete_dialog_title()}
+	description={m.project_delete_dialog_description({ name: project?.name ?? "" })}
+	cancelText={m.header_button_cancel()}
+	confirmText={m.project_delete_confirm()}
+	onconfirm={handleDeleteProject}
+/>

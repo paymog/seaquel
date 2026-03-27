@@ -10,9 +10,9 @@
 	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, WorkflowIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon } from "@lucide/svelte";
 	import type { Dashboard } from "$lib/types";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
-	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
 	import * as Dialog from "$lib/components/ui/dialog/index.js";
+	import DeleteConfirmDialog from "$lib/components/delete-confirm-dialog.svelte";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 	import { m } from "$lib/paraglide/messages.js";
@@ -1532,24 +1532,14 @@
 </Sidebar.Footer>
 
 <!-- Delete Connection Dialog -->
-<Dialog.Root bind:open={showRemoveDialog}>
-	<Dialog.Content class="max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>{m.header_delete_dialog_title()}</Dialog.Title>
-			<Dialog.Description>
-				{m.header_delete_dialog_description({ name: connectionToRemoveName })}
-			</Dialog.Description>
-		</Dialog.Header>
-		<Dialog.Footer class="gap-2">
-			<Button variant="outline" onclick={() => showRemoveDialog = false}>
-				{m.header_button_cancel()}
-			</Button>
-			<Button variant="destructive" onclick={handleRemoveConnection}>
-				{m.header_button_remove()}
-			</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
+<DeleteConfirmDialog
+	bind:open={showRemoveDialog}
+	title={m.header_delete_dialog_title()}
+	description={m.header_delete_dialog_description({ name: connectionToRemoveName })}
+	cancelText={m.header_button_cancel()}
+	confirmText={m.header_button_remove()}
+	onconfirm={handleRemoveConnection}
+/>
 
 <!-- Labels Dialog -->
 <Dialog.Root bind:open={showLabelsDialog}>
@@ -1571,37 +1561,21 @@
 </Dialog.Root>
 
 <!-- Delete Query Confirmation Dialog -->
-<AlertDialog.Root bind:open={showDeleteQueryDialog}>
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title>{m.query_delete_title()}</AlertDialog.Title>
-			<AlertDialog.Description>
-				{m.query_delete_description({ name: queryToDelete?.name ?? "" })}
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel>{m.theme_delete_cancel()}</AlertDialog.Cancel>
-			<AlertDialog.Action onclick={confirmDeleteQuery} class="bg-destructive text-white hover:bg-destructive/90">
-				{m.theme_delete_confirm()}
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<DeleteConfirmDialog
+	bind:open={showDeleteQueryDialog}
+	title={m.query_delete_title()}
+	description={m.query_delete_description({ name: queryToDelete?.name ?? "" })}
+	cancelText={m.theme_delete_cancel()}
+	confirmText={m.theme_delete_confirm()}
+	onconfirm={confirmDeleteQuery}
+/>
 
 <!-- Delete Dashboard Confirmation Dialog -->
-<AlertDialog.Root bind:open={showDeleteDashboardDialog}>
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title>{m.dashboard_delete_title()}</AlertDialog.Title>
-			<AlertDialog.Description>
-				{m.dashboard_delete_description({ name: dashboardToDelete?.name ?? "" })}
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel>{m.theme_delete_cancel()}</AlertDialog.Cancel>
-			<AlertDialog.Action onclick={confirmDeleteDashboard} class="bg-destructive text-white hover:bg-destructive/90">
-				{m.theme_delete_confirm()}
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<DeleteConfirmDialog
+	bind:open={showDeleteDashboardDialog}
+	title={m.dashboard_delete_title()}
+	description={m.dashboard_delete_description({ name: dashboardToDelete?.name ?? "" })}
+	cancelText={m.theme_delete_cancel()}
+	confirmText={m.theme_delete_confirm()}
+	onconfirm={confirmDeleteDashboard}
+/>

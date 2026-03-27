@@ -4,8 +4,8 @@
 	import { useShortcuts } from "$lib/shortcuts/index.js";
 	import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
 	import { Button } from "$lib/components/ui/button";
-	import * as Dialog from "$lib/components/ui/dialog/index.js";
 	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+	import DeleteConfirmDialog from "$lib/components/delete-confirm-dialog.svelte";
 	import { PlayIcon, DatabaseIcon, NetworkIcon, ColumnsIcon } from "@lucide/svelte";
 	import { toast } from "svelte-sonner";
 import { errorToast } from "$lib/utils/toast";
@@ -1149,21 +1149,11 @@ let showParamsDialog = $state(false);
 {/if}
 
 <!-- Delete Row Confirmation Dialog -->
-<Dialog.Root bind:open={showDeleteConfirm}>
-	<Dialog.Content class="sm:max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>{m.query_delete_row_title()}</Dialog.Title>
-			<Dialog.Description>
-				{m.query_delete_row_description()}
-			</Dialog.Description>
-		</Dialog.Header>
-		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (showDeleteConfirm = false)}>
-				{m.query_cancel()}
-			</Button>
-			<Button variant="destructive" onclick={handleDeleteRow}>
-				{m.query_delete()}
-			</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
+<DeleteConfirmDialog
+	bind:open={showDeleteConfirm}
+	title={m.query_delete_row_title()}
+	description={m.query_delete_row_description()}
+	cancelText={m.query_cancel()}
+	confirmText={m.query_delete()}
+	onconfirm={handleDeleteRow}
+/>

@@ -13,7 +13,7 @@
 	} from "$lib/utils/connection-string.js";
 	import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
 	import { Trash2Icon } from "@lucide/svelte";
-	import * as Dialog from "$lib/components/ui/dialog/index.js";
+	import DeleteConfirmDialog from "$lib/components/delete-confirm-dialog.svelte";
 
 	import WizardStepMethod from "./connection-wizard/wizard-step-method.svelte";
 	import WizardStepDetails from "./connection-wizard/wizard-step-details.svelte";
@@ -341,21 +341,11 @@
 </div>
 
 <!-- Delete Connection Confirmation -->
-<Dialog.Root bind:open={showDeleteConfirm}>
-	<Dialog.Content class="max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>{m.header_delete_dialog_title()}</Dialog.Title>
-			<Dialog.Description>
-				{m.header_delete_dialog_description({ name: formData.name })}
-			</Dialog.Description>
-		</Dialog.Header>
-		<Dialog.Footer class="gap-2">
-			<Button variant="outline" onclick={() => showDeleteConfirm = false}>
-				{m.header_button_cancel()}
-			</Button>
-			<Button variant="destructive" onclick={handleDeleteConnection}>
-				{m.header_delete_connection()}
-			</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
+<DeleteConfirmDialog
+	bind:open={showDeleteConfirm}
+	title={m.header_delete_dialog_title()}
+	description={m.header_delete_dialog_description({ name: formData.name })}
+	cancelText={m.header_button_cancel()}
+	confirmText={m.header_delete_connection()}
+	onconfirm={handleDeleteConnection}
+/>

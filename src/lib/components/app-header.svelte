@@ -5,6 +5,7 @@
     import * as Sidebar from "$lib/components/ui/sidebar/index.js";
     import * as Dialog from "$lib/components/ui/dialog/index.js";
     import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+    import DeleteConfirmDialog from "$lib/components/delete-confirm-dialog.svelte";
     import CheckIcon from "@lucide/svelte/icons/check";
     import { useDatabase } from "$lib/hooks/database.svelte.js";
 
@@ -351,24 +352,14 @@
 </Dialog.Root>
 
 <!-- Remove Project Dialog -->
-<Dialog.Root bind:open={showRemoveProjectDialog}>
-    <Dialog.Content class="max-w-md">
-        <Dialog.Header>
-            <Dialog.Title>{m.project_delete_dialog_title()}</Dialog.Title>
-            <Dialog.Description>
-                {m.project_delete_dialog_description({ name: projectToRemoveName })}
-            </Dialog.Description>
-        </Dialog.Header>
-        <Dialog.Footer class="gap-2">
-            <Button variant="outline" onclick={() => showRemoveProjectDialog = false}>
-                {m.header_button_cancel()}
-            </Button>
-            <Button variant="destructive" onclick={handleRemoveProject}>
-                {m.project_delete_confirm()}
-            </Button>
-        </Dialog.Footer>
-    </Dialog.Content>
-</Dialog.Root>
+<DeleteConfirmDialog
+    bind:open={showRemoveProjectDialog}
+    title={m.project_delete_dialog_title()}
+    description={m.project_delete_dialog_description({ name: projectToRemoveName })}
+    cancelText={m.header_button_cancel()}
+    confirmText={m.project_delete_confirm()}
+    onconfirm={handleRemoveProject}
+/>
 
 <!-- Import Shared Project Dialog -->
 <ImportSharedProjectDialog />

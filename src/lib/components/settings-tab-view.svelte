@@ -3,7 +3,7 @@
 	import { m } from "$lib/paraglide/messages.js";
 	import * as Breadcrumb from "$lib/components/ui/breadcrumb/index.js";
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+	import DeleteConfirmDialog from "$lib/components/delete-confirm-dialog.svelte";
 	import {
 		Select,
 		SelectContent,
@@ -1353,40 +1353,25 @@
 </Sidebar.Provider>
 
 <!-- Delete Confirmation Dialog -->
-<AlertDialog.Root bind:open={deleteDialogOpen}>
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title>{m.theme_delete_title()}</AlertDialog.Title>
-			<AlertDialog.Description>
-				{m.theme_delete_description({ name: themeToDelete?.name ?? "" })}
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel>{m.theme_delete_cancel()}</AlertDialog.Cancel>
-			<AlertDialog.Action onclick={deleteTheme} class="bg-destructive text-white hover:bg-destructive/90">
-				{m.theme_delete_confirm()}
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<DeleteConfirmDialog
+	bind:open={deleteDialogOpen}
+	title={m.theme_delete_title()}
+	description={m.theme_delete_description({ name: themeToDelete?.name ?? "" })}
+	cancelText={m.theme_delete_cancel()}
+	confirmText={m.theme_delete_confirm()}
+	onconfirm={deleteTheme}
+/>
 
 <!-- Provider Delete Confirmation Dialog -->
-<AlertDialog.Root bind:open={deleteProviderDialogOpen}>
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title>{m.settings_ai_delete_provider()}</AlertDialog.Title>
-			<AlertDialog.Description>
-				{#if providerToDelete}
-					{@const name = aiSettingsStore.settings.providers.find(p => p.id === providerToDelete)?.name ?? "this provider"}
-					This will permanently delete "{name}" and its API key. This cannot be undone.
-				{/if}
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel>{m.common_cancel()}</AlertDialog.Cancel>
-			<AlertDialog.Action onclick={executeDeleteProvider} class="bg-destructive text-white hover:bg-destructive/90">
-				{m.theme_delete_confirm()}
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<DeleteConfirmDialog
+	bind:open={deleteProviderDialogOpen}
+	title={m.settings_ai_delete_provider()}
+	cancelText={m.common_cancel()}
+	confirmText={m.theme_delete_confirm()}
+	onconfirm={executeDeleteProvider}
+>
+	{#if providerToDelete}
+		{@const name = aiSettingsStore.settings.providers.find(p => p.id === providerToDelete)?.name ?? "this provider"}
+		This will permanently delete "{name}" and its API key. This cannot be undone.
+	{/if}
+</DeleteConfirmDialog>

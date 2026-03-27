@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as Card from "$lib/components/ui/card/index.js";
-	import * as Dialog from "$lib/components/ui/dialog/index.js";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+	import DeleteConfirmDialog from "$lib/components/delete-confirm-dialog.svelte";
 	import { Badge } from "$lib/components/ui/badge/index.js";
 	import { Button } from "$lib/components/ui/button/index.js";
 	import DatabaseIcon from "@lucide/svelte/icons/database";
@@ -182,21 +182,11 @@
 	{/if}
 </div>
 
-<Dialog.Root bind:open={showDeleteDialog}>
-	<Dialog.Content class="max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>{m.header_delete_dialog_title()}</Dialog.Title>
-			<Dialog.Description>
-				{m.header_delete_dialog_description({ name: connection.name })}
-			</Dialog.Description>
-		</Dialog.Header>
-		<Dialog.Footer class="gap-2">
-			<Button variant="outline" onclick={() => (showDeleteDialog = false)}>
-				{m.header_button_cancel()}
-			</Button>
-			<Button variant="destructive" onclick={handleDelete}>
-				{m.connection_card_delete()}
-			</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
+<DeleteConfirmDialog
+	bind:open={showDeleteDialog}
+	title={m.header_delete_dialog_title()}
+	description={m.header_delete_dialog_description({ name: connection.name })}
+	cancelText={m.header_button_cancel()}
+	confirmText={m.connection_card_delete()}
+	onconfirm={handleDelete}
+/>
