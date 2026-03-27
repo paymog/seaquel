@@ -18,6 +18,7 @@
 		NetworkIcon,
 		HistoryIcon
 	} from "@lucide/svelte";
+	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 	import { m } from "$lib/paraglide/messages.js";
 	import type { StatementResult, ResolvedQueryVersion } from "$lib/types";
 
@@ -182,64 +183,96 @@
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 		</div>
-		<Button
-			size="sm"
-			variant="outline"
-			class="h-7 gap-1"
-			onclick={onFormat}
-			disabled={!hasQuery}
-		>
-			<WandSparklesIcon class="size-3" />
-			{m.query_format()}
-			{#if findShortcut('formatSql')}
-				<ShortcutKeys keys={findShortcut('formatSql')!.keys} class="ms-1" />
-			{/if}
-		</Button>
-		{#if queryId && onSaveAs}
-			<div class="flex">
-				<Button
-					size="sm"
-					variant="outline"
-					class="h-7 gap-1 rounded-r-none border-r-0"
-					onclick={onSave}
-					disabled={!hasQuery || (tabId != null && !db.queryTabs.hasUnsavedChanges(tabId))}
-				>
-					<SaveIcon class="size-3" />
-					{m.query_save()}
-					{#if findShortcut('saveQuery')}
-						<ShortcutKeys keys={findShortcut('saveQuery')!.keys} class="ms-1" />
-					{/if}
-				</Button>
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger
-						class={buttonVariants({ size: "sm", variant: "outline" }) +
-							" !h-7 px-1.5 rounded-l-none"}
+		<Tooltip.Root>
+			<Tooltip.Trigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						size="sm"
+						variant="outline"
+						class="h-7 px-2"
+						onclick={onFormat}
 						disabled={!hasQuery}
 					>
-						<ChevronDownIcon class="size-3" />
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="end">
-						<DropdownMenu.Item onclick={onSaveAs}>
-							<SaveIcon class="size-4 me-2" />
-							{m.query_save_as()}
-						</DropdownMenu.Item>
-					</DropdownMenu.Content>
-				</DropdownMenu.Root>
-			</div>
+						<WandSparklesIcon class="size-3" />
+					</Button>
+				{/snippet}
+			</Tooltip.Trigger>
+			<Tooltip.Content>
+				<span class="flex items-center gap-1.5">
+					{m.query_format()}
+					{#if findShortcut('formatSql')}
+						<ShortcutKeys keys={findShortcut('formatSql')!.keys} />
+					{/if}
+				</span>
+			</Tooltip.Content>
+		</Tooltip.Root>
+		{#if queryId && onSaveAs}
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<div class="flex" {...props}>
+							<Button
+								size="sm"
+								variant="outline"
+								class="h-7 px-2 rounded-r-none border-r-0"
+								onclick={onSave}
+								disabled={!hasQuery || (tabId != null && !db.queryTabs.hasUnsavedChanges(tabId))}
+							>
+								<SaveIcon class="size-3" />
+							</Button>
+							<DropdownMenu.Root>
+								<DropdownMenu.Trigger
+									class={buttonVariants({ size: "sm", variant: "outline" }) +
+										" !h-7 px-1.5 rounded-l-none"}
+									disabled={!hasQuery}
+								>
+									<ChevronDownIcon class="size-3" />
+								</DropdownMenu.Trigger>
+								<DropdownMenu.Content align="end">
+									<DropdownMenu.Item onclick={onSaveAs}>
+										<SaveIcon class="size-4 me-2" />
+										{m.query_save_as()}
+									</DropdownMenu.Item>
+								</DropdownMenu.Content>
+							</DropdownMenu.Root>
+						</div>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					<span class="flex items-center gap-1.5">
+						{m.query_save()}
+						{#if findShortcut('saveQuery')}
+							<ShortcutKeys keys={findShortcut('saveQuery')!.keys} />
+						{/if}
+					</span>
+				</Tooltip.Content>
+			</Tooltip.Root>
 		{:else}
-			<Button
-				size="sm"
-				variant="outline"
-				class="h-7 gap-1"
-				onclick={onSave}
-				disabled={!hasQuery}
-			>
-				<SaveIcon class="size-3" />
-				{m.query_save()}
-				{#if findShortcut('saveQuery')}
-					<ShortcutKeys keys={findShortcut('saveQuery')!.keys} class="ms-1" />
-				{/if}
-			</Button>
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							size="sm"
+							variant="outline"
+							class="h-7 px-2"
+							onclick={onSave}
+							disabled={!hasQuery}
+						>
+							<SaveIcon class="size-3" />
+						</Button>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					<span class="flex items-center gap-1.5">
+						{m.query_save()}
+						{#if findShortcut('saveQuery')}
+							<ShortcutKeys keys={findShortcut('saveQuery')!.keys} />
+						{/if}
+					</span>
+				</Tooltip.Content>
+			</Tooltip.Root>
 		{/if}
 		{#if queryId && versions.length > 0}
 			<DropdownMenu.Root>

@@ -236,9 +236,17 @@ async function handleConnectionDeepLink(
   filePath: string,
   db: DatabaseContext,
 ): Promise<void> {
-  const connection = db.state.allSharedConnections.find(
+  let connection = db.state.allSharedConnections.find(
     (c) => c.repoId === repoId && c.filePath === filePath,
   );
+
+  if (!connection) {
+    // After a fresh clone, connections may not be in derived state yet — reload and retry
+    await db.sharedRepos.loadSharedConfigs(repoId);
+    connection = db.state.allSharedConnections.find(
+      (c) => c.repoId === repoId && c.filePath === filePath,
+    );
+  }
 
   if (!connection) {
     toast.error(`Connection not found: ${filePath}`);

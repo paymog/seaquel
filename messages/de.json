@@ -214,7 +214,7 @@
   "shortcuts_go_to_tab": "Zu Tab 1-9 gehen",
   "query_rows_affected": "Zeilen betroffen",
   "query_total_rows": "Zeilen gesamt",
-  "query_execute": "Ausführen",
+  "query_execute": "Abfrage ausführen",
   "query_execute_all": "Alle ausführen",
   "query_execute_current": "Aktuelle ausführen",
   "query_explain": "Erklären",

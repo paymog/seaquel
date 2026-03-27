@@ -5,6 +5,7 @@
 	import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
 	import { Button } from "$lib/components/ui/button";
 	import * as Dialog from "$lib/components/ui/dialog/index.js";
+	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 	import { PlayIcon, DatabaseIcon, NetworkIcon, ColumnsIcon } from "@lucide/svelte";
 	import { toast } from "svelte-sonner";
 import { errorToast } from "$lib/utils/toast";
@@ -733,15 +734,22 @@ let showParamsDialog = $state(false);
 			<!-- Visual Builder Toggle -->
 			{#if queryBuilderSchema.length > 0}
 				<div class="pe-2 shrink-0">
-					<Button
-						size="sm"
-						variant="outline"
-						class="h-7 gap-1.5 {visualPanelOpen ? 'bg-secondary border-secondary-foreground/30' : ''}"
-						onclick={toggleVisualPanel}
-					>
-						<ColumnsIcon class="size-3.5" />
-						{m.query_visual_builder()}
-					</Button>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Button
+									{...props}
+									size="sm"
+									variant="outline"
+									class="h-7 px-2 {visualPanelOpen ? 'bg-secondary border-secondary-foreground/30' : ''}"
+									onclick={toggleVisualPanel}
+								>
+									<ColumnsIcon class="size-3.5" />
+								</Button>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>{m.query_visual_builder()}</Tooltip.Content>
+					</Tooltip.Root>
 				</div>
 			{/if}
 		</div>

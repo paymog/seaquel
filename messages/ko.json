@@ -214,7 +214,7 @@
   "shortcuts_go_to_tab": "탭 1-9로 이동",
   "query_rows_affected": "영향받은 행",
   "query_total_rows": "전체 행",
-  "query_execute": "실행",
+  "query_execute": "쿼리 실행",
   "query_execute_all": "모두 실행",
   "query_execute_current": "현재 실행",
   "query_explain": "설명",

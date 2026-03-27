@@ -214,7 +214,7 @@
   "shortcuts_go_to_tab": "Ir a pestaña 1-9",
   "query_rows_affected": "filas afectadas",
   "query_total_rows": "filas totales",
-  "query_execute": "Ejecutar",
+  "query_execute": "Ejecutar consulta",
   "query_execute_all": "Ejecutar todo",
   "query_execute_current": "Ejecutar actual",
   "query_explain": "Explicar",
