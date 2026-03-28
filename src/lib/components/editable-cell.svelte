@@ -48,20 +48,6 @@
 		}
 	}
 
-	async function handleSetNull() {
-		if (value === null) {
-			isEditing = false;
-			return;
-		}
-		isSaving = true;
-		try {
-			await onSave(null);
-			isEditing = false;
-		} finally {
-			isSaving = false;
-		}
-	}
-
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
 			e.preventDefault();
@@ -80,31 +66,23 @@
 </script>
 
 {#if isEditing && isEditable}
-	<div class="flex items-center gap-1">
+	<div class="flex items-center gap-1 w-full">
 		{#if isSaving}
 			<LoaderIcon class="size-3 animate-spin shrink-0" />
 		{/if}
-		<button
-			type="button"
-			class="shrink-0 text-[10px] font-mono text-muted-foreground hover:text-foreground px-1 h-6 rounded border border-transparent hover:border-border"
-			onmousedown={(e) => { e.preventDefault(); handleSetNull(); }}
-			disabled={isSaving}
-		>
-			NULL
-		</button>
 		<Input
 			bind:ref={inputRef}
 			bind:value={editValue}
 			onblur={handleBlur}
 			onkeydown={handleKeydown}
 			disabled={isSaving}
-			class="h-6 text-xs py-0 px-1 text-end"
+			class="h-6 text-xs py-0 px-0 border-0 shadow-none focus-visible:ring-0 focus-visible:border-transparent font-mono tabular-nums"
 		/>
 	</div>
 {:else}
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<span
-		class={[isEditable ? "cursor-pointer hover:bg-muted rounded px-1 -mx-1 w-full min-h-5 inline-flex items-center" : "", (columnType === 'integer' || columnType === 'float') && "w-full text-right"]}
+		class={[isEditable ? "cursor-pointer hover:bg-muted rounded px-1 -mx-1 w-full min-h-5 inline-flex items-center" : "", (columnType === 'integer' || columnType === 'float') && "w-full"]}
 		ondblclick={startEditing}
 		role={isEditable ? "button" : undefined}
 		tabindex={isEditable ? 0 : undefined}

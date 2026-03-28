@@ -34,7 +34,7 @@
 		}}
 	/>
 {:else if columnType === 'integer' || columnType === 'float'}
-	<span class="font-mono tabular-nums ml-auto">{formatNumber(Number(value))}</span>
+	<span class="font-mono tabular-nums">{formatNumber(Number(value))}</span>
 {:else if columnType === 'date'}
 	<Tooltip.Root>
 		<Tooltip.Trigger class="cursor-default">{formatDate(String(value))}</Tooltip.Trigger>

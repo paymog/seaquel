@@ -255,6 +255,8 @@
   "query_copy_cell": "نسخ قيمة الخلية",
   "query_copy_row": "نسخ الصف كـ JSON",
   "query_copy_column": "نسخ قيم العمود",
+  "query_set_null": "تعيين إلى NULL",
+  "query_set_default": "تعيين إلى الافتراضي",
   "query_statements_count": "{count} عبارات",
   "query_error": "خطأ",
   "query_statement_n": "العبارة {n}",

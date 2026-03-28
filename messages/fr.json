@@ -255,6 +255,8 @@
   "query_copy_cell": "Copier la valeur de la cellule",
   "query_copy_row": "Copier la ligne en JSON",
   "query_copy_column": "Copier les valeurs de la colonne",
+  "query_set_null": "Définir sur NULL",
+  "query_set_default": "Définir sur la valeur par défaut",
   "query_statements_count": "{count} instructions",
   "query_error": "Erreur",
   "query_statement_n": "Instruction {n}",

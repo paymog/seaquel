@@ -255,6 +255,8 @@
   "query_copy_cell": "Copiar valor de celda",
   "query_copy_row": "Copiar fila como JSON",
   "query_copy_column": "Copiar valores de columna",
+  "query_set_null": "Establecer en NULL",
+  "query_set_default": "Establecer en valor predeterminado",
   "query_statements_count": "{count} sentencias",
   "query_error": "Error",
   "query_statement_n": "Sentencia {n}",

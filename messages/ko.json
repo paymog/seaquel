@@ -255,6 +255,8 @@
   "query_copy_cell": "셀 값 복사",
   "query_copy_row": "행을 JSON으로 복사",
   "query_copy_column": "열 값 복사",
+  "query_set_null": "NULL로 설정",
+  "query_set_default": "기본값으로 설정",
   "query_statements_count": "{count}개 문장",
   "query_error": "오류",
   "query_statement_n": "문장 {n}",

@@ -2,7 +2,7 @@
 	import EditableCell from "$lib/components/editable-cell.svelte";
 	import RowActions from "$lib/components/row-actions.svelte";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-	import { CopyIcon } from "@lucide/svelte";
+	import { CopyIcon, CircleOffIcon, RotateCcwIcon } from "@lucide/svelte";
 	import { m } from "$lib/paraglide/messages.js";
 	import { detectColumnTypes } from "$lib/utils/cell-type";
 
@@ -16,7 +16,9 @@
 		onCopyCell?: () => void;
 		onCopyRow?: () => void;
 		onCopyColumn?: () => void;
-		onCellRightClick?: (value: unknown, column: string, row: Record<string, unknown>) => void;
+		onCellRightClick?: (value: unknown, column: string, row: Record<string, unknown>, rowIndex: number) => void;
+		onSetNull?: () => Promise<void>;
+		onSetDefault?: () => Promise<void>;
 		/** Compact mode for canvas nodes - smaller row height */
 		compact?: boolean;
 	}
@@ -32,6 +34,8 @@
 		onCopyRow = () => {},
 		onCopyColumn = () => {},
 		onCellRightClick = () => {},
+		onSetNull = async () => {},
+		onSetDefault = async () => {},
 		compact = false,
 	}: Props = $props();
 
@@ -175,7 +179,7 @@
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
 								class={["flex items-center overflow-hidden", compact ? "px-2 py-1" : "px-4 py-2"]}
-								oncontextmenu={() => onCellRightClick(row[column], column, row)}
+								oncontextmenu={() => onCellRightClick(row[column], column, row, rowIndex)}
 							>
 								<EditableCell
 									value={row[column]}
@@ -210,6 +214,17 @@
 				<CopyIcon class="size-4 me-2" />
 				{m.query_copy_column()}
 			</ContextMenu.Item>
+			{#if isEditable}
+				<ContextMenu.Separator />
+				<ContextMenu.Item onclick={onSetNull}>
+					<CircleOffIcon class="size-4 me-2" />
+					{m.query_set_null()}
+				</ContextMenu.Item>
+				<ContextMenu.Item onclick={onSetDefault}>
+					<RotateCcwIcon class="size-4 me-2" />
+					{m.query_set_default()}
+				</ContextMenu.Item>
+			{/if}
 		</ContextMenu.Content>
 	</ContextMenu.Portal>
 </ContextMenu.Root>

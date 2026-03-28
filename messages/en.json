@@ -263,6 +263,8 @@
   "query_copy_cell": "Copy Cell Value",
   "query_copy_row": "Copy Row as JSON",
   "query_copy_column": "Copy Column Values",
+  "query_set_null": "Set to NULL",
+  "query_set_default": "Set to Default",
   "query_statements_count": "{count} statements",
   "query_error": "Error",
   "query_statement_n": "Statement {n}",

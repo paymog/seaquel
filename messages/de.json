@@ -255,6 +255,8 @@
   "query_copy_cell": "Zellwert kopieren",
   "query_copy_row": "Zeile als JSON kopieren",
   "query_copy_column": "Spaltenwerte kopieren",
+  "query_set_null": "Auf NULL setzen",
+  "query_set_default": "Auf Standardwert setzen",
   "query_statements_count": "{count} Anweisungen",
   "query_error": "Fehler",
   "query_statement_n": "Anweisung {n}",

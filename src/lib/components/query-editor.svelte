@@ -561,10 +561,10 @@ let showParamsDialog = $state(false);
 	};
 
 	// Context menu for copying cells
-	let contextCell = $state<{ value: unknown; column: string; row: Record<string, unknown> } | null>(null);
+	let contextCell = $state<{ value: unknown; column: string; row: Record<string, unknown>; rowIndex: number } | null>(null);
 
-	const handleCellRightClick = (value: unknown, column: string, row: Record<string, unknown>) => {
-		contextCell = { value, column, row };
+	const handleCellRightClick = (value: unknown, column: string, row: Record<string, unknown>, rowIndex: number) => {
+		contextCell = { value, column, row, rowIndex };
 	};
 
 	const copyCell = async () => {
@@ -580,6 +580,29 @@ let showParamsDialog = $state(false);
 	const copyColumn = async () => {
 		if (!contextCell || !activeResult) return;
 		await clipboardCopyColumn(contextCell.column, activeResult.rows);
+	};
+
+	const setNull = async () => {
+		if (!contextCell) return;
+		await handleCellSave(contextCell.rowIndex, contextCell.column, null);
+	};
+
+	const setDefault = async () => {
+		if (!contextCell || !activeTabId || !activeResult?.sourceTable) return;
+
+		const result = await db.queries.setCellDefault(
+			activeTabId,
+			activeResultIndex,
+			contextCell.rowIndex,
+			contextCell.column,
+			activeResult.sourceTable
+		);
+
+		if (result.success) {
+			toast.success(m.query_cell_updated());
+		} else {
+			errorToast(m.query_cell_update_failed({ error: result.error || '' }));
+		}
 	};
 
 	// AI inline prompt handlers
@@ -1017,6 +1040,8 @@ let showParamsDialog = $state(false);
 									onCopyRow={copyRowAsJSON}
 									onCopyColumn={copyColumn}
 									onCellRightClick={handleCellRightClick}
+									onSetNull={setNull}
+									onSetDefault={setDefault}
 								/>
 							{/if}
 

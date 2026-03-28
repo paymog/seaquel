@@ -688,6 +688,57 @@ export class QueryExecutionManager {
   }
 
   /**
+   * Set a cell value to its column DEFAULT.
+   */
+  async setCellDefault(
+    tabId: string,
+    resultIndex: number,
+    rowIndex: number,
+    column: string,
+    sourceTable: { schema: string; name: string; primaryKeys: string[] },
+  ): Promise<{ success: boolean; error?: string }> {
+    const tabs = this.state.queryTabsByProject[this.state.activeProjectId!] ?? [];
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab?.results || resultIndex >= tab.results.length) {
+      return { success: false, error: "No results" };
+    }
+
+    const result = tab.results[resultIndex];
+    const row = result.rows[rowIndex];
+    if (!row) return { success: false, error: "Row not found" };
+
+    if (sourceTable.primaryKeys.length === 0) {
+      return { success: false, error: "No primary key found" };
+    }
+
+    const connection = this.state.activeConnection;
+    if (!connection?.providerConnectionId) {
+      return { success: false, error: "No connection established" };
+    }
+
+    void log.debug(`Cell set default on ${connection?.id}`);
+    try {
+      const provider = await this.providers.getForType(connection.type);
+      if (connection.type === "mssql") {
+        const whereClause = this.buildMssqlWhereClause(sourceTable.primaryKeys, row);
+        const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = DEFAULT WHERE ${whereClause}`;
+        await provider.execute(connection.providerConnectionId, query);
+      } else {
+        const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 1}`);
+        const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = DEFAULT WHERE ${whereConditions.join(" AND ")}`;
+        const bindValues = sourceTable.primaryKeys.map((pk) => row[pk]);
+        await provider.execute(connection.providerConnectionId, query, bindValues);
+      }
+      // Re-fetch the row to get the actual default value
+      // For now, we don't know the default value, so re-execute the query
+      await this.execute(tabId);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: extractErrorMessage(error) };
+    }
+  }
+
+  /**
    * Insert a new row into the database.
    */
   async insertRow(
