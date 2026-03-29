@@ -4,7 +4,7 @@
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
 	import { CopyIcon, CircleOffIcon, RotateCcwIcon } from "@lucide/svelte";
 	import { m } from "$lib/paraglide/messages.js";
-	import { detectColumnTypes } from "$lib/utils/cell-type";
+	import { detectColumnTypes, getFormattedCellText } from "$lib/utils/cell-type";
 
 	interface Props {
 		columns: string[];
@@ -52,15 +52,40 @@
 	let scrollTop = $state(0);
 	let containerHeight = $state(0);
 
-	// Column widths state - initialize with default width for each column
+	// Column widths state - initialize with auto-calculated widths
 	let columnWidths = $state<number[]>([]);
 
-	// Initialize column widths when columns change
+	const MAX_COLUMN_WIDTH = 400;
+	// Approximate character width in pixels (text-sm = 14px, ~8px per char for sans-serif, ~8.4px for mono)
+	const CHAR_WIDTH = $derived(compact ? 7 : 8);
+	const MONO_CHAR_WIDTH = $derived(compact ? 7.5 : 8.4);
+	const CELL_PADDING = $derived(compact ? 16 : 32); // px-2*2 or px-4*2
+
+	function autoSizeColumn(col: string): number {
+		const type = columnTypes[col];
+		const isMono = type === 'integer' || type === 'float' || type === 'uuid';
+		const charW = isMono ? MONO_CHAR_WIDTH : CHAR_WIDTH;
+
+		let maxLen = col.length;
+		const sampleRows = rows.slice(0, 100);
+		for (const row of sampleRows) {
+			const text = getFormattedCellText(row[col], type);
+			if (text.length > maxLen) maxLen = text.length;
+		}
+
+		const width = Math.ceil(maxLen * charW) + CELL_PADDING;
+		return Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, width));
+	}
+
+	// Initialize column widths when columns change - auto-size based on content
 	$effect(() => {
 		if (columns.length !== columnWidths.length) {
-			columnWidths = columns.map(() => DEFAULT_COLUMN_WIDTH);
+			columnWidths = columns.map((col) => autoSizeColumn(col));
 		}
 	});
+
+	// Track which cell has an active textarea overlay
+	let textareaCell = $state<string | null>(null);
 
 	// Resize state
 	let resizingIndex = $state<number | null>(null);
@@ -153,6 +178,7 @@
 						<div
 							class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-border transition-colors"
 							onmousedown={(e) => startResize(i, e)}
+							ondblclick={() => { columnWidths[i] = autoSizeColumn(columns[i]); }}
 							role="separator"
 							aria-orientation="vertical"
 						></div>
@@ -163,8 +189,9 @@
 			<!-- Virtual Body -->
 			<div style="height: {totalHeight}px; position: relative;">
 				{#each visibleRows as { row, index: rowIndex, offset } (rowIndex)}
+					{@const rowHasTextarea = textareaCell?.startsWith(`${rowIndex}:`) ?? false}
 					<div
-						class={["border-b hover:bg-muted/50 grid", compact ? "text-xs" : "text-sm", rowIndex % 2 === 0 && "bg-muted/20"]}
+						class={["border-b hover:bg-muted/50 grid", compact ? "text-xs" : "text-sm", rowIndex % 2 === 0 && "bg-muted/20", rowHasTextarea && "overflow-visible z-20"]}
 						style="position: absolute; top: {offset}px; left: 0; right: 0; height: {ROW_HEIGHT}px; grid-template-columns: {gridTemplate};"
 					>
 						{#if isEditable}
@@ -176,9 +203,10 @@
 							</div>
 						{/if}
 						{#each columns as column}
+							{@const cellKey = `${rowIndex}:${column}`}
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
-								class={["flex items-center overflow-hidden", compact ? "px-2 py-1" : "px-4 py-2"]}
+								class={["flex items-center", textareaCell === cellKey ? "overflow-visible relative" : "overflow-hidden", compact ? "px-2 py-1" : "px-4 py-2"]}
 								oncontextmenu={() => onCellRightClick(row[column], column, row, rowIndex)}
 							>
 								<EditableCell
@@ -186,6 +214,7 @@
 									{isEditable}
 									columnType={columnTypes[column]}
 									onSave={(newValue) => onCellSave(rowIndex, column, newValue)}
+									onTextareaToggle={(active) => { textareaCell = active ? cellKey : null; }}
 								/>
 							</div>
 						{/each}

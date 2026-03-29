@@ -146,3 +146,29 @@ export function truncateText(s: string, max: number = 50): string {
   if (s.length <= max) return s;
   return s.slice(0, max) + "...";
 }
+
+function stringify(value: unknown): string {
+  if (typeof value === "object" && value !== null) return JSON.stringify(value);
+  return String(value as string | number | bigint | boolean | symbol);
+}
+
+/**
+ * Returns the display text for a cell value given its detected type.
+ * Used for estimating column widths.
+ */
+export function getFormattedCellText(value: unknown, columnType: CellType): string {
+  if (value === null || value === undefined) return "NULL";
+  if (columnType === "boolean") return "false"; // checkbox, fixed width
+  if (columnType === "integer" || columnType === "float") return formatNumber(Number(value));
+  if (columnType === "date") return formatDate(stringify(value));
+  if (columnType === "datetime") return formatDateTime(stringify(value));
+  if (columnType === "time") return formatTime(stringify(value));
+  if (columnType === "uuid") return stringify(value);
+  if (columnType === "json")
+    return truncateText(typeof value === "object" ? JSON.stringify(value) : stringify(value));
+  if (columnType === "array" && Array.isArray(value))
+    return value.slice(0, 3).join("  ") + (value.length > 3 ? `  +${value.length - 3}` : "");
+  if (columnType === "binary") return formatByteSize(stringify(value));
+  if (columnType === "long_text") return truncateText(stringify(value), 80);
+  return stringify(value);
+}
