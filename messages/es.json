@@ -1034,5 +1034,17 @@
   "drop_table_confirm_title": "Eliminar tabla",
   "drop_table_confirm_description": "¿Estás seguro de que quieres eliminar {schema}.{table}? Esta acción no se puede deshacer.",
   "truncate_table_confirm_title": "Vaciar tabla",
-  "truncate_table_confirm_description": "¿Estás seguro de que quieres vaciar {schema}.{table}? Se eliminarán todos los datos."
+  "truncate_table_confirm_description": "¿Estás seguro de que quieres vaciar {schema}.{table}? Se eliminarán todos los datos.",
+  "destructive_query_confirm_title": "Consulta destructiva detectada",
+  "destructive_query_confirm_description": "Las siguientes instrucciones pueden causar cambios irreversibles:",
+  "destructive_query_confirm_button": "Ejecutar de todas formas",
+  "destructive_reason_drop_table": "Elimina una tabla",
+  "destructive_reason_drop_index": "Elimina un índice",
+  "destructive_reason_drop_view": "Elimina una vista",
+  "destructive_reason_drop_schema": "Elimina un esquema",
+  "destructive_reason_drop_database": "Elimina una base de datos",
+  "destructive_reason_drop_column": "Elimina una columna",
+  "destructive_reason_truncate": "Vacía una tabla",
+  "destructive_reason_delete_no_where": "Elimina todas las filas (sin cláusula WHERE)",
+  "destructive_reason_update_no_where": "Actualiza todas las filas (sin cláusula WHERE)"
 }

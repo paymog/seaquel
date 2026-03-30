@@ -1034,5 +1034,17 @@
   "drop_table_confirm_title": "Tabelle löschen",
   "drop_table_confirm_description": "Möchten Sie {schema}.{table} wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
   "truncate_table_confirm_title": "Tabelle leeren",
-  "truncate_table_confirm_description": "Möchten Sie {schema}.{table} wirklich leeren? Alle Daten werden gelöscht."
+  "truncate_table_confirm_description": "Möchten Sie {schema}.{table} wirklich leeren? Alle Daten werden gelöscht.",
+  "destructive_query_confirm_title": "Destruktive Abfrage erkannt",
+  "destructive_query_confirm_description": "Die folgenden Anweisungen können irreversible Änderungen verursachen:",
+  "destructive_query_confirm_button": "Trotzdem ausführen",
+  "destructive_reason_drop_table": "Löscht eine Tabelle",
+  "destructive_reason_drop_index": "Löscht einen Index",
+  "destructive_reason_drop_view": "Löscht eine Ansicht",
+  "destructive_reason_drop_schema": "Löscht ein Schema",
+  "destructive_reason_drop_database": "Löscht eine Datenbank",
+  "destructive_reason_drop_column": "Löscht eine Spalte",
+  "destructive_reason_truncate": "Leert eine Tabelle",
+  "destructive_reason_delete_no_where": "Löscht alle Zeilen (keine WHERE-Klausel)",
+  "destructive_reason_update_no_where": "Aktualisiert alle Zeilen (keine WHERE-Klausel)"
 }

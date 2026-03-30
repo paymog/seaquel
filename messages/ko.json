@@ -1034,5 +1034,17 @@
   "drop_table_confirm_title": "테이블 삭제",
   "drop_table_confirm_description": "{schema}.{table}을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
   "truncate_table_confirm_title": "테이블 비우기",
-  "truncate_table_confirm_description": "{schema}.{table}을(를) 비우시겠습니까? 모든 데이터가 삭제됩니다."
+  "truncate_table_confirm_description": "{schema}.{table}을(를) 비우시겠습니까? 모든 데이터가 삭제됩니다.",
+  "destructive_query_confirm_title": "위험한 쿼리 감지됨",
+  "destructive_query_confirm_description": "다음 구문은 되돌릴 수 없는 변경을 일으킬 수 있습니다:",
+  "destructive_query_confirm_button": "그래도 실행",
+  "destructive_reason_drop_table": "테이블을 삭제합니다",
+  "destructive_reason_drop_index": "인덱스를 삭제합니다",
+  "destructive_reason_drop_view": "뷰를 삭제합니다",
+  "destructive_reason_drop_schema": "스키마를 삭제합니다",
+  "destructive_reason_drop_database": "데이터베이스를 삭제합니다",
+  "destructive_reason_drop_column": "열을 삭제합니다",
+  "destructive_reason_truncate": "테이블을 비웁니다",
+  "destructive_reason_delete_no_where": "모든 행을 삭제합니다 (WHERE 절 없음)",
+  "destructive_reason_update_no_where": "모든 행을 업데이트합니다 (WHERE 절 없음)"
 }

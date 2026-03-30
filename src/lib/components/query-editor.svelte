@@ -6,6 +6,8 @@
 	import { Button } from "$lib/components/ui/button";
 	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 	import DeleteConfirmDialog from "$lib/components/delete-confirm-dialog.svelte";
+	import DestructiveQueryConfirmDialog from "$lib/components/destructive-query-confirm-dialog.svelte";
+	import { findDestructiveStatements, isDestructiveStatement, type DestructiveStatement } from "$lib/db/query-utils.js";
 	import { PlayIcon, DatabaseIcon, NetworkIcon, ColumnsIcon } from "@lucide/svelte";
 	import { toast } from "svelte-sonner";
 import { errorToast } from "$lib/utils/toast";
@@ -23,7 +25,7 @@ import MonacoEditor, { type MonacoEditorRef } from "$lib/components/monaco-edito
 	import { copyCell as clipboardCopyCell, copyRowAsJSON as clipboardCopyRowAsJSON, copyColumn as clipboardCopyColumn } from "$lib/utils/clipboard";
 	import { splitSqlStatements, getStatementAtOffset } from "$lib/db/sql-parser.js";
 	import { hasParameters, extractParameters, createDefaultParameters } from "$lib/db/query-params.js";
-	import type { QueryParameter, ParameterValue } from "$lib/types";
+	import type { QueryParameter, ParameterValue, DatabaseType } from "$lib/types";
 	import { generateSQL } from "$lib/services/ai";
 	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 	import { getDatabase } from "$lib/storage/db";
@@ -73,6 +75,9 @@ let showParamsDialog = $state(false);
 	let deletingRowIndex = $state<number | null>(null);
 	let pendingDeleteRow = $state<{ index: number; row: Record<string, unknown> } | null>(null);
 	let showDeleteConfirm = $state(false);
+	let showDestructiveConfirm = $state(false);
+	let destructiveStatements = $state<DestructiveStatement[]>([]);
+	let pendingDestructiveAction = $state<(() => void) | null>(null);
 	let monacoRef = $state<MonacoEditorRef | null>(null);
 
 	// Version history diff mode state
@@ -286,6 +291,16 @@ let showParamsDialog = $state(false);
 		return createDefaultParameters(paramNames);
 	};
 
+	const proceedWithExecute = (query: string, tabId: string) => {
+		if (hasParameters(query)) {
+			pendingParams = getParameterDefinitions(query);
+			pendingAction = 'query';
+			showParamsDialog = true;
+		} else {
+			db.queries.execute(tabId);
+		}
+	};
+
 	const handleExecute = () => {
 		if (!activeTabId || !activeTab) return;
 
@@ -293,15 +308,32 @@ let showParamsDialog = $state(false);
 		if (visualPanelOpen) syncVisualBuilderSql();
 
 		const query = activeTab.query;
+		const tabId = activeTabId;
+		const dbType = db.state.activeConnection?.type ?? "postgres";
 
-		// Check if query has parameters
-		if (hasParameters(query)) {
-			pendingParams = getParameterDefinitions(query);
-			pendingAction = 'query';
+		// Check for destructive statements before executing
+		const statements = splitSqlStatements(query, dbType);
+		const dangerous = findDestructiveStatements(statements);
+
+		if (dangerous.length > 0) {
+			destructiveStatements = dangerous;
+			pendingDestructiveAction = () => proceedWithExecute(query, tabId);
+			showDestructiveConfirm = true;
+			return;
+		}
+
+		proceedWithExecute(query, tabId);
+	};
+
+	const proceedWithExecuteCurrent = (query: string, tabId: string, cursorOffset: number, dbType: DatabaseType) => {
+		const currentStatement = getStatementAtOffset(query, cursorOffset, dbType);
+
+		if (currentStatement && hasParameters(currentStatement.sql)) {
+			pendingParams = getParameterDefinitions(currentStatement.sql);
+			pendingAction = { type: 'query-current', cursorOffset };
 			showParamsDialog = true;
 		} else {
-			// No parameters, execute directly
-			db.queries.execute(activeTabId);
+			db.queries.executeCurrent(tabId, cursorOffset);
 		}
 	};
 
@@ -312,21 +344,30 @@ let showParamsDialog = $state(false);
 		if (visualPanelOpen) syncVisualBuilderSql();
 
 		const query = activeTab.query;
+		const tabId = activeTabId;
 		const cursorOffset = monacoRef?.getCursorOffset() ?? 0;
 		const dbType = db.state.activeConnection?.type ?? "postgres";
 
-		// Get the current statement to check for parameters
+		// Check if current statement is destructive
 		const currentStatement = getStatementAtOffset(query, cursorOffset, dbType);
-
-		// Only check parameters on the current statement, not the entire query
-		if (currentStatement && hasParameters(currentStatement.sql)) {
-			pendingParams = getParameterDefinitions(currentStatement.sql);
-			pendingAction = { type: 'query-current', cursorOffset };
-			showParamsDialog = true;
-		} else {
-			// No parameters in current statement, execute directly
-			db.queries.executeCurrent(activeTabId, cursorOffset);
+		if (currentStatement) {
+			const reason = isDestructiveStatement(currentStatement.sql);
+			if (reason) {
+				destructiveStatements = [{ sql: currentStatement.sql, index: currentStatement.index, reason }];
+				pendingDestructiveAction = () => proceedWithExecuteCurrent(query, tabId, cursorOffset, dbType);
+				showDestructiveConfirm = true;
+				return;
+			}
 		}
+
+		proceedWithExecuteCurrent(query, tabId, cursorOffset, dbType);
+	};
+
+	const handleDestructiveConfirm = () => {
+		showDestructiveConfirm = false;
+		pendingDestructiveAction?.();
+		pendingDestructiveAction = null;
+		destructiveStatements = [];
 	};
 
 	const handleParamExecute = (values: ParameterValue[]) => {
@@ -1181,4 +1222,11 @@ let showParamsDialog = $state(false);
 	cancelText={m.query_cancel()}
 	confirmText={m.query_delete()}
 	onconfirm={handleDeleteRow}
+/>
+
+<!-- Destructive Query Confirmation Dialog -->
+<DestructiveQueryConfirmDialog
+	bind:open={showDestructiveConfirm}
+	statements={destructiveStatements}
+	onconfirm={handleDestructiveConfirm}
 />

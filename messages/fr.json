@@ -1034,5 +1034,17 @@
   "drop_table_confirm_title": "Supprimer la table",
   "drop_table_confirm_description": "Êtes-vous sûr de vouloir supprimer {schema}.{table} ? Cette action est irréversible.",
   "truncate_table_confirm_title": "Vider la table",
-  "truncate_table_confirm_description": "Êtes-vous sûr de vouloir vider {schema}.{table} ? Toutes les données seront supprimées."
+  "truncate_table_confirm_description": "Êtes-vous sûr de vouloir vider {schema}.{table} ? Toutes les données seront supprimées.",
+  "destructive_query_confirm_title": "Requête destructive détectée",
+  "destructive_query_confirm_description": "Les instructions suivantes peuvent entraîner des modifications irréversibles :",
+  "destructive_query_confirm_button": "Exécuter quand même",
+  "destructive_reason_drop_table": "Supprime une table",
+  "destructive_reason_drop_index": "Supprime un index",
+  "destructive_reason_drop_view": "Supprime une vue",
+  "destructive_reason_drop_schema": "Supprime un schéma",
+  "destructive_reason_drop_database": "Supprime une base de données",
+  "destructive_reason_drop_column": "Supprime une colonne",
+  "destructive_reason_truncate": "Vide une table",
+  "destructive_reason_delete_no_where": "Supprime toutes les lignes (sans clause WHERE)",
+  "destructive_reason_update_no_where": "Met à jour toutes les lignes (sans clause WHERE)"
 }

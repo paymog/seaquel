@@ -1030,5 +1030,17 @@
   "drop_table_confirm_title": "Drop Table",
   "drop_table_confirm_description": "Are you sure you want to drop {schema}.{table}? This action cannot be undone.",
   "truncate_table_confirm_title": "Truncate Table",
-  "truncate_table_confirm_description": "Are you sure you want to truncate {schema}.{table}? All data will be deleted."
+  "truncate_table_confirm_description": "Are you sure you want to truncate {schema}.{table}? All data will be deleted.",
+  "destructive_query_confirm_title": "Destructive Query Detected",
+  "destructive_query_confirm_description": "The following statements may cause irreversible changes:",
+  "destructive_query_confirm_button": "Execute Anyway",
+  "destructive_reason_drop_table": "Drops a table",
+  "destructive_reason_drop_index": "Drops an index",
+  "destructive_reason_drop_view": "Drops a view",
+  "destructive_reason_drop_schema": "Drops a schema",
+  "destructive_reason_drop_database": "Drops a database",
+  "destructive_reason_drop_column": "Drops a column",
+  "destructive_reason_truncate": "Truncates a table",
+  "destructive_reason_delete_no_where": "Deletes all rows (no WHERE clause)",
+  "destructive_reason_update_no_where": "Updates all rows (no WHERE clause)"
 }
