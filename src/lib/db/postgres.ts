@@ -1,5 +1,6 @@
 import type { DatabaseAdapter, ExplainNode } from "./index";
 import { validateIdentifier } from "./index";
+import { generateAlterTableSql, generateCreateTableDdl, generateAddColumnDdl } from "./alter-table";
 import type {
   SchemaTable,
   SchemaColumn,
@@ -8,6 +9,9 @@ import type {
   TableSizeInfo,
   IndexUsageInfo,
   DatabaseOverview,
+  ColumnTypeInfo,
+  CreateTableDefinition,
+  CreateTableColumn,
 } from "$lib/types";
 
 interface PostgresSchemaRow {
@@ -306,5 +310,75 @@ export class PostgresAdapter implements DatabaseAdapter {
       indexCount: Number(row?.index_count) || 0,
       connectionCount: Number(row?.connection_count) || 0,
     };
+  }
+
+  // === CREATE TABLE METHODS ===
+
+  getColumnTypes(): ColumnTypeInfo[] {
+    return [
+      // String
+      { name: "text", category: "String" },
+      { name: "varchar", category: "String", hasLength: true },
+      { name: "char", category: "String", hasLength: true },
+      // Numeric
+      { name: "integer", category: "Numeric" },
+      { name: "bigint", category: "Numeric" },
+      { name: "smallint", category: "Numeric" },
+      { name: "serial", category: "Numeric" },
+      { name: "bigserial", category: "Numeric" },
+      { name: "numeric", category: "Numeric", hasPrecision: true },
+      { name: "real", category: "Numeric" },
+      { name: "double precision", category: "Numeric" },
+      { name: "money", category: "Numeric" },
+      // Date/Time
+      { name: "date", category: "Date/Time" },
+      { name: "time", category: "Date/Time" },
+      { name: "timestamp", category: "Date/Time" },
+      { name: "timestamptz", category: "Date/Time" },
+      { name: "interval", category: "Date/Time" },
+      // Boolean
+      { name: "boolean", category: "Boolean" },
+      // JSON
+      { name: "json", category: "JSON" },
+      { name: "jsonb", category: "JSON" },
+      // Binary
+      { name: "bytea", category: "Binary" },
+      // UUID
+      { name: "uuid", category: "UUID" },
+      // Network
+      { name: "inet", category: "Network" },
+      { name: "cidr", category: "Network" },
+      { name: "macaddr", category: "Network" },
+      // Other
+      { name: "point", category: "Other" },
+      { name: "line", category: "Other" },
+      { name: "polygon", category: "Other" },
+      { name: "xml", category: "Other" },
+      { name: "tsvector", category: "Other" },
+      { name: "tsquery", category: "Other" },
+    ];
+  }
+
+  private static readonly quote = (n: string) => `"${n}"`;
+
+  generateCreateTableSql(definition: CreateTableDefinition): string {
+    return generateCreateTableDdl(definition, PostgresAdapter.quote);
+  }
+
+  generateAddColumnSql(schema: string, table: string, column: CreateTableColumn): string {
+    return generateAddColumnDdl(schema, table, column, PostgresAdapter.quote);
+  }
+
+  generateAlterTableSql(originalDef: CreateTableDefinition, newDef: CreateTableDefinition): string {
+    return generateAlterTableSql(originalDef, newDef, {
+      quote: PostgresAdapter.quote,
+      supportsDropColumn: true,
+      supportsAlterColumn: true,
+      useModifyColumn: false,
+    });
+  }
+
+  getSchemasQuery(): string {
+    return `SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast') ORDER BY schema_name;`;
   }
 }

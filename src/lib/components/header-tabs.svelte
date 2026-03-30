@@ -6,7 +6,7 @@
     import { isTauri } from "$lib/utils/environment";
     import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
-    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, WorkflowIcon, GitBranchIcon, CableIcon, LayoutDashboardIcon, SettingsIcon, ChevronDownIcon } from "@lucide/svelte";
+    import { PlusIcon, XIcon, TableIcon, FileCodeIcon, ActivityIcon, NetworkIcon, BarChart3Icon, WorkflowIcon, GitBranchIcon, CableIcon, LayoutDashboardIcon, SettingsIcon, ChevronDownIcon, PlusSquareIcon, DatabaseIcon } from "@lucide/svelte";
     import { RocketIcon } from "@lucide/svelte";
     import { useDatabase } from "$lib/hooks/database.svelte.js";
     import { useShortcuts, findShortcut } from "$lib/shortcuts/index.js";
@@ -17,7 +17,7 @@
     import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
     import BatchUnsavedDialog from "$lib/components/batch-unsaved-dialog.svelte";
     import SaveQueryDialog from "$lib/components/save-query-dialog.svelte";
-    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, WorkflowTab, VisualizeTab, ConnectionTab, DashboardTab, StarterTab, SettingsTab, ActiveViewType } from "$lib/types";
+    import type { QueryTab, SchemaTab, ExplainTab, ErdTab, StatisticsTab, WorkflowTab, VisualizeTab, ConnectionTab, DashboardTab, StarterTab, SettingsTab, CreateTableTab, DataTab, ActiveViewType } from "$lib/types";
     import type { Pane } from "$lib/types";
     import type { Component } from "svelte";
     import { usePaneDragState } from "$lib/components/pane-drag-context.svelte.js";
@@ -140,6 +140,14 @@
             label: (t: SettingsTab) => t.name,
             extraClass: "cursor-pointer",
         },
+        createTable: {
+            icon: PlusSquareIcon,
+            label: (t: CreateTableTab) => t.name || "New Table",
+        },
+        data: {
+            icon: DatabaseIcon,
+            label: (t: DataTab) => `${t.schemaName}.${t.tableName}`,
+        },
     };
 
     const tabManagers: Record<TabType, { setActive: (id: string) => void; remove: (id: string) => void }> = {
@@ -154,6 +162,8 @@
         dashboard: db.dashboardTabs,
         starter: db.starterTabs,
         settings: db.settingsTabs,
+        createTable: db.createTableTabs,
+        data: db.dataTabs,
     };
 
     const handleTabClick = (tabId: string, type: TabType, tab: any) => {
@@ -173,7 +183,7 @@
         return Array.isArray(ordered) ? [...ordered] : [];
     });
 
-    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | WorkflowTab | VisualizeTab | ConnectionTab | DashboardTab | StarterTab | SettingsTab };
+    type DndItem = { id: string; type: TabType; tab: QueryTab | SchemaTab | ExplainTab | ErdTab | StatisticsTab | WorkflowTab | VisualizeTab | ConnectionTab | DashboardTab | StarterTab | SettingsTab | CreateTableTab | DataTab };
 
     let draggedItems = $state<DndItem[]>([]);
     let isDragging = $state(false);

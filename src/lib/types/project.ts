@@ -144,6 +144,14 @@ export interface PersistedProjectState {
   starredSharedQueryIds?: string[];
   /** IDs of shared dashboards that are starred */
   starredSharedDashboardIds?: string[];
+  /** Create table tabs */
+  createTableTabs?: import("./persisted").PersistedCreateTableTab[];
+  /** Currently active create table tab */
+  activeCreateTableTabId?: string | null;
+  /** Data viewer tabs */
+  dataTabs?: import("./persisted").PersistedDataTab[];
+  /** Currently active data tab */
+  activeDataTabId?: string | null;
   /** Split pane layout */
   paneLayout?: {
     panes: { id: string; tabIds: string[]; activeTabId: string | null }[];

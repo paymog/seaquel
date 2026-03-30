@@ -1,5 +1,6 @@
 import type { DatabaseAdapter, ExplainNode } from "./index";
 import { validateIdentifier } from "./index";
+import { generateAlterTableSql, generateCreateTableDdl, generateAddColumnDdl } from "./alter-table";
 import type {
   SchemaTable,
   SchemaColumn,
@@ -8,6 +9,9 @@ import type {
   TableSizeInfo,
   IndexUsageInfo,
   DatabaseOverview,
+  ColumnTypeInfo,
+  CreateTableDefinition,
+  CreateTableColumn,
 } from "$lib/types";
 
 /** MySQL information_schema may return VARBINARY columns as byte arrays; decode to string */
@@ -324,5 +328,70 @@ export class MysqlAdapter implements DatabaseAdapter {
       indexCount: Number(row?.index_count) || 0,
       connectionCount: Number(row?.connection_count) || 0,
     };
+  }
+
+  // === CREATE TABLE METHODS ===
+
+  getColumnTypes(): ColumnTypeInfo[] {
+    return [
+      // String
+      { name: "VARCHAR", category: "String", hasLength: true },
+      { name: "CHAR", category: "String", hasLength: true },
+      { name: "TEXT", category: "String" },
+      { name: "TINYTEXT", category: "String" },
+      { name: "MEDIUMTEXT", category: "String" },
+      { name: "LONGTEXT", category: "String" },
+      { name: "ENUM", category: "String" },
+      { name: "SET", category: "String" },
+      // Numeric
+      { name: "INT", category: "Numeric" },
+      { name: "TINYINT", category: "Numeric" },
+      { name: "SMALLINT", category: "Numeric" },
+      { name: "MEDIUMINT", category: "Numeric" },
+      { name: "BIGINT", category: "Numeric" },
+      { name: "FLOAT", category: "Numeric" },
+      { name: "DOUBLE", category: "Numeric" },
+      { name: "DECIMAL", category: "Numeric", hasPrecision: true },
+      // Date/Time
+      { name: "DATE", category: "Date/Time" },
+      { name: "DATETIME", category: "Date/Time" },
+      { name: "TIMESTAMP", category: "Date/Time" },
+      { name: "TIME", category: "Date/Time" },
+      { name: "YEAR", category: "Date/Time" },
+      // Boolean
+      { name: "BOOLEAN", category: "Boolean" },
+      // JSON
+      { name: "JSON", category: "JSON" },
+      // Binary
+      { name: "BINARY", category: "Binary", hasLength: true },
+      { name: "VARBINARY", category: "Binary", hasLength: true },
+      { name: "BLOB", category: "Binary" },
+      { name: "TINYBLOB", category: "Binary" },
+      { name: "MEDIUMBLOB", category: "Binary" },
+      { name: "LONGBLOB", category: "Binary" },
+    ];
+  }
+
+  private static readonly quote = (n: string) => `\`${n}\``;
+
+  generateCreateTableSql(definition: CreateTableDefinition): string {
+    return generateCreateTableDdl(definition, MysqlAdapter.quote);
+  }
+
+  generateAddColumnSql(schema: string, table: string, column: CreateTableColumn): string {
+    return generateAddColumnDdl(schema, table, column, MysqlAdapter.quote);
+  }
+
+  generateAlterTableSql(originalDef: CreateTableDefinition, newDef: CreateTableDefinition): string {
+    return generateAlterTableSql(originalDef, newDef, {
+      quote: MysqlAdapter.quote,
+      supportsDropColumn: true,
+      supportsAlterColumn: true,
+      useModifyColumn: true,
+    });
+  }
+
+  getSchemasQuery(): string {
+    return `SELECT SCHEMA_NAME as schema_name FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY SCHEMA_NAME;`;
   }
 }

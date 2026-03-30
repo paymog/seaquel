@@ -1,5 +1,6 @@
 import type { DatabaseAdapter, ExplainNode } from "./index";
 import { validateIdentifier } from "./index";
+import { generateAlterTableSql, generateCreateTableDdl, generateAddColumnDdl } from "./alter-table";
 import type {
   SchemaTable,
   SchemaColumn,
@@ -8,6 +9,9 @@ import type {
   TableSizeInfo,
   IndexUsageInfo,
   DatabaseOverview,
+  ColumnTypeInfo,
+  CreateTableDefinition,
+  CreateTableColumn,
 } from "$lib/types";
 
 interface DuckDBSchemaRow {
@@ -203,5 +207,64 @@ export class DuckDBAdapter implements DatabaseAdapter {
       tableCount: Number(row?.table_count) || 0,
       indexCount: Number(row?.index_count) || 0,
     };
+  }
+
+  // === CREATE TABLE METHODS ===
+
+  getColumnTypes(): ColumnTypeInfo[] {
+    return [
+      // String
+      { name: "VARCHAR", category: "String", hasLength: true },
+      { name: "TEXT", category: "String" },
+      // Numeric
+      { name: "INTEGER", category: "Numeric" },
+      { name: "BIGINT", category: "Numeric" },
+      { name: "HUGEINT", category: "Numeric" },
+      { name: "SMALLINT", category: "Numeric" },
+      { name: "TINYINT", category: "Numeric" },
+      { name: "DOUBLE", category: "Numeric" },
+      { name: "FLOAT", category: "Numeric" },
+      { name: "DECIMAL", category: "Numeric", hasPrecision: true },
+      // Date/Time
+      { name: "DATE", category: "Date/Time" },
+      { name: "TIME", category: "Date/Time" },
+      { name: "TIMESTAMP", category: "Date/Time" },
+      { name: "INTERVAL", category: "Date/Time" },
+      // Boolean
+      { name: "BOOLEAN", category: "Boolean" },
+      // JSON
+      { name: "JSON", category: "JSON" },
+      // Binary
+      { name: "BLOB", category: "Binary" },
+      // UUID
+      { name: "UUID", category: "UUID" },
+      // Other
+      { name: "LIST", category: "Other" },
+      { name: "MAP", category: "Other" },
+      { name: "STRUCT", category: "Other" },
+    ];
+  }
+
+  private static readonly quote = (n: string) => `"${n}"`;
+
+  generateCreateTableSql(definition: CreateTableDefinition): string {
+    return generateCreateTableDdl(definition, DuckDBAdapter.quote);
+  }
+
+  generateAddColumnSql(schema: string, table: string, column: CreateTableColumn): string {
+    return generateAddColumnDdl(schema, table, column, DuckDBAdapter.quote);
+  }
+
+  generateAlterTableSql(originalDef: CreateTableDefinition, newDef: CreateTableDefinition): string {
+    return generateAlterTableSql(originalDef, newDef, {
+      quote: DuckDBAdapter.quote,
+      supportsDropColumn: true,
+      supportsAlterColumn: true,
+      useModifyColumn: false,
+    });
+  }
+
+  getSchemasQuery(): string {
+    return `SELECT schema_name FROM information_schema.schemata ORDER BY schema_name;`;
   }
 }

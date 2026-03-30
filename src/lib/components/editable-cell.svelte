@@ -3,6 +3,7 @@
 	import { LoaderIcon } from "@lucide/svelte";
 	import FormattedCell from "$lib/components/formatted-cell.svelte";
 	import type { CellType } from "$lib/utils/cell-type";
+	import { inputTypeForCellType } from "$lib/utils/cell-type";
 
 	interface Props {
 		value: unknown;
@@ -16,6 +17,7 @@
 
 	const monoTypes = new Set(['integer', 'float', 'date', 'datetime', 'time', 'uuid', 'json']);
 	const useMono = $derived(monoTypes.has(columnType));
+	const htmlInputType = $derived(inputTypeForCellType(columnType));
 
 	let isEditing = $state(false);
 	let editValue = $state('');
@@ -107,6 +109,8 @@
 			<Input
 				bind:ref={inputRef}
 				bind:value={editValue}
+				type={htmlInputType}
+				step={htmlInputType === "number" ? (columnType === "integer" ? "1" : "any") : undefined}
 				onblur={handleBlur}
 				onkeydown={handleKeydown}
 				disabled={isSaving}

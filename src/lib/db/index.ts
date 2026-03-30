@@ -73,6 +73,28 @@ export interface DatabaseAdapter {
 
   /** SQL query to get row count for a specific table (for DBs that need per-table queries) */
   getTableRowCountQuery?(table: string, schema: string): string;
+
+  /** Get available column types for this database engine */
+  getColumnTypes?(): import("$lib/types").ColumnTypeInfo[];
+
+  /** Generate CREATE TABLE DDL from a table definition */
+  generateCreateTableSql?(definition: import("$lib/types").CreateTableDefinition): string;
+
+  /** Generate ALTER TABLE ADD COLUMN DDL */
+  generateAddColumnSql?(
+    schema: string,
+    table: string,
+    column: import("$lib/types").CreateTableColumn,
+  ): string;
+
+  /** SQL query to list available schemas */
+  getSchemasQuery?(): string;
+
+  /** Generate ALTER TABLE statements to transform originalDef into newDef */
+  generateAlterTableSql?(
+    originalDef: import("$lib/types").CreateTableDefinition,
+    newDef: import("$lib/types").CreateTableDefinition,
+  ): string;
 }
 
 /**

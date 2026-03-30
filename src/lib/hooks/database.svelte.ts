@@ -23,6 +23,8 @@ import { ProjectManager } from "./database/project-manager.svelte.js";
 import { LabelManager } from "./database/label-manager.svelte.js";
 import { StarterTabManager } from "./database/starter-tabs.svelte.js";
 import { SettingsTabManager } from "./database/settings-tabs.svelte.js";
+import { CreateTableTabManager } from "./database/create-table-tabs.svelte.js";
+import { DataTabManager } from "./database/data-tabs.svelte.js";
 import { DashboardTabManager } from "./database/dashboard-tabs.svelte.js";
 import { DashboardManager } from "./database/dashboard-manager.svelte.js";
 import { WorkflowState } from "./database/workflow-state.svelte.js";
@@ -74,6 +76,8 @@ class UseDatabase {
   readonly sharedRepos: SharedRepoManager;
   readonly connectionTabs: ConnectionTabManager;
   readonly settingsTabs: SettingsTabManager;
+  readonly createTableTabs: CreateTableTabManager;
+  readonly dataTabs: DataTabManager;
   readonly sharedQueries: SharedQueryManager;
   readonly sharedDashboards: SharedDashboardManager;
   readonly aiChats: AIChatManager;
@@ -207,6 +211,16 @@ class UseDatabase {
       scheduleProjectPersistence,
       setActiveView,
     );
+    this.createTableTabs = new CreateTableTabManager(
+      this.state,
+      this.tabs,
+      scheduleProjectPersistence,
+      setActiveView,
+      providers,
+      async (connectionId: string) => {
+        await this.connections.refreshSchema(connectionId);
+      },
+    );
 
     // Workflow
     this.workflowState = new WorkflowState();
@@ -233,6 +247,14 @@ class UseDatabase {
     );
     this.savedQueries.setRemoveTab((id) => this.queryTabs.remove(id));
     this.queries = new QueryExecutionManager(this.state, this.history, providers);
+    this.dataTabs = new DataTabManager(
+      this.state,
+      this.tabs,
+      scheduleProjectPersistence,
+      setActiveView,
+      this.queries,
+      providers,
+    );
 
     // Shared query library
     this.sharedRepos = new SharedRepoManager(this.state, () =>
@@ -265,7 +287,7 @@ class UseDatabase {
         adapter: DatabaseAdapter,
         providerConnectionId?: string,
       ) => {
-        void this.schemaTabs.loadTableMetadataInBackground(
+        return this.schemaTabs.loadTableMetadataInBackground(
           connectionId,
           schemas,
           adapter,

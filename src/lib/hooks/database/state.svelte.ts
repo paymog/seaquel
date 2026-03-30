@@ -28,6 +28,8 @@ import type {
   ActiveViewType,
   QueryVersion,
   DashboardVersion,
+  CreateTableTab,
+  DataTab,
 } from "$lib/types";
 import type { PaneLayout } from "$lib/types";
 import type { ConnectionLabel } from "$lib/types/project";
@@ -106,6 +108,14 @@ export class DatabaseState {
   settingsTabsByProject = $state<Record<string, SettingsTab[]>>({});
   activeSettingsTabIdByProject = $state<Record<string, string | null>>({});
 
+  // === CREATE TABLE TABS STATE (per-project) ===
+  createTableTabsByProject = $state<Record<string, CreateTableTab[]>>({});
+  activeCreateTableTabIdByProject = $state<Record<string, string | null>>({});
+
+  // === DATA TABS STATE (per-project) ===
+  dataTabsByProject = $state<Record<string, DataTab[]>>({});
+  activeDataTabIdByProject = $state<Record<string, string | null>>({});
+
   // Tab ordering state (stores ordered array of all tab IDs per project)
   tabOrderByProject = $state<Record<string, string[]>>({});
 
@@ -161,6 +171,8 @@ export class DatabaseState {
     | "dashboard"
     | "starter"
     | "settings"
+    | "createTable"
+    | "data"
   >("query");
 
   // === PROJECT DERIVED VALUES ===
@@ -402,6 +414,34 @@ export class DatabaseState {
     this.settingsTabs.find((t) => t.id === this.activeSettingsTabId) || null,
   );
 
+  // === CREATE TABLE TAB DERIVED VALUES ===
+
+  createTableTabs = $derived(
+    this.activeProjectId ? (this.createTableTabsByProject[this.activeProjectId] ?? []) : [],
+  );
+
+  activeCreateTableTabId = $derived(
+    this.activeProjectId
+      ? (this.activeCreateTableTabIdByProject[this.activeProjectId] ?? null)
+      : null,
+  );
+
+  activeCreateTableTab = $derived(
+    this.createTableTabs.find((t) => t.id === this.activeCreateTableTabId) || null,
+  );
+
+  // === DATA TAB DERIVED VALUES ===
+
+  dataTabs = $derived(
+    this.activeProjectId ? (this.dataTabsByProject[this.activeProjectId] ?? []) : [],
+  );
+
+  activeDataTabId = $derived(
+    this.activeProjectId ? (this.activeDataTabIdByProject[this.activeProjectId] ?? null) : null,
+  );
+
+  activeDataTab = $derived(this.dataTabs.find((t) => t.id === this.activeDataTabId) || null);
+
   // === TAB TYPE UTILITIES ===
 
   /** Get the active tab ID for a given view type */
@@ -429,6 +469,10 @@ export class DatabaseState {
         return this.activeStarterTabId;
       case "settings":
         return this.activeSettingsTabId;
+      case "createTable":
+        return this.activeCreateTableTabId;
+      case "data":
+        return this.activeDataTabId;
       default:
         return null;
     }

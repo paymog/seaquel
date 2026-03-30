@@ -4,9 +4,8 @@
 	import { Badge } from "$lib/components/ui/badge";
 	import { Button } from "$lib/components/ui/button";
 	import { Separator } from "$lib/components/ui/separator";
-	import { KeyIcon, DatabaseIcon, ListIcon, PlusIcon } from "@lucide/svelte";
-import { m } from "$lib/paraglide/messages.js";
-	import InsertRowDialog from "$lib/components/insert-row-dialog.svelte";
+	import { KeyIcon, DatabaseIcon, ListIcon, PencilIcon } from "@lucide/svelte";
+	import { m } from "$lib/paraglide/messages.js";
 
 	let { tabId: propTabId = undefined }: { tabId?: string } = $props();
 
@@ -16,29 +15,17 @@ import { m } from "$lib/paraglide/messages.js";
 			? db.state.schemaTabs.find(t => t.id === propTabId) ?? null
 			: db.state.activeSchemaTab
 	);
-	let showInsertDialog = $state(false);
 
-	// Check if the table has primary keys (required for insertable rows)
-	const hasPrimaryKey = $derived(
-		activeSchemaTab?.table?.columns.some(col => col.isPrimaryKey) ?? false
-	);
-
-	// Only allow adding rows to tables (not views) with primary keys
-	const canAddRow = $derived(
-		activeSchemaTab?.table?.type === "table" && hasPrimaryKey
-	);
-
-	const handleQueryTable = () => {
+	const handleViewData = () => {
 		if (!activeSchemaTab?.table) return;
-		const tabId = db.queryTabs.add(`Query ${activeSchemaTab.table.name}`, `SELECT * FROM ${activeSchemaTab.table.schema}.${activeSchemaTab.table.name} LIMIT 100;`);
-		db.ui.setActiveView("query");
-		if (tabId) {
-			db.queries.execute(tabId);
-		}
+		db.dataTabs.add(activeSchemaTab.table);
+		db.ui.setActiveView("data");
 	};
 
-	const handleAddRow = () => {
-		showInsertDialog = true;
+	const handleEditTable = () => {
+		if (!activeSchemaTab?.table) return;
+		db.createTableTabs.addFromTable(activeSchemaTab.table);
+		db.ui.setActiveView("createTable");
 	};
 </script>
 
@@ -58,13 +45,13 @@ import { m } from "$lib/paraglide/messages.js";
 							</CardDescription>
 						</div>
 						<div class="flex items-center gap-2">
-							{#if canAddRow}
-								<Button size="sm" variant="outline" onclick={handleAddRow}>
-									<PlusIcon class="size-3 me-1" />
-									{m.query_add_row()}
+							{#if activeSchemaTab.table.type === "table"}
+								<Button size="sm" variant="outline" onclick={handleEditTable}>
+									<PencilIcon class="size-3 me-1" />
+									{m.table_viewer_edit_table()}
 								</Button>
 							{/if}
-							<Button size="sm" onclick={handleQueryTable}>{m.table_viewer_query_table()}</Button>
+							<Button size="sm" onclick={handleViewData}>{m.table_viewer_view_data()}</Button>
 						</div>
 					</div>
 				</CardHeader>
@@ -169,16 +156,3 @@ import { m } from "$lib/paraglide/messages.js";
 		</div>
 	{/if}
 </div>
-
-<!-- Insert Row Dialog -->
-{#if activeSchemaTab?.table && canAddRow}
-	{@const table = activeSchemaTab.table}
-	{@const primaryKeys = table.columns.filter(c => c.isPrimaryKey).map(c => c.name)}
-	<InsertRowDialog
-		bind:open={showInsertDialog}
-		sourceTable={{ schema: table.schema, name: table.name, primaryKeys }}
-		columns={table.columns}
-		onClose={() => showInsertDialog = false}
-		onSuccess={() => showInsertDialog = false}
-	/>
-{/if}

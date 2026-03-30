@@ -142,6 +142,97 @@ export function formatByteSize(s: string): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Maps a detected CellType to an appropriate HTML input type attribute.
+ */
+export function inputTypeForCellType(cellType: CellType): string {
+  switch (cellType) {
+    case "integer":
+    case "float":
+      return "number";
+    case "date":
+      return "date";
+    case "datetime":
+      return "datetime-local";
+    case "time":
+      return "time";
+    default:
+      return "text";
+  }
+}
+
+/**
+ * Classify a database column type string into a category for input purposes.
+ * Handles all common SQL type names across PostgreSQL, MySQL, SQLite, MSSQL, and DuckDB.
+ */
+function classifyColumnType(
+  dbType: string,
+): "integer" | "float" | "date" | "datetime" | "time" | "text" {
+  // Normalise: lowercase, strip parenthesised params, collapse whitespace
+  const t = dbType
+    .toLowerCase()
+    .replace(/\(.*\)/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Order matters: check more specific patterns before general ones.
+
+  // Date + time (check before bare "date" and "time" so "datetime" isn't split)
+  if (/timestamp|datetime|smalldatetime|datetimeoffset/.test(t)) return "datetime";
+
+  // Date-only
+  if (t === "date") return "date";
+
+  // Time-only
+  if (/^time\b/.test(t)) return "time";
+
+  // Integer types — match whole words so "point" doesn't match "int"
+  if (
+    /\b(int|integer|int2|int4|int8|int16|int32|int64|bigint|smallint|tinyint|mediumint|serial|bigserial|smallserial|hugeint|uinteger|ubigint|usmallint|utinyint|uhugeint)\b/.test(
+      t,
+    )
+  )
+    return "integer";
+
+  // Float / decimal types
+  if (/\b(real|float|float4|float8|double|numeric|decimal|number|money|smallmoney)\b/.test(t))
+    return "float";
+
+  return "text";
+}
+
+/**
+ * Maps a database column type string (e.g. "INTEGER", "varchar(255)", "timestamp")
+ * to an appropriate HTML input type attribute.
+ */
+export function inputTypeForColumnType(dbType: string): string {
+  const kind = classifyColumnType(dbType);
+  switch (kind) {
+    case "integer":
+    case "float":
+      return "number";
+    case "date":
+      return "date";
+    case "datetime":
+      return "datetime-local";
+    case "time":
+      return "time";
+    default:
+      return "text";
+  }
+}
+
+/**
+ * Returns the HTML input `step` attribute for numeric column types.
+ * Integer types get "1", float types get "any", others undefined.
+ */
+export function inputStepForColumnType(dbType: string): string | undefined {
+  const kind = classifyColumnType(dbType);
+  if (kind === "integer") return "1";
+  if (kind === "float") return "any";
+  return undefined;
+}
+
 export function truncateText(s: string, max: number = 50): string {
   if (s.length <= max) return s;
   return s.slice(0, max) + "...";

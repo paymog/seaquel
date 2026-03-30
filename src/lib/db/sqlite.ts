@@ -1,5 +1,11 @@
 import type { DatabaseAdapter, ExplainNode } from "./index";
 import { validateIdentifier } from "./index";
+import {
+  generateAlterTableSql,
+  buildColumnType,
+  generateAddColumnDdl,
+  sanitizeDefaultValue,
+} from "./alter-table";
 import type {
   SchemaTable,
   SchemaColumn,
@@ -8,6 +14,9 @@ import type {
   TableSizeInfo,
   IndexUsageInfo,
   DatabaseOverview,
+  ColumnTypeInfo,
+  CreateTableDefinition,
+  CreateTableColumn,
 } from "$lib/types";
 
 interface SqliteSchemaRow {
@@ -255,5 +264,88 @@ export class SqliteAdapter implements DatabaseAdapter {
     const sizes = ["bytes", "KB", "MB", "GB", "TB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  }
+
+  // === CREATE TABLE METHODS ===
+
+  getColumnTypes(): ColumnTypeInfo[] {
+    return [
+      // String
+      { name: "TEXT", category: "String" },
+      { name: "VARCHAR", category: "String", hasLength: true },
+      // Numeric
+      { name: "INTEGER", category: "Numeric" },
+      { name: "REAL", category: "Numeric" },
+      { name: "NUMERIC", category: "Numeric", hasPrecision: true },
+      // Binary
+      { name: "BLOB", category: "Binary" },
+      // Boolean
+      { name: "BOOLEAN", category: "Boolean" },
+      // Date/Time
+      { name: "DATE", category: "Date/Time" },
+      { name: "DATETIME", category: "Date/Time" },
+      { name: "TIMESTAMP", category: "Date/Time" },
+    ];
+  }
+
+  private static readonly quote = (n: string) => `"${n}"`;
+
+  generateCreateTableSql(definition: CreateTableDefinition): string {
+    const { tableName, columns, indexes, foreignKeys } = definition;
+    const q = SqliteAdapter.quote;
+    const lines: string[] = [];
+
+    for (const col of columns) {
+      let line = `  ${q(col.name)} ${buildColumnType(col)}`;
+      if (col.isPrimaryKey && columns.filter((c) => c.isPrimaryKey).length === 1) {
+        line += " PRIMARY KEY";
+        if (col.type.toUpperCase() === "INTEGER") line += " AUTOINCREMENT";
+      }
+      if (!col.nullable) line += " NOT NULL";
+      if (col.defaultValue) {
+        const safe = sanitizeDefaultValue(col.defaultValue);
+        if (safe) line += ` DEFAULT ${safe}`;
+      }
+      if (col.isUnique && !col.isPrimaryKey) line += " UNIQUE";
+      lines.push(line);
+    }
+
+    const pkCols = columns.filter((c) => c.isPrimaryKey);
+    if (pkCols.length > 1) {
+      lines.push(`  PRIMARY KEY (${pkCols.map((c) => q(c.name)).join(", ")})`);
+    }
+
+    for (const fk of foreignKeys) {
+      lines.push(
+        `  FOREIGN KEY (${q(fk.column)}) REFERENCES ${q(fk.referencedTable)} (${q(fk.referencedColumn)})`,
+      );
+    }
+
+    let sql = `CREATE TABLE ${q(tableName)} (\n${lines.join(",\n")}\n);`;
+
+    for (const idx of indexes) {
+      const unique = idx.unique ? "UNIQUE " : "";
+      const cols = idx.columns.map((c) => q(c)).join(", ");
+      sql += `\n\nCREATE ${unique}INDEX ${q(idx.name)} ON ${q(tableName)} (${cols});`;
+    }
+
+    return sql;
+  }
+
+  generateAddColumnSql(_schema: string, table: string, column: CreateTableColumn): string {
+    return generateAddColumnDdl("main", table, column, SqliteAdapter.quote);
+  }
+
+  generateAlterTableSql(originalDef: CreateTableDefinition, newDef: CreateTableDefinition): string {
+    return generateAlterTableSql(originalDef, newDef, {
+      quote: SqliteAdapter.quote,
+      supportsDropColumn: true,
+      supportsAlterColumn: false,
+      useModifyColumn: false,
+    });
+  }
+
+  getSchemasQuery(): string {
+    return `SELECT 'main' as schema_name;`;
   }
 }

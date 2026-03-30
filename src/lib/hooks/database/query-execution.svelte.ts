@@ -809,6 +809,105 @@ export class QueryExecutionManager {
   }
 
   /**
+   * Execute a raw DDL/write statement on the active connection.
+   * Used for CREATE TABLE, DROP TABLE, ALTER TABLE, TRUNCATE, etc.
+   */
+  /**
+   * Update a single cell value directly, without requiring a query tab.
+   * Used by the data viewer for inline cell editing.
+   */
+  async updateCellDirect(
+    sourceTable: { schema: string; name: string; primaryKeys: string[] },
+    row: Record<string, unknown>,
+    column: string,
+    newValue: unknown,
+  ): Promise<{ success: boolean; error?: string }> {
+    if (sourceTable.primaryKeys.length === 0) {
+      return { success: false, error: "No primary key found" };
+    }
+
+    const connection = this.state.activeConnection;
+    if (!connection?.providerConnectionId) {
+      return { success: false, error: "No connection established" };
+    }
+
+    try {
+      const provider = await this.providers.getForType(connection.type);
+      if (connection.type === "mssql") {
+        const whereClause = this.buildMssqlWhereClause(sourceTable.primaryKeys, row);
+        const escapedNewValue =
+          typeof newValue === "string"
+            ? `'${newValue.replace(/'/g, "''")}'`
+            : newValue === null
+              ? "NULL"
+              : String(newValue as string | number | boolean);
+        const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = ${escapedNewValue} WHERE ${whereClause}`;
+        await provider.execute(connection.providerConnectionId, query);
+      } else {
+        const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 2}`);
+        const valuePlaceholder = this.getCastPlaceholder(
+          1,
+          sourceTable.schema,
+          sourceTable.name,
+          column,
+        );
+        const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = ${valuePlaceholder} WHERE ${whereConditions.join(" AND ")}`;
+        const bindValues = [newValue, ...sourceTable.primaryKeys.map((pk) => row[pk])];
+        await provider.execute(connection.providerConnectionId, query, bindValues);
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: extractErrorMessage(error) };
+    }
+  }
+
+  /**
+   * Set a cell to its column DEFAULT directly, without requiring a query tab.
+   * Used by the data viewer for inline "set default" action.
+   */
+  async setCellDefaultDirect(
+    sourceTable: { schema: string; name: string; primaryKeys: string[] },
+    row: Record<string, unknown>,
+    column: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    if (sourceTable.primaryKeys.length === 0) {
+      return { success: false, error: "No primary key found" };
+    }
+
+    const connection = this.state.activeConnection;
+    if (!connection?.providerConnectionId) {
+      return { success: false, error: "No connection established" };
+    }
+
+    try {
+      const provider = await this.providers.getForType(connection.type);
+      if (connection.type === "mssql") {
+        const whereClause = this.buildMssqlWhereClause(sourceTable.primaryKeys, row);
+        const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = DEFAULT WHERE ${whereClause}`;
+        await provider.execute(connection.providerConnectionId, query);
+      } else {
+        const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 1}`);
+        const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = DEFAULT WHERE ${whereConditions.join(" AND ")}`;
+        const bindValues = sourceTable.primaryKeys.map((pk) => row[pk]);
+        await provider.execute(connection.providerConnectionId, query, bindValues);
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: extractErrorMessage(error) };
+    }
+  }
+
+  async executeRawDdl(query: string): Promise<void> {
+    const connection = this.state.activeConnection;
+    if (!connection?.providerConnectionId) {
+      throw new Error("Not connected to database");
+    }
+
+    const provider = await this.providers.getForType(connection.type);
+    await provider.execute(connection.providerConnectionId, query);
+  }
+
+  /**
    * Delete a row from the database.
    */
   async deleteRow(

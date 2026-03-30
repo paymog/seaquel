@@ -1,14 +1,19 @@
 <script lang="ts">
-    import { CopyIcon } from "@lucide/svelte";
+    import { CopyIcon, CheckIcon } from "@lucide/svelte";
+    import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
     interface Props {
         message: string;
     }
 
     let { message }: Props = $props();
+    let copied = $state(false);
 
-    function copyMessage() {
-        navigator.clipboard.writeText(message);
+    async function copyMessage(e: MouseEvent) {
+        e.stopPropagation();
+        await writeText(message);
+        copied = true;
+        setTimeout(() => (copied = false), 2000);
     }
 </script>
 
@@ -21,7 +26,11 @@
             onclick={copyMessage}
             aria-label="Copy error message"
         >
-            <CopyIcon class="size-4" />
+            {#if copied}
+                <CheckIcon class="size-4" />
+            {:else}
+                <CopyIcon class="size-4" />
+            {/if}
         </button>
     </div>
 </div>

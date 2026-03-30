@@ -103,6 +103,8 @@
 		dashboard: db.dashboardTabs,
 		starter: db.starterTabs,
 		settings: db.settingsTabs,
+		createTable: db.createTableTabs,
+		data: db.dataTabs,
 	} as const;
 
 	function goToTab(tabId: string, type: import('$lib/types').ActiveViewType) {

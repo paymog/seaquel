@@ -97,6 +97,19 @@ export { DEFAULT_STARTER_TABS } from "./starter-tabs";
 // Settings tab types
 export type { SettingsTabKind, SettingsTab } from "./settings-tab";
 
+// Create Table types
+export type {
+  ColumnTypeInfo,
+  CreateTableColumn,
+  CreateTableIndex,
+  CreateTableForeignKey,
+  CreateTableDefinition,
+  CreateTableTab,
+} from "./create-table";
+
+// Data Viewer types
+export type { DataFilterOperator, DataFilter, DataSort, DataTab } from "./data-tab";
+
 // Persisted state types
 export type {
   PersistedQueryTab,
@@ -116,6 +129,8 @@ export type {
   PersistedDashboardTab,
   PersistedAIChat,
   PersistedAIMessage,
+  PersistedCreateTableTab,
+  PersistedDataTab,
   ActiveViewType,
 } from "./persisted";
 

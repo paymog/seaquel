@@ -2,7 +2,7 @@
 	import EditableCell from "$lib/components/editable-cell.svelte";
 	import RowActions from "$lib/components/row-actions.svelte";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-	import { CopyIcon, CircleOffIcon, RotateCcwIcon } from "@lucide/svelte";
+	import { CopyIcon, CircleOffIcon, RotateCcwIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon } from "@lucide/svelte";
 	import { m } from "$lib/paraglide/messages.js";
 	import { detectColumnTypes, getFormattedCellText } from "$lib/utils/cell-type";
 
@@ -21,6 +21,16 @@
 		onSetDefault?: () => Promise<void>;
 		/** Compact mode for canvas nodes - smaller row height */
 		compact?: boolean;
+		/** Called when a column header is clicked (for sorting) */
+		onColumnHeaderClick?: (column: string) => void;
+		/** Currently sorted column name */
+		sortColumn?: string | null;
+		/** Current sort direction */
+		sortDirection?: "ASC" | "DESC" | null;
+		/** Called when the "Add Row" element is clicked */
+		onAddRow?: () => void;
+		/** Snippet rendered inline between data rows and the "Add Row" link. Receives gridTemplate string. */
+		pendingRowsContent?: import('svelte').Snippet<[string]>;
 	}
 
 	let {
@@ -37,6 +47,11 @@
 		onSetNull = async () => {},
 		onSetDefault = async () => {},
 		compact = false,
+		onColumnHeaderClick,
+		sortColumn = null,
+		sortDirection = null,
+		onAddRow,
+		pendingRowsContent,
 	}: Props = $props();
 
 	// Column type detection for formatted cells
@@ -47,7 +62,7 @@
 	const HEADER_HEIGHT = $derived(compact ? 28 : 37);
 	const OVERSCAN = 10;
 	const DEFAULT_COLUMN_WIDTH = $derived(compact ? 100 : 150);
-	const MIN_COLUMN_WIDTH = 50;
+	const MIN_COLUMN_WIDTH = $derived(onAddRow ? 120 : 50);
 
 	let scrollTop = $state(0);
 	let containerHeight = $state(0);
@@ -172,7 +187,20 @@
 				{/if}
 				{#each columns as column, i}
 					<div class="relative flex items-center group">
-						<div class={["font-medium flex-1 truncate", compact ? "px-2 py-1" : "px-4 py-2"]}>{column}</div>
+						<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+						<div
+							class={["font-medium flex-1 truncate flex items-center gap-1", compact ? "px-2 py-1" : "px-4 py-2", onColumnHeaderClick && "cursor-pointer hover:text-foreground select-none"]}
+							onclick={() => onColumnHeaderClick?.(column)}
+						>
+							{column}
+							{#if sortColumn === column}
+								{#if sortDirection === "ASC"}
+									<ArrowUpIcon class="size-3 shrink-0 text-primary" />
+								{:else if sortDirection === "DESC"}
+									<ArrowDownIcon class="size-3 shrink-0 text-primary" />
+								{/if}
+							{/if}
+						</div>
 						<!-- Resize handle -->
 						<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 						<div
@@ -221,6 +249,23 @@
 					</div>
 				{/each}
 			</div>
+
+			<!-- Pending new rows (inline) -->
+			{#if pendingRowsContent}
+				{@render pendingRowsContent(gridTemplate)}
+			{/if}
+
+			<!-- Add Row -->
+			{#if onAddRow}
+				<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+				<div
+					class="flex items-center gap-2 px-2.5 py-2 border-b border-dashed text-muted-foreground hover:text-foreground hover:bg-muted/50 cursor-pointer transition-colors"
+					onclick={onAddRow}
+				>
+					<PlusIcon class="size-3.5" />
+					<span class="text-xs">{m.data_viewer_add_row()}</span>
+				</div>
+			{/if}
 		</div>
 	</div>
 {/snippet}

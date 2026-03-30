@@ -80,38 +80,19 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
 
     const connectionId = this.state.activeConnectionId;
     const tabs = this.getProjectTabs();
-    const adapter = getAdapter(this.state.activeConnection.type);
-    const providerConnectionId = this.state.activeConnection.providerConnectionId;
-    if (!providerConnectionId) return null;
 
-    const provider = await this.providers.getForType(this.state.activeConnection.type);
-    const updatedTable = await this.fetchTableMetadata(
-      provider,
-      providerConnectionId,
-      adapter,
-      table,
-    );
-
-    // Update this.state.schemas with the refreshed table metadata
-    const connectionSchemas = [...(this.state.schemas[connectionId] ?? [])];
-    const tableIndex = connectionSchemas.findIndex(
+    // Use cached metadata from the schema store (populated at connection time)
+    const cached = (this.state.schemas[connectionId] ?? []).find(
       (t) => t.name === table.name && t.schema === table.schema,
     );
-    if (tableIndex >= 0) {
-      connectionSchemas[tableIndex] = updatedTable;
-    }
-    this.state.schemas = {
-      ...this.state.schemas,
-      [connectionId]: connectionSchemas,
-    };
+    const tableWithMetadata = cached ?? table;
 
     // Check if table is already open
     const existingTab = tabs.find(
       (t) => t.table.name === table.name && t.table.schema === table.schema,
     );
     if (existingTab) {
-      // Update existing tab with new metadata
-      this.updateTab(existingTab.id, (t) => ({ ...t, table: updatedTable }));
+      this.updateTab(existingTab.id, (t) => ({ ...t, table: tableWithMetadata }));
       this.setActive(existingTab.id);
       return existingTab.id;
     }
@@ -119,10 +100,58 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
     const newTab: SchemaTab = {
       id: `schema-tab-${crypto.randomUUID()}`,
       connectionId,
-      table: updatedTable,
+      table: tableWithMetadata,
     };
 
-    return this.appendTab(newTab);
+    const tabId = this.appendTab(newTab);
+
+    // Refresh metadata in the background if columns aren't loaded yet
+    if (tableWithMetadata.columns.length === 0) {
+      void this.refreshTabMetadata(tabId, connectionId, table);
+    }
+
+    return tabId;
+  }
+
+  /**
+   * Refresh a schema tab's metadata in the background.
+   */
+  private async refreshTabMetadata(
+    tabId: string,
+    connectionId: string,
+    table: SchemaTable,
+  ): Promise<void> {
+    const connection = this.state.connections.find((c) => c.id === connectionId);
+    if (!connection?.providerConnectionId) return;
+
+    try {
+      const adapter = getAdapter(connection.type);
+      const provider = await this.providers.getForType(connection.type);
+      const updatedTable = await this.fetchTableMetadata(
+        provider,
+        connection.providerConnectionId,
+        adapter,
+        table,
+      );
+
+      // Update schema cache
+      const connectionSchemas = [...(this.state.schemas[connectionId] ?? [])];
+      const tableIndex = connectionSchemas.findIndex(
+        (t) => t.name === table.name && t.schema === table.schema,
+      );
+      if (tableIndex >= 0) {
+        connectionSchemas[tableIndex] = updatedTable;
+      }
+      this.state.schemas = {
+        ...this.state.schemas,
+        [connectionId]: connectionSchemas,
+      };
+
+      // Update the open tab
+      this.updateTab(tabId, (t) => ({ ...t, table: updatedTable }));
+    } catch {
+      // Silently fail — the tab still shows whatever we had cached
+    }
   }
 
   /**

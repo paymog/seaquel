@@ -14,6 +14,8 @@
     import WorkflowView from "$lib/components/workflow/workflow-view.svelte";
     import QueryVisualViewer from "$lib/components/query-visual-viewer.svelte";
     import ConnectionTabView from "$lib/components/connection-tab-view.svelte";
+    import CreateTableView from "$lib/components/create-table-view.svelte";
+    import DataViewer from "$lib/components/data-viewer.svelte";
     import SettingsTabView from "$lib/components/settings-tab-view.svelte";
     import ProjectSettingsTabView from "$lib/components/project-settings-tab-view.svelte";
     import { DashboardView } from "$lib/components/dashboard";
@@ -106,6 +108,18 @@
                 {:else}
                     <SettingsTabView tab={activeSettingsTab} />
                 {/if}
+            {/key}
+        </div>
+    {:else if paneViewType === "createTable" && pane.activeTabId}
+        <div class="flex-1 min-h-0 flex flex-col">
+            {#key pane.activeTabId}
+                <CreateTableView tabId={pane.activeTabId} />
+            {/key}
+        </div>
+    {:else if paneViewType === "data" && pane.activeTabId}
+        <div class="flex-1 min-h-0 flex flex-col">
+            {#key pane.activeTabId}
+                <DataViewer tabId={pane.activeTabId} />
             {/key}
         </div>
     {:else if paneViewType === "query" && pane.activeTabId}

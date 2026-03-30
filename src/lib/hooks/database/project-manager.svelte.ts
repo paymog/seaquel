@@ -712,6 +712,10 @@ export class ProjectManager {
       this.state.activeConnectionIdByProject[projectId] = null;
       this.state.connectionTabsByProject[projectId] = [];
       this.state.activeConnectionTabIdByProject[projectId] = null;
+      this.state.createTableTabsByProject[projectId] = [];
+      this.state.activeCreateTableTabIdByProject[projectId] = null;
+      this.state.dataTabsByProject[projectId] = [];
+      this.state.activeDataTabIdByProject[projectId] = null;
       // Initialize starter tabs for new projects
       this.starterTabManager?.initializeDefaults(projectId);
       // Load saved queries and dashboards for the project
@@ -835,7 +839,9 @@ export class ProjectManager {
         (this.state.explainTabsByProject[projectId]?.length ?? 0) > 0 ||
         (this.state.erdTabsByProject[projectId]?.length ?? 0) > 0 ||
         (this.state.dashboardTabsByProject[projectId]?.length ?? 0) > 0 ||
-        (this.state.settingsTabsByProject[projectId]?.length ?? 0) > 0;
+        (this.state.settingsTabsByProject[projectId]?.length ?? 0) > 0 ||
+        (this.state.createTableTabsByProject[projectId]?.length ?? 0) > 0 ||
+        (this.state.dataTabsByProject[projectId]?.length ?? 0) > 0;
       if (!hasOtherTabs) {
         this.starterTabManager?.initializeDefaults(projectId);
       }
@@ -861,6 +867,39 @@ export class ProjectManager {
         [projectId]: persistedState.paneLayout,
       };
     }
+
+    // Restore create table tabs
+    this.state.createTableTabsByProject[projectId] = (persistedState.createTableTabs ?? [])
+      .filter((t) => t.connectionId)
+      .map((t) => ({
+        id: t.id,
+        connectionId: t.connectionId,
+        name: t.name,
+        tableDefinition:
+          typeof t.tableDefinition === "string"
+            ? JSON.parse(t.tableDefinition)
+            : { tableName: "", schemaName: "public", columns: [], indexes: [], foreignKeys: [] },
+      }));
+    this.state.activeCreateTableTabIdByProject[projectId] =
+      persistedState.activeCreateTableTabId ?? null;
+
+    // Restore data tabs (results will be fetched fresh on activation)
+    this.state.dataTabsByProject[projectId] = (persistedState.dataTabs ?? [])
+      .filter((t) => t.connectionId)
+      .map((t) => ({
+        id: t.id,
+        connectionId: t.connectionId,
+        tableName: t.tableName,
+        schemaName: t.schemaName,
+        filters: [],
+        filterLogic: "AND" as const,
+        sortColumns: [],
+        page: 1,
+        pageSize: 100,
+        isLoading: false,
+        pendingNewRows: [],
+      }));
+    this.state.activeDataTabIdByProject[projectId] = persistedState.activeDataTabId ?? null;
 
     // Connection tabs are transient - always initialize empty
     this.state.connectionTabsByProject[projectId] = [];

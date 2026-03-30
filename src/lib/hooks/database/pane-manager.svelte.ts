@@ -306,6 +306,9 @@ export class PaneManager {
       return "starter";
     if ((this.state.settingsTabsByProject[projectId] ?? []).some((t) => t.id === tabId))
       return "settings";
+    if ((this.state.createTableTabsByProject[projectId] ?? []).some((t) => t.id === tabId))
+      return "createTable";
+    if ((this.state.dataTabsByProject[projectId] ?? []).some((t) => t.id === tabId)) return "data";
 
     return null;
   }
@@ -508,6 +511,18 @@ export class PaneManager {
           [projectId]: id,
         };
       },
+      createTable: (id) => {
+        this.state.activeCreateTableTabIdByProject = {
+          ...this.state.activeCreateTableTabIdByProject,
+          [projectId]: id,
+        };
+      },
+      data: (id) => {
+        this.state.activeDataTabIdByProject = {
+          ...this.state.activeDataTabIdByProject,
+          [projectId]: id,
+        };
+      },
     };
 
     setters[viewType](tabId);
@@ -544,6 +559,8 @@ export class PaneManager {
       dashboard: this.state.activeDashboardTabIdByProject[projectId] ?? null,
       starter: this.state.activeStarterTabIdByProject[projectId] ?? null,
       settings: this.state.activeSettingsTabIdByProject[projectId] ?? null,
+      createTable: this.state.activeCreateTableTabIdByProject[projectId] ?? null,
+      data: this.state.activeDataTabIdByProject[projectId] ?? null,
     };
 
     return idMap[view] ?? null;

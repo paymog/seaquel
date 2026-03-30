@@ -123,7 +123,9 @@ export class TabOrderingManager {
       | "connection"
       | "dashboard"
       | "starter"
-      | "settings";
+      | "settings"
+      | "createTable"
+      | "data";
     tab:
       | QueryTab
       | SchemaTab
@@ -135,7 +137,9 @@ export class TabOrderingManager {
       | ConnectionTab
       | DashboardTab
       | StarterTab
-      | SettingsTab;
+      | SettingsTab
+      | import("$lib/types").CreateTableTab
+      | import("$lib/types").DataTab;
   }> {
     if (!this.state.activeProjectId) return [];
 
@@ -179,7 +183,9 @@ export class TabOrderingManager {
       | "connection"
       | "dashboard"
       | "starter"
-      | "settings";
+      | "settings"
+      | "createTable"
+      | "data";
     tab:
       | QueryTab
       | SchemaTab
@@ -191,7 +197,9 @@ export class TabOrderingManager {
       | ConnectionTab
       | DashboardTab
       | StarterTab
-      | SettingsTab;
+      | SettingsTab
+      | import("$lib/types").CreateTableTab
+      | import("$lib/types").DataTab;
   }> {
     if (!this.state.activeProjectId) return [];
 
@@ -221,7 +229,9 @@ export class TabOrderingManager {
         | "connection"
         | "dashboard"
         | "starter"
-        | "settings";
+        | "settings"
+        | "createTable"
+        | "data";
       tab:
         | QueryTab
         | SchemaTab
@@ -233,7 +243,9 @@ export class TabOrderingManager {
         | ConnectionTab
         | DashboardTab
         | StarterTab
-        | SettingsTab;
+        | SettingsTab
+        | import("$lib/types").CreateTableTab
+        | import("$lib/types").DataTab;
     }> = [];
 
     for (const t of queryTabs) {
@@ -274,6 +286,18 @@ export class TabOrderingManager {
 
     for (const t of settingsTabs) {
       allTabsUnordered.push({ id: t.id, type: "settings", tab: t });
+    }
+
+    const createTableTabs = this.state.createTableTabs || [];
+
+    for (const t of createTableTabs) {
+      allTabsUnordered.push({ id: t.id, type: "createTable", tab: t });
+    }
+
+    const dataTabs = this.state.dataTabs || [];
+
+    for (const t of dataTabs) {
+      allTabsUnordered.push({ id: t.id, type: "data", tab: t });
     }
 
     const order = this.state.tabOrderByProject[this.state.activeProjectId] ?? [];

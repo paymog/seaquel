@@ -54,7 +54,7 @@ export class ConnectionManager {
       schemas: SchemaTable[],
       adapter: DatabaseAdapter,
       providerConnectionId?: string,
-    ) => void,
+    ) => Promise<void>,
     private onCreateInitialTab: () => void,
     private onActiveConnectionChanged: () => void = () => {},
   ) {}
@@ -272,7 +272,7 @@ export class ConnectionManager {
       };
 
       // Load column metadata asynchronously in the background
-      this.onSchemaLoaded(
+      void this.onSchemaLoaded(
         newConnection.id,
         schemasWithTables,
         adapter,
@@ -415,7 +415,7 @@ export class ConnectionManager {
       };
 
       // Load column metadata asynchronously in the background
-      this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
+      void this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
 
       // Set this as the active connection (only after schema loading succeeds)
       this.setActiveForProject(connectionId, existingConnection.projectId);
@@ -678,7 +678,7 @@ export class ConnectionManager {
     };
 
     // Load column metadata asynchronously
-    this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
+    void this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
 
     // Create initial query tab
     this.onCreateInitialTab();
@@ -836,8 +836,13 @@ export class ConnectionManager {
       [connectionId]: schemasWithTables,
     };
 
-    // Reload column metadata in the background
-    this.onSchemaLoaded(connectionId, schemasWithTables, adapter, connection.providerConnectionId);
+    // Reload column metadata and wait for it to complete
+    await this.onSchemaLoaded(
+      connectionId,
+      schemasWithTables,
+      adapter,
+      connection.providerConnectionId,
+    );
   }
 
   /**

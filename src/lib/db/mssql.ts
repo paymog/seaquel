@@ -1,6 +1,15 @@
 import type { DatabaseAdapter, ExplainNode } from "./index";
 import { validateIdentifier } from "./index";
-import type { SchemaTable, SchemaColumn, SchemaIndex, ForeignKeyRef } from "$lib/types";
+import { generateAlterTableSql, generateCreateTableDdl, generateAddColumnDdl } from "./alter-table";
+import type {
+  SchemaTable,
+  SchemaColumn,
+  SchemaIndex,
+  ForeignKeyRef,
+  ColumnTypeInfo,
+  CreateTableDefinition,
+  CreateTableColumn,
+} from "$lib/types";
 
 interface MssqlSchemaRow {
   schema_name: string;
@@ -158,5 +167,69 @@ export class MssqlAdapter implements DatabaseAdapter {
       unique: cols[0].is_unique === 1,
       type: cols[0].index_type.toLowerCase(),
     }));
+  }
+
+  // === CREATE TABLE METHODS ===
+
+  getColumnTypes(): ColumnTypeInfo[] {
+    return [
+      // String
+      { name: "VARCHAR", category: "String", hasLength: true },
+      { name: "NVARCHAR", category: "String", hasLength: true },
+      { name: "CHAR", category: "String", hasLength: true },
+      { name: "NCHAR", category: "String", hasLength: true },
+      { name: "TEXT", category: "String" },
+      { name: "NTEXT", category: "String" },
+      // Numeric
+      { name: "INT", category: "Numeric" },
+      { name: "BIGINT", category: "Numeric" },
+      { name: "SMALLINT", category: "Numeric" },
+      { name: "TINYINT", category: "Numeric" },
+      { name: "DECIMAL", category: "Numeric", hasPrecision: true },
+      { name: "NUMERIC", category: "Numeric", hasPrecision: true },
+      { name: "MONEY", category: "Numeric" },
+      { name: "SMALLMONEY", category: "Numeric" },
+      { name: "FLOAT", category: "Numeric" },
+      { name: "REAL", category: "Numeric" },
+      { name: "BIT", category: "Numeric" },
+      // Date/Time
+      { name: "DATE", category: "Date/Time" },
+      { name: "DATETIME", category: "Date/Time" },
+      { name: "DATETIME2", category: "Date/Time" },
+      { name: "SMALLDATETIME", category: "Date/Time" },
+      { name: "TIME", category: "Date/Time" },
+      { name: "DATETIMEOFFSET", category: "Date/Time" },
+      // Binary
+      { name: "BINARY", category: "Binary", hasLength: true },
+      { name: "VARBINARY", category: "Binary", hasLength: true },
+      { name: "IMAGE", category: "Binary" },
+      // UUID
+      { name: "UNIQUEIDENTIFIER", category: "UUID" },
+      // Other
+      { name: "XML", category: "Other" },
+    ];
+  }
+
+  private static readonly quote = (n: string) => `[${n}]`;
+
+  generateCreateTableSql(definition: CreateTableDefinition): string {
+    return generateCreateTableDdl(definition, MssqlAdapter.quote);
+  }
+
+  generateAddColumnSql(schema: string, table: string, column: CreateTableColumn): string {
+    return generateAddColumnDdl(schema, table, column, MssqlAdapter.quote, false);
+  }
+
+  generateAlterTableSql(originalDef: CreateTableDefinition, newDef: CreateTableDefinition): string {
+    return generateAlterTableSql(originalDef, newDef, {
+      quote: MssqlAdapter.quote,
+      supportsDropColumn: true,
+      supportsAlterColumn: true,
+      useModifyColumn: false,
+    });
+  }
+
+  getSchemasQuery(): string {
+    return `SELECT name as schema_name FROM sys.schemas WHERE name NOT IN ('sys', 'guest', 'INFORMATION_SCHEMA') ORDER BY name;`;
   }
 }

@@ -89,6 +89,74 @@
 		dashboardToDelete = null;
 	};
 
+	// Drop/Truncate table state
+	let dropTableTarget = $state<{ schema: string; name: string } | null>(null);
+	let showDropDialog = $state(false);
+	let truncateTableTarget = $state<{ schema: string; name: string } | null>(null);
+	let showTruncateDialog = $state(false);
+
+	const quoteId = $derived.by(() => {
+		const t = db.state.activeConnection?.type;
+		if (t === "mysql" || t === "mariadb") return (n: string) => `\`${n}\``;
+		if (t === "mssql") return (n: string) => `[${n}]`;
+		return (n: string) => `"${n}"`;
+	});
+
+	const handleDropTable = async () => {
+		if (!dropTableTarget || !db.state.activeConnectionId) return;
+		const schema = dropTableTarget.schema;
+		const name = dropTableTarget.name;
+		showDropDialog = false;
+		dropTableTarget = null;
+		try {
+			await db.queries.executeRawDdl(
+				`DROP TABLE ${quoteId(schema)}.${quoteId(name)}`,
+			);
+			// Close tabs referencing the dropped table
+			for (const tab of db.state.schemaTabs) {
+				if (tab.table.name === name && tab.table.schema === schema) {
+					db.schemaTabs.remove(tab.id);
+				}
+			}
+			for (const tab of db.state.dataTabs) {
+				if (tab.tableName === name && tab.schemaName === schema) {
+					db.dataTabs.remove(tab.id);
+				}
+			}
+			for (const tab of db.state.createTableTabs) {
+				if (tab.isEditMode && tab.name === name) {
+					db.createTableTabs.remove(tab.id);
+				}
+			}
+			await db.connections.refreshSchema(db.state.activeConnectionId);
+			const { toast } = await import("svelte-sonner");
+			toast.success(`Table "${name}" dropped`);
+		} catch (error) {
+			const { errorToast } = await import("$lib/utils/toast");
+			errorToast(`Failed to drop table: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	};
+
+	const handleTruncateTable = async () => {
+		if (!truncateTableTarget || !db.state.activeConnectionId) return;
+		const schema = truncateTableTarget.schema;
+		const name = truncateTableTarget.name;
+		showTruncateDialog = false;
+		truncateTableTarget = null;
+		const isSqlite = db.state.activeConnection?.type === "sqlite";
+		const sql = isSqlite
+			? `DELETE FROM ${quoteId(schema)}.${quoteId(name)}`
+			: `TRUNCATE TABLE ${quoteId(schema)}.${quoteId(name)}`;
+		try {
+			await db.queries.executeRawDdl(sql);
+			const { toast } = await import("svelte-sonner");
+			toast.success(`Table "${name}" truncated`);
+		} catch (error) {
+			const { errorToast } = await import("$lib/utils/toast");
+			errorToast(`Failed to truncate table: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	};
+
 	// Labels dialog state
 	let showLabelsDialog = $state(false);
 	let connectionToEditLabels = $state<string | null>(null);
@@ -136,8 +204,8 @@
 	};
 
 	const handleTableClick = (table: (typeof db.state.activeSchema)[0]) => {
-		db.schemaTabs.add(table);
-		db.ui.setActiveView("schema");
+		db.dataTabs.add(table);
+		db.ui.setActiveView("data");
 	};
 
 	const filteredHistory = $derived(
@@ -619,6 +687,19 @@
 						</Tooltip.Trigger>
 						<Tooltip.Content>{m.sidebar_refresh_schema()}</Tooltip.Content>
 					</Tooltip.Root>
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Button {...props} variant="ghost" size="icon" class="size-8 shrink-0" onclick={() => {
+									db.createTableTabs.add();
+									db.ui.setActiveView("createTable");
+								}}>
+									<PlusIcon class="size-4" />
+								</Button>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>{m.sidebar_create_table()}</Tooltip.Content>
+					</Tooltip.Root>
 				</div>
 			</div>
 			<Sidebar.Group>
@@ -656,23 +737,36 @@
 															{/snippet}
 														</DropdownMenu.Trigger>
 														<DropdownMenu.Content align="end">
-															{#if db.state.activeView === 'workflow' && db.state.activeWorkflowTabId}
+															<DropdownMenu.Item onclick={() => {
+																db.schemaTabs.add(table);
+																db.ui.setActiveView("schema");
+															}}>
+																<TableIcon class="size-4 me-2" />
+																{m.sidebar_view_schema()}
+															</DropdownMenu.Item>
+															{#if db.state.activeView === 'workflow' && db.state.activeWorkflowTab}
+																<DropdownMenu.Separator />
 																<DropdownMenu.Item onclick={() => db.workflow.addTableNode(table)}>
 																	<LayoutGridIcon class="size-4 me-2" />
 																	{m.sidebar_add_to_workflow()}
 																</DropdownMenu.Item>
-															{:else}
-																<Tooltip.Root>
-																	<Tooltip.Trigger class="w-full">
-																		<DropdownMenu.Item disabled class="w-full">
-																			<LayoutGridIcon class="size-4 me-2" />
-																			{m.sidebar_add_to_workflow()}
-																		</DropdownMenu.Item>
-																	</Tooltip.Trigger>
-																	<Tooltip.Content side="right">
-																		{m.sidebar_open_workflow_hint()}
-																	</Tooltip.Content>
-																</Tooltip.Root>
+															{/if}
+															{#if table.type === "table"}
+																<DropdownMenu.Separator />
+																<DropdownMenu.Item onclick={() => {
+																	truncateTableTarget = { schema: table.schema, name: table.name };
+																	showTruncateDialog = true;
+																}}>
+																	<Trash2Icon class="size-4 me-2" />
+																	{m.sidebar_truncate_table()}
+																</DropdownMenu.Item>
+																<DropdownMenu.Item class="text-destructive" onclick={() => {
+																	dropTableTarget = { schema: table.schema, name: table.name };
+																	showDropDialog = true;
+																}}>
+																	<Trash2Icon class="size-4 me-2" />
+																	{m.sidebar_drop_table()}
+																</DropdownMenu.Item>
 															{/if}
 														</DropdownMenu.Content>
 													</DropdownMenu.Root>
@@ -1578,4 +1672,24 @@
 	cancelText={m.theme_delete_cancel()}
 	confirmText={m.theme_delete_confirm()}
 	onconfirm={confirmDeleteDashboard}
+/>
+
+<!-- Drop Table Confirmation Dialog -->
+<DeleteConfirmDialog
+	bind:open={showDropDialog}
+	title={m.drop_table_confirm_title()}
+	description={m.drop_table_confirm_description({ schema: dropTableTarget?.schema ?? "", table: dropTableTarget?.name ?? "" })}
+	cancelText={m.theme_delete_cancel()}
+	confirmText={m.sidebar_drop_table()}
+	onconfirm={handleDropTable}
+/>
+
+<!-- Truncate Table Confirmation Dialog -->
+<DeleteConfirmDialog
+	bind:open={showTruncateDialog}
+	title={m.truncate_table_confirm_title()}
+	description={m.truncate_table_confirm_description({ schema: truncateTableTarget?.schema ?? "", table: truncateTableTarget?.name ?? "" })}
+	cancelText={m.theme_delete_cancel()}
+	confirmText={m.sidebar_truncate_table()}
+	onconfirm={handleTruncateTable}
 />

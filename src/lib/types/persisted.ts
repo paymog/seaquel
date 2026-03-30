@@ -278,7 +278,29 @@ export type ActiveViewType =
   | "connection"
   | "dashboard"
   | "starter"
-  | "settings";
+  | "settings"
+  | "createTable"
+  | "data";
+
+/**
+ * Persisted create table tab state.
+ */
+export interface PersistedCreateTableTab {
+  id: string;
+  connectionId: string;
+  name: string;
+  tableDefinition: string;
+}
+
+/**
+ * Persisted data viewer tab state.
+ */
+export interface PersistedDataTab {
+  id: string;
+  connectionId: string;
+  tableName: string;
+  schemaName: string;
+}
 
 /**
  * Complete persisted state for a single connection.
