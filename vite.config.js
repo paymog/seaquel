@@ -14,7 +14,11 @@ export default defineConfig(async ({ mode }) => {
     plugins: [
       tailwindcss(),
       sveltekit(),
-      paraglideVitePlugin({ project: "./project.inlang", outdir: "./src/lib/paraglide" }),
+      paraglideVitePlugin({
+        project: "./project.inlang",
+        outdir: "./src/lib/paraglide",
+        strategy: ["localStorage", "cookie", "globalVariable", "baseLocale"],
+      }),
     ],
 
     // Define environment variables
