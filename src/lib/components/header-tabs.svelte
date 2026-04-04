@@ -438,7 +438,7 @@
                                         {#if isRenameable && editingTabId === id}
                                             <input
                                                 bind:value={editingTabName}
-                                                class="h-5 px-1 text-xs pr-4 outline-none ring-0"
+                                                class="h-5 px-1 text-xs pe-4 outline-none ring-0"
                                                 style="width: {editingInputWidth}px"
                                                 onkeydown={handleKeydown}
                                                 onblur={finishEditing}
@@ -447,7 +447,7 @@
                                             />
                                         {:else if isRenameable}
                                             <span
-                                                class="pr-4"
+                                                class="pe-4"
                                                 ondblclick={(e) => {
                                                     e.stopPropagation();
                                                     startEditing(id, label, e.currentTarget);
@@ -456,13 +456,13 @@
                                                 {label}{unsaved}
                                             </span>
                                         {:else}
-                                            <span class="pr-4">{label}</span>
+                                            <span class="pe-4">{label}</span>
                                         {/if}
                                         {#if showClose}
                                             <Button
                                                 size="icon"
                                                 variant="ghost"
-                                                class="absolute right-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
+                                                class="absolute end-0 top-1/2 -translate-y-1/2 size-5 opacity-0 group-hover:opacity-100 transition-opacity [&_svg:not([class*='size-'])]:size-3"
                                                 onclick={(e) => {
                                                     e.stopPropagation();
                                                     closeTab(id, type);
@@ -501,7 +501,7 @@
                         <Button
                             size="icon"
                             variant="ghost"
-                            class="size-7 shrink-0 rounded-r-none [&_svg:not([class*='size-'])]:size-4"
+                            class="size-7 shrink-0 rounded-e-none [&_svg:not([class*='size-'])]:size-4"
                             onclick={() => {
                                 db.queryTabs.add();
                                 db.ui.setActiveView("query");
@@ -524,7 +524,7 @@
                         {#snippet child({ props })}
                             <button
                                 {...props}
-                                class="flex h-7 w-4 shrink-0 items-center justify-center rounded-r-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                class="flex h-7 w-4 shrink-0 items-center justify-center rounded-e-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                             >
                                 <ChevronDownIcon class="size-3" />
                             </button>

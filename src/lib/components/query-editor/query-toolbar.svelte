@@ -133,7 +133,7 @@
 		<div class="flex">
 			<Button
 				size="sm"
-				class="h-7 gap-1 rounded-r-none border-r-0"
+				class="h-7 gap-1 rounded-e-none border-e-0"
 				onclick={onExecuteCurrent}
 				disabled={isExecuting}
 			>
@@ -147,7 +147,7 @@
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger
 					class={buttonVariants({ size: "sm", variant: "default" }) +
-						" !h-7 px-1.5 rounded-l-none border-l border-primary-foreground/20"}
+						" !h-7 px-1.5 rounded-s-none border-s border-primary-foreground/20"}
 					disabled={isExecuting}
 				>
 					<ChevronDownIcon class="size-3" />
@@ -215,7 +215,7 @@
 							<Button
 								size="sm"
 								variant="outline"
-								class="h-7 px-2 rounded-r-none border-r-0"
+								class="h-7 px-2 rounded-e-none border-e-0"
 								onclick={onSave}
 								disabled={!hasQuery || (tabId != null && !db.queryTabs.hasUnsavedChanges(tabId))}
 							>
@@ -224,7 +224,7 @@
 							<DropdownMenu.Root>
 								<DropdownMenu.Trigger
 									class={buttonVariants({ size: "sm", variant: "outline" }) +
-										" !h-7 px-1.5 rounded-l-none"}
+										" !h-7 px-1.5 rounded-s-none"}
 									disabled={!hasQuery}
 								>
 									<ChevronDownIcon class="size-3" />

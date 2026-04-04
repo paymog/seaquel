@@ -6,9 +6,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Explore, query, and visualize your databases — all in one app.</title>
     <script>
-      // Prevent flash of wrong theme on initial load
+      // Prevent flash of wrong theme/direction on initial load
       (function () {
         var root = document.documentElement;
+
+        // Handle RTL direction from persisted locale
+        var locale = localStorage.getItem("PARAGLIDE_LOCALE");
+        if (locale) {
+          root.lang = locale;
+          if (["ar", "he", "fa", "ur"].indexOf(locale) !== -1) {
+            root.dir = "rtl";
+          }
+        }
 
         // Handle dark mode
         var mode = localStorage.getItem("mode-watcher-mode");

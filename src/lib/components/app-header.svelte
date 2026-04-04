@@ -152,10 +152,10 @@
 >
     <div
         data-tauri-drag-region
-        class="h-(--header-height) flex w-full items-center pr-2"
+        class="h-(--header-height) flex w-full items-center pr-2 {isMac() ? 'pl-18' : ''}"
     >
         <!-- Left section: sidebar toggle + project dropdown (fixed sidebar width) -->
-        <div data-tauri-drag-region class="flex items-center gap-1 shrink-0 w-(--sidebar-width) {isMac() ? 'pl-18' : 'pl-2'}">
+        <div data-tauri-drag-region class="flex items-center gap-1 shrink-0 w-(--sidebar-width) {isMac() ? '' : 'ps-2'}">
             <Button
                 class="size-6 shrink-0"
                 variant="ghost"

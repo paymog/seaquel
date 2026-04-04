@@ -4,7 +4,7 @@
 
     import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
     import { buttonVariants } from "$lib/components/ui/button/index.js";
-    import { locales, getLocale, setLocale } from "$lib/paraglide/runtime";
+    import { locales, getLocale, setLocale, getTextDirection } from "$lib/paraglide/runtime";
     import { m } from "$lib/paraglide/messages.js";
 
     // Strongly typed: TS will error if a new locale is added but not mapped here
@@ -28,7 +28,10 @@
     </DropdownMenu.Trigger>
     <DropdownMenu.Content align="end">
         {#each locales as locale (locale)}
-            <DropdownMenu.Item onclick={() => setLocale(locale)}>
+            <DropdownMenu.Item onclick={() => {
+                setLocale(locale);
+                document.documentElement.dir = getTextDirection(locale);
+            }}>
                 <span class="flex items-center gap-2">
                     <span>{languages[locale].flag}</span>
                     <span>{languages[locale].name}</span>

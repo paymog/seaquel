@@ -239,7 +239,7 @@
 	});
 </script>
 
-<div bind:this={container} class={["h-full w-full", className].filter(Boolean).join(" ")}></div>
+<div bind:this={container} dir="ltr" class={["h-full w-full", className].filter(Boolean).join(" ")}></div>
 
 <style>
 	/* Template variable styling - applied via Monaco decorations */
