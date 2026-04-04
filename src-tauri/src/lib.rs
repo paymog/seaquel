@@ -476,6 +476,18 @@ pub fn run() {
             license::validate_license,
             license::deactivate_license,
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                if window.label() == "main" {
+                    // Close all other windows when the main window is closed
+                    for (label, w) in window.app_handle().webview_windows() {
+                        if label != "main" {
+                            let _ = w.destroy();
+                        }
+                    }
+                }
+            }
+        })
         .setup(|app| {
             // Set up custom menu
             let menu = create_menu(app.handle())?;
@@ -484,7 +496,15 @@ pub fn run() {
             // Listen for menu clicks and emit to frontend
             app.on_menu_event(|app, event| {
                 if event.id().as_ref() == "close_tab" {
-                    let _ = app.emit("menu-close-tab", ());
+                    // If a child window is focused, close it instead of closing a tab
+                    let focused_child = app.webview_windows().into_iter().find(|(label, w)| {
+                        label != "main" && w.is_focused().unwrap_or(false)
+                    });
+                    if let Some((_, child)) = focused_child {
+                        let _ = child.destroy();
+                    } else {
+                        let _ = app.emit("menu-close-tab", ());
+                    }
                 } else if event.id().as_ref() == "settings" {
                     let _ = app.emit("menu-settings", ());
                 }

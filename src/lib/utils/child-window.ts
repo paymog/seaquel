@@ -1,4 +1,4 @@
-import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 interface ChildWindowConfig {
   label: string;
@@ -24,8 +24,6 @@ export async function openChildWindow(config: ChildWindowConfig): Promise<void> 
       return;
     }
 
-    const mainWindow = getCurrentWebviewWindow();
-
     const window = new WebviewWindow(config.label, {
       url: config.url,
       title: config.title,
@@ -37,7 +35,6 @@ export async function openChildWindow(config: ChildWindowConfig): Promise<void> 
       resizable: true,
       decorations: true,
       alwaysOnTop: false,
-      parent: mainWindow,
     });
 
     windowRefs.set(config.label, window);
