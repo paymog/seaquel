@@ -109,9 +109,14 @@
 		showDropDialog = false;
 		dropTableTarget = null;
 		try {
-			await db.queries.executeRawDdl(
+			const result = await db.queries.executeRawDdl(
 				`DROP TABLE ${quoteId(schema)}.${quoteId(name)}`,
 			);
+			if (result.queued) {
+				const { toast } = await import("svelte-sonner");
+				toast.info(`Drop table "${name}" added to pending changes`);
+				return;
+			}
 			// Close tabs referencing the dropped table
 			for (const tab of db.state.schemaTabs) {
 				if (tab.table.name === name && tab.table.schema === schema) {
@@ -148,7 +153,12 @@
 			? `DELETE FROM ${quoteId(schema)}.${quoteId(name)}`
 			: `TRUNCATE TABLE ${quoteId(schema)}.${quoteId(name)}`;
 		try {
-			await db.queries.executeRawDdl(sql);
+			const result = await db.queries.executeRawDdl(sql);
+			if (result.queued) {
+				const { toast } = await import("svelte-sonner");
+				toast.info(`Truncate table "${name}" added to pending changes`);
+				return;
+			}
 			const { toast } = await import("svelte-sonner");
 			toast.success(`Table "${name}" truncated`);
 		} catch (error) {

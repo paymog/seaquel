@@ -6,6 +6,7 @@ import type {
   PersistedExplainTab,
   PersistedErdTab,
   PersistedQueryHistoryItem,
+  PersistedSavedQuery,
 } from "$lib/types";
 import { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME } from "$lib/types";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
@@ -106,8 +107,14 @@ export class MigrationManager {
     }
 
     // 6. Migrate saved queries and history to SQLite tables
+    // Accumulate queries per project first so saveAll doesn't discard
+    // queries from earlier connections in the same project.
+    const queriesByProject = new Map<string, PersistedSavedQuery[]>();
     for (const conn of connections) {
-      await this.migrateConnectionData(conn.id);
+      await this.migrateConnectionData(conn.id, queriesByProject);
+    }
+    for (const [projectId, queries] of queriesByProject) {
+      await savedQueriesRepo.saveAll(db, projectId, queries);
     }
 
     void log.info(
@@ -259,8 +266,13 @@ export class MigrationManager {
 
   /**
    * Migrate saved queries and history from legacy connection state to SQLite tables.
+   * Saved queries are accumulated into queriesByProject so that saveAll can be
+   * called once per project (avoiding earlier batches being deleted).
    */
-  private async migrateConnectionData(connectionId: string): Promise<void> {
+  private async migrateConnectionData(
+    connectionId: string,
+    queriesByProject: Map<string, PersistedSavedQuery[]>,
+  ): Promise<void> {
     const legacyState = await this.persistence.loadLegacyConnectionState(connectionId);
     if (!legacyState) return;
 
@@ -283,11 +295,14 @@ export class MigrationManager {
       );
       const projectId = connRows.length > 0 ? connRows[0].project_id : DEFAULT_PROJECT_ID;
       // Remap connectionId → projectId on migrated saved queries
-      const migratedQueries = savedQueries.map((q) => ({
+      const migratedQueries: PersistedSavedQuery[] = savedQueries.map((q) => ({
         ...q,
         projectId,
       }));
-      await savedQueriesRepo.saveAll(db, projectId, migratedQueries);
+      const existing = queriesByProject.get(projectId) ?? [];
+      existing.push(...migratedQueries);
+      queriesByProject.set(projectId, existing);
+
       await queryHistoryRepo.replaceAll(db, connectionId, migratedHistory);
     }
 

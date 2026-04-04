@@ -34,8 +34,10 @@ import { SharedQueryManager } from "./database/shared-query-manager.svelte.js";
 import { SharedDashboardManager } from "./database/shared-dashboard-manager.svelte.js";
 import { AIChatManager } from "./database/ai-chat-manager.svelte.js";
 import { PaneManager } from "./database/pane-manager.svelte.js";
+import { PendingChangesManager } from "./database/pending-changes.svelte.js";
 import { ProviderRegistry } from "$lib/providers";
 import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
+import { pendingChangesSettingsStore } from "$lib/stores/pending-changes-settings.svelte";
 import { getDatabase } from "$lib/storage/db";
 
 /**
@@ -82,6 +84,7 @@ class UseDatabase {
   readonly sharedDashboards: SharedDashboardManager;
   readonly aiChats: AIChatManager;
   readonly panes: PaneManager;
+  readonly pendingChanges: PendingChangesManager;
 
   private _stateRestoration: StateRestorationManager;
   private _readyResolve!: () => void;
@@ -220,6 +223,7 @@ class UseDatabase {
       async (connectionId: string) => {
         await this.connections.refreshSchema(connectionId);
       },
+      () => this.pendingChanges,
     );
 
     // Workflow
@@ -246,7 +250,13 @@ class UseDatabase {
       this.persistence,
     );
     this.savedQueries.setRemoveTab((id) => this.queryTabs.remove(id));
-    this.queries = new QueryExecutionManager(this.state, this.history, providers);
+    this.pendingChanges = new PendingChangesManager(this.state, providers, this.history);
+    this.queries = new QueryExecutionManager(
+      this.state,
+      this.history,
+      providers,
+      this.pendingChanges,
+    );
     this.dataTabs = new DataTabManager(
       this.state,
       this.tabs,
@@ -355,6 +365,7 @@ class UseDatabase {
       // Initialize AI settings from persisted storage
       const sqliteDb = await getDatabase();
       await aiSettingsStore.initialize(sqliteDb);
+      await pendingChangesSettingsStore.load();
       void log.info("AI settings initialized");
 
       // Initialize connections (also loads saved queries, history, and dashboards)

@@ -51,6 +51,7 @@
 	import { Switch } from "$lib/components/ui/switch";
 	import { onboardingStore } from "$lib/stores/onboarding.svelte.js";
 	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte.js";
+	import { pendingChangesSettingsStore } from "$lib/stores/pending-changes-settings.svelte.js";
 	import { getDatabase } from "$lib/storage/db";
 	import { appStateRepo } from "$lib/storage/repository";
 	import { getKeyringService } from "$lib/services/keyring";
@@ -109,6 +110,7 @@
 				themes: "appearance",
 				"ai-feature": "features",
 				learn: "features",
+				"pending-changes": "features",
 				"ai-provider": "ai",
 				"ai-privacy": "ai",
 			} as Record<SettingsSection, SettingsGroup>
@@ -365,6 +367,7 @@
 		themes: "appearance",
 		"ai-feature": "features",
 		learn: "features",
+		"pending-changes": "features",
 		"ai-provider": "ai",
 		"ai-privacy": "ai",
 		"query-history": "general",
@@ -1145,7 +1148,7 @@
 				</div>
 			{/if}
 
-			{#if shouldShowSection("ai-feature") || shouldShowSection("learn")}
+			{#if shouldShowSection("ai-feature") || shouldShowSection("learn") || shouldShowSection("pending-changes")}
 				<div class="space-y-4" data-section="ai-feature">
 					<div class="flex items-center justify-between">
 						<div>
@@ -1169,6 +1172,18 @@
 						<Switch
 							checked={onboardingStore.learnEnabled}
 							onCheckedChange={handleLearnToggle}
+						/>
+					</div>
+					<div class="flex items-center justify-between">
+						<div>
+							<p class="text-sm font-medium">Pending Changes</p>
+							<p class="text-xs text-muted-foreground">
+								Queue write and DDL queries for review before executing them
+							</p>
+						</div>
+						<Switch
+							checked={pendingChangesSettingsStore.enabled}
+							onCheckedChange={(v) => pendingChangesSettingsStore.setEnabled(v)}
 						/>
 					</div>
 				</div>

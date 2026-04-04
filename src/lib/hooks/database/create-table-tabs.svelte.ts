@@ -9,6 +9,7 @@ import type { TabOrderingManager } from "./tab-ordering.svelte.js";
 import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelte.js";
 import { getAdapter } from "$lib/db";
 import type { ProviderRegistry } from "$lib/providers";
+import type { PendingChangesManager } from "./pending-changes.svelte.js";
 import { toast } from "svelte-sonner";
 
 /**
@@ -23,6 +24,7 @@ export class CreateTableTabManager extends BaseTabManager<CreateTableTab> {
     setActiveView: (view: ActiveViewType) => void,
     private providers: ProviderRegistry,
     private refreshSchemaFn: (connectionId: string) => Promise<void>,
+    private getPendingChanges: () => PendingChangesManager,
   ) {
     super(state, tabOrdering, schedulePersistence, setActiveView);
   }
@@ -191,6 +193,11 @@ export class CreateTableTabManager extends BaseTabManager<CreateTableTab> {
     const connection = this.state.connections.find((c) => c.id === tab.connectionId);
     if (!connection?.providerConnectionId) return false;
 
+    if (!tab.tableDefinition.schemaName) {
+      toast.error("A schema must be selected before creating a table");
+      return false;
+    }
+
     const adapter = getAdapter(connection.type);
 
     let sql: string;
@@ -207,13 +214,28 @@ export class CreateTableTabManager extends BaseTabManager<CreateTableTab> {
 
     if (!sql) return false;
 
+    // Split into individual statements
+    const statements = sql
+      .split(";\n")
+      .map((s) => s.trim())
+      .filter((s) => s && !s.startsWith("--"));
+
+    // Queue statements when pending changes is enabled
+    const pendingChanges = this.getPendingChanges();
+    if (pendingChanges.isEnabled()) {
+      const origin = tab.isEditMode ? ("alter-table" as const) : ("create-table" as const);
+      for (const stmt of statements) {
+        pendingChanges.add(connection.id, stmt.endsWith(";") ? stmt : stmt + ";", "other", origin);
+      }
+      toast.info(
+        `${statements.length} statement${statements.length > 1 ? "s" : ""} added to pending changes`,
+      );
+      pendingChanges.openSheet();
+      return true;
+    }
+
     try {
       const provider = await this.providers.getForType(connection.type);
-      // ALTER TABLE may produce multiple statements separated by newlines
-      const statements = sql
-        .split(";\n")
-        .map((s) => s.trim())
-        .filter((s) => s && !s.startsWith("--"));
       for (const stmt of statements) {
         await provider.execute(
           connection.providerConnectionId,

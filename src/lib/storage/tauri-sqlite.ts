@@ -16,15 +16,38 @@ interface DbConnectResult {
 }
 
 class TauriSqliteDatabase implements SqliteDatabase {
+  // Serializes all write operations (execute + transaction) so they never
+  // overlap. Reads (query) bypass the queue since SQLite WAL mode allows
+  // concurrent readers.
+  private writeQueue: Promise<void> = Promise.resolve();
+
   constructor(private connectionId: string) {}
 
-  async execute(sql: string, params?: unknown[]): Promise<number> {
-    const result = await invoke<DbExecuteResult>("db_execute", {
+  private rawExecute(sql: string, params?: unknown[]): Promise<DbExecuteResult> {
+    return invoke<DbExecuteResult>("db_execute", {
       connectionId: this.connectionId,
       sql,
       values: params ?? [],
     });
-    return result.rows_affected;
+  }
+
+  private enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = this.writeQueue;
+    let resolve!: () => void;
+    this.writeQueue = new Promise<void>((r) => {
+      resolve = r;
+    });
+    const result = prev.then(fn);
+    // Release the queue slot whether fn succeeds or fails
+    result.then(resolve, resolve);
+    return result;
+  }
+
+  async execute(sql: string, params?: unknown[]): Promise<number> {
+    return this.enqueueWrite(async () => {
+      const result = await this.rawExecute(sql, params);
+      return result.rows_affected;
+    });
   }
 
   async query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> {
@@ -44,16 +67,12 @@ class TauriSqliteDatabase implements SqliteDatabase {
   }
 
   async transaction(statements: Array<{ sql: string; params?: unknown[] }>): Promise<void> {
-    await this.execute("BEGIN TRANSACTION");
-    try {
-      for (const stmt of statements) {
-        await this.execute(stmt.sql, stmt.params);
-      }
-      await this.execute("COMMIT");
-    } catch (error) {
-      await this.execute("ROLLBACK");
-      throw error;
-    }
+    return this.enqueueWrite(async () => {
+      await invoke("db_transaction", {
+        connectionId: this.connectionId,
+        statements: statements.map((s) => ({ sql: s.sql, params: s.params ?? [] })),
+      });
+    });
   }
 
   async close(): Promise<void> {

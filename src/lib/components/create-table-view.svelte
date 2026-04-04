@@ -59,6 +59,9 @@
 			try {
 				const rows = await db.queries.executeRaw(query) as { schema_name: string }[];
 				availableSchemas = rows.map((r) => r.schema_name);
+				if (availableSchemas.length === 1 && !tab?.tableDefinition.schemaName) {
+					updateDefinition((def) => ({ ...def, schemaName: availableSchemas[0] }));
+				}
 			} catch {
 				availableSchemas = [];
 			}
@@ -679,7 +682,7 @@
 					<Button
 						class="w-full"
 						onclick={handleCreate}
-						disabled={isCreating || !tab.tableDefinition.tableName.trim() || tab.tableDefinition.columns.length === 0}
+						disabled={isCreating || !tab.tableDefinition.tableName.trim() || !tab.tableDefinition.schemaName || tab.tableDefinition.columns.length === 0}
 					>
 						<PlayIcon class="size-3 me-1" />
 						{#if isCreating}

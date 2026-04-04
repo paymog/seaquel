@@ -156,6 +156,14 @@ export type {
 } from "./shared-queries";
 export { serializeRepo, deserializeRepo, CREDENTIAL_FIELDS } from "./shared-queries";
 
+// Pending changes types
+export type {
+  PendingChange,
+  PendingChangeOrigin,
+  PendingChangeTarget,
+  PendingChangeViewMode,
+} from "./pending-changes";
+
 // AI types
 export * from "./ai";
 

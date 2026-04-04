@@ -87,6 +87,8 @@ const DDL_STATEMENTS = [
     active_visualize_tab_id TEXT,
     active_starter_tab_id TEXT,
     active_dashboard_tab_id TEXT,
+    active_create_table_tab_id TEXT,
+    active_data_tab_id TEXT,
     tab_order TEXT NOT NULL DEFAULT '[]',
     starred_shared_query_ids TEXT NOT NULL DEFAULT '[]',
     starred_shared_dashboard_ids TEXT NOT NULL DEFAULT '[]',
@@ -404,6 +406,16 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
       table: "saved_queries",
       column: "folder",
       sql: "ALTER TABLE saved_queries ADD COLUMN folder TEXT",
+    },
+    {
+      table: "project_state",
+      column: "active_create_table_tab_id",
+      sql: "ALTER TABLE project_state ADD COLUMN active_create_table_tab_id TEXT",
+    },
+    {
+      table: "project_state",
+      column: "active_data_tab_id",
+      sql: "ALTER TABLE project_state ADD COLUMN active_data_tab_id TEXT",
     },
   ];
 

@@ -156,6 +156,16 @@ export class DataTabManager extends BaseTabManager<DataTab> {
   }
 
   /**
+   * Refresh all open data tabs for a given connection.
+   */
+  refreshAllForConnection(connectionId: string): void {
+    const tabs = this.getProjectTabs().filter((t) => t.connectionId === connectionId);
+    for (const tab of tabs) {
+      void this.refresh(tab.id);
+    }
+  }
+
+  /**
    * Update filters and re-execute.
    */
   setFilters(tabId: string, filters: DataFilter[], logic?: "AND" | "OR"): void {
@@ -244,7 +254,9 @@ export class DataTabManager extends BaseTabManager<DataTab> {
         ...t,
         pendingNewRows: t.pendingNewRows.filter((_, i) => i !== rowIndex),
       }));
-      void this.refresh(tabId);
+      if (!result.queued) {
+        void this.refresh(tabId);
+      }
       return true;
     }
 

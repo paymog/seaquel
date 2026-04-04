@@ -195,6 +195,8 @@ export const projectStateRepo = {
       active_workflow_tab_id: string | null;
       active_visualize_tab_id: string | null;
       active_starter_tab_id: string | null;
+      active_create_table_tab_id: string | null;
+      active_data_tab_id: string | null;
       tab_order: string;
     }>("SELECT * FROM project_state WHERE project_id = ?", [projectId]);
 
@@ -282,6 +284,24 @@ export const projectStateRepo = {
         id: t.id,
         name: t.name,
         dashboardId: t.source_query ?? "",
+      }));
+
+    const createTableTabs = tabs
+      .filter((t) => t.tab_type === "create_table")
+      .map((t) => ({
+        id: t.id,
+        connectionId: t.connection_id ?? "",
+        name: t.name,
+        tableDefinition: t.source_query ?? "{}",
+      }));
+
+    const dataTabs = tabs
+      .filter((t) => t.tab_type === "data")
+      .map((t) => ({
+        id: t.id,
+        connectionId: t.connection_id ?? "",
+        tableName: t.table_name ?? "",
+        schemaName: t.schema_name ?? "",
       }));
 
     const workflowRows = await db.query<{ id: string; data: string }>(
@@ -373,6 +393,10 @@ export const projectStateRepo = {
       savedWorkflows,
       dashboardTabs,
       activeDashboardTabId,
+      createTableTabs,
+      activeCreateTableTabId: state.active_create_table_tab_id ?? null,
+      dataTabs,
+      activeDataTabId: state.active_data_tab_id ?? null,
       starredSharedQueryIds,
       starredSharedDashboardIds,
       paneLayout,
@@ -380,13 +404,19 @@ export const projectStateRepo = {
   },
 
   async save(db: SqliteDatabase, state: PersistedProjectState): Promise<void> {
-    await db.execute(
-      `INSERT OR REPLACE INTO project_state
+    // Build all statements and execute in a single transaction to avoid
+    // "database is locked" errors from concurrent writes.
+    const statements: Array<{ sql: string; params?: unknown[] }> = [];
+
+    statements.push({
+      sql: `INSERT OR REPLACE INTO project_state
        (project_id, active_view, active_connection_id, active_query_tab_id, active_schema_tab_id,
         active_explain_tab_id, active_erd_tab_id, active_statistics_tab_id, active_workflow_tab_id,
-        active_visualize_tab_id, active_starter_tab_id, tab_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+        active_visualize_tab_id, active_starter_tab_id, tab_order,
+        active_dashboard_tab_id, starred_shared_query_ids, starred_shared_dashboard_ids, pane_layout,
+        active_create_table_tab_id, active_data_tab_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
         state.projectId,
         state.activeView,
         state.activeConnectionId,
@@ -399,125 +429,110 @@ export const projectStateRepo = {
         null, // activeVisualizeTabId
         state.activeStarterTabId ?? null,
         JSON.stringify(state.tabOrder),
-      ],
-    );
-
-    // Save active dashboard tab ID (column added in v3 migration)
-    try {
-      await db.execute(
-        `UPDATE project_state SET active_dashboard_tab_id = ? WHERE project_id = ?`,
-        [state.activeDashboardTabId ?? null, state.projectId],
-      );
-    } catch {
-      // Column may not exist yet (pre-v3 migration)
-    }
-
-    // Save starred shared query IDs
-    try {
-      await db.execute(
-        `UPDATE project_state SET starred_shared_query_ids = ? WHERE project_id = ?`,
-        [JSON.stringify(state.starredSharedQueryIds ?? []), state.projectId],
-      );
-    } catch {
-      // Column may not exist yet (pre-migration)
-    }
-
-    // Save starred shared dashboard IDs
-    try {
-      await db.execute(
-        `UPDATE project_state SET starred_shared_dashboard_ids = ? WHERE project_id = ?`,
-        [JSON.stringify(state.starredSharedDashboardIds ?? []), state.projectId],
-      );
-    } catch {
-      // Column may not exist yet (pre-migration)
-    }
-
-    // Save pane layout (column added by v4 migration)
-    try {
-      await db.execute(`UPDATE project_state SET pane_layout = ? WHERE project_id = ?`, [
+        state.activeDashboardTabId ?? null,
+        JSON.stringify(state.starredSharedQueryIds ?? []),
+        JSON.stringify(state.starredSharedDashboardIds ?? []),
         state.paneLayout ? JSON.stringify(state.paneLayout) : null,
-        state.projectId,
-      ]);
-    } catch {
-      // Column doesn't exist yet (pre-v4 migration)
-    }
+        state.activeCreateTableTabId ?? null,
+        state.activeDataTabId ?? null,
+      ],
+    });
 
-    // Replace all tabs for this project
-    await db.execute("DELETE FROM tabs WHERE project_id = ?", [state.projectId]);
+    statements.push({ sql: "DELETE FROM tabs WHERE project_id = ?", params: [state.projectId] });
 
     for (const tab of state.queryTabs) {
-      await db.execute(
-        `INSERT INTO tabs (id, project_id, tab_type, name, query, saved_query_id)
-         VALUES (?, ?, 'query', ?, ?, ?)`,
-        [tab.id, state.projectId, tab.name, tab.query, tab.queryId ?? null],
-      );
+      statements.push({
+        sql: `INSERT INTO tabs (id, project_id, tab_type, name, query, saved_query_id) VALUES (?, ?, 'query', ?, ?, ?)`,
+        params: [tab.id, state.projectId, tab.name, tab.query, tab.queryId ?? null],
+      });
     }
 
     for (const tab of state.schemaTabs) {
-      await db.execute(
-        `INSERT INTO tabs (id, project_id, tab_type, name, table_name, schema_name)
-         VALUES (?, ?, 'schema', ?, ?, ?)`,
-        [tab.id, state.projectId, tab.tableName, tab.tableName, tab.schemaName],
-      );
+      statements.push({
+        sql: `INSERT INTO tabs (id, project_id, tab_type, name, table_name, schema_name) VALUES (?, ?, 'schema', ?, ?, ?)`,
+        params: [tab.id, state.projectId, tab.tableName, tab.tableName, tab.schemaName],
+      });
     }
 
     for (const tab of state.explainTabs) {
-      await db.execute(
-        `INSERT INTO tabs (id, project_id, tab_type, name, source_query)
-         VALUES (?, ?, 'explain', ?, ?)`,
-        [tab.id, state.projectId, tab.name, tab.sourceQuery],
-      );
+      statements.push({
+        sql: `INSERT INTO tabs (id, project_id, tab_type, name, source_query) VALUES (?, ?, 'explain', ?, ?)`,
+        params: [tab.id, state.projectId, tab.name, tab.sourceQuery],
+      });
     }
 
     for (const tab of state.erdTabs) {
-      await db.execute(
-        `INSERT INTO tabs (id, project_id, tab_type, name, connection_id)
-         VALUES (?, ?, 'erd', ?, ?)`,
-        [tab.id, state.projectId, tab.name, tab.connectionId ?? null],
-      );
+      statements.push({
+        sql: `INSERT INTO tabs (id, project_id, tab_type, name, connection_id) VALUES (?, ?, 'erd', ?, ?)`,
+        params: [tab.id, state.projectId, tab.name, tab.connectionId ?? null],
+      });
     }
 
     for (const tab of state.statisticsTabs ?? []) {
-      await db.execute(
-        `INSERT INTO tabs (id, project_id, tab_type, name, connection_id)
-         VALUES (?, ?, 'statistics', ?, ?)`,
-        [tab.id, state.projectId, tab.name, tab.connectionId],
-      );
+      statements.push({
+        sql: `INSERT INTO tabs (id, project_id, tab_type, name, connection_id) VALUES (?, ?, 'statistics', ?, ?)`,
+        params: [tab.id, state.projectId, tab.name, tab.connectionId],
+      });
     }
 
     for (const tab of state.workflowTabs ?? []) {
-      await db.execute(
-        `INSERT INTO tabs (id, project_id, tab_type, name, connection_id)
-         VALUES (?, ?, 'canvas', ?, ?)`,
-        [tab.id, state.projectId, tab.name, tab.connectionId],
-      );
+      statements.push({
+        sql: `INSERT INTO tabs (id, project_id, tab_type, name, connection_id) VALUES (?, ?, 'canvas', ?, ?)`,
+        params: [tab.id, state.projectId, tab.name, tab.connectionId],
+      });
     }
 
     for (const tab of state.starterTabs ?? []) {
-      await db.execute(
-        `INSERT INTO tabs (id, project_id, tab_type, name, starter_type, closable)
-         VALUES (?, ?, 'starter', ?, ?, ?)`,
-        [tab.id, state.projectId, tab.name, tab.type, tab.closable ? 1 : 0],
-      );
+      statements.push({
+        sql: `INSERT INTO tabs (id, project_id, tab_type, name, starter_type, closable) VALUES (?, ?, 'starter', ?, ?, ?)`,
+        params: [tab.id, state.projectId, tab.name, tab.type, tab.closable ? 1 : 0],
+      });
     }
 
     for (const tab of state.dashboardTabs ?? []) {
-      await db.execute(
-        `INSERT INTO tabs (id, project_id, tab_type, name, source_query)
-         VALUES (?, ?, 'dashboard', ?, ?)`,
-        [tab.id, state.projectId, tab.name, tab.dashboardId],
-      );
+      statements.push({
+        sql: `INSERT INTO tabs (id, project_id, tab_type, name, source_query) VALUES (?, ?, 'dashboard', ?, ?)`,
+        params: [tab.id, state.projectId, tab.name, tab.dashboardId],
+      });
     }
 
-    // Replace saved workflows
-    await db.execute("DELETE FROM saved_canvases WHERE project_id = ?", [state.projectId]);
-    for (const workflow of state.savedWorkflows ?? []) {
-      await db.execute("INSERT INTO saved_canvases (id, project_id, data) VALUES (?, ?, ?)", [
-        (workflow as { id?: string }).id ?? `workflow-${crypto.randomUUID()}`,
-        state.projectId,
-        JSON.stringify(workflow),
-      ]);
+    for (const tab of state.createTableTabs ?? []) {
+      statements.push({
+        sql: `INSERT INTO tabs (id, project_id, tab_type, name, connection_id, source_query) VALUES (?, ?, 'create_table', ?, ?, ?)`,
+        params: [tab.id, state.projectId, tab.name, tab.connectionId, tab.tableDefinition],
+      });
     }
+
+    for (const tab of state.dataTabs ?? []) {
+      statements.push({
+        sql: `INSERT INTO tabs (id, project_id, tab_type, name, connection_id, table_name, schema_name) VALUES (?, ?, 'data', ?, ?, ?, ?)`,
+        params: [
+          tab.id,
+          state.projectId,
+          tab.tableName,
+          tab.connectionId,
+          tab.tableName,
+          tab.schemaName,
+        ],
+      });
+    }
+
+    statements.push({
+      sql: "DELETE FROM saved_canvases WHERE project_id = ?",
+      params: [state.projectId],
+    });
+    for (const workflow of state.savedWorkflows ?? []) {
+      statements.push({
+        sql: "INSERT INTO saved_canvases (id, project_id, data) VALUES (?, ?, ?)",
+        params: [
+          (workflow as { id?: string }).id ?? `workflow-${crypto.randomUUID()}`,
+          state.projectId,
+          JSON.stringify(workflow),
+        ],
+      });
+    }
+
+    await db.transaction(statements);
   },
 
   async remove(db: SqliteDatabase, projectId: string): Promise<void> {
@@ -561,19 +576,24 @@ export const savedQueriesRepo = {
   ): Promise<void> {
     // Use upsert instead of delete+reinsert to preserve CASCADE children (query_versions)
     const currentIds = queries.map((q) => q.id);
+    const statements: Array<{ sql: string; params?: unknown[] }> = [];
+
     if (currentIds.length > 0) {
-      // Delete only queries that were removed
       const placeholders = currentIds.map(() => "?").join(",");
-      await db.execute(
-        `DELETE FROM saved_queries WHERE project_id = ? AND id NOT IN (${placeholders})`,
-        [projectId, ...currentIds],
-      );
+      statements.push({
+        sql: `DELETE FROM saved_queries WHERE project_id = ? AND id NOT IN (${placeholders})`,
+        params: [projectId, ...currentIds],
+      });
     } else {
-      await db.execute("DELETE FROM saved_queries WHERE project_id = ?", [projectId]);
+      statements.push({
+        sql: "DELETE FROM saved_queries WHERE project_id = ?",
+        params: [projectId],
+      });
     }
     for (const q of queries) {
-      await db.execute(_savedQueryRepo.upsertSql, _savedQueryRepo.toParams(q));
+      statements.push({ sql: _savedQueryRepo.upsertSql, params: _savedQueryRepo.toParams(q) });
     }
+    await db.transaction(statements);
   },
 
   async removeByProject(db: SqliteDatabase, projectId: string): Promise<void> {
@@ -692,10 +712,13 @@ export const queryHistoryRepo = {
     connectionId: string,
     items: PersistedQueryHistoryItem[],
   ): Promise<void> {
-    await db.execute("DELETE FROM query_history WHERE connection_id = ?", [connectionId]);
+    const statements: Array<{ sql: string; params?: unknown[] }> = [
+      { sql: "DELETE FROM query_history WHERE connection_id = ?", params: [connectionId] },
+    ];
     for (const h of items) {
-      await db.execute(_historyRepo.insertSql, _historyRepo.toParams(h));
+      statements.push({ sql: _historyRepo.insertSql, params: _historyRepo.toParams(h) });
     }
+    await db.transaction(statements);
   },
 
   async removeByConnection(db: SqliteDatabase, connectionId: string): Promise<void> {
@@ -723,13 +746,16 @@ export const sharedReposRepo = {
     repos: PersistedSharedQueryRepo[],
     activeRepoId: string | null,
   ): Promise<void> {
-    await db.execute("DELETE FROM shared_repos");
+    const statements: Array<{ sql: string; params?: unknown[] }> = [
+      { sql: "DELETE FROM shared_repos" },
+    ];
     for (const repo of repos) {
-      await db.execute("INSERT INTO shared_repos (id, data) VALUES (?, ?)", [
-        repo.id,
-        JSON.stringify(repo),
-      ]);
+      statements.push({
+        sql: "INSERT INTO shared_repos (id, data) VALUES (?, ?)",
+        params: [repo.id, JSON.stringify(repo)],
+      });
     }
+    await db.transaction(statements);
     await appStateRepo.set(db, "activeRepoId", activeRepoId);
   },
 };
@@ -767,14 +793,17 @@ export const themeRepo = {
   },
 
   async saveUserThemes(db: SqliteDatabase, themes: unknown[]): Promise<void> {
-    await db.execute("DELETE FROM user_themes");
+    const statements: Array<{ sql: string; params?: unknown[] }> = [
+      { sql: "DELETE FROM user_themes" },
+    ];
     for (const theme of themes) {
       const t = theme as { id: string };
-      await db.execute("INSERT INTO user_themes (id, data) VALUES (?, ?)", [
-        t.id,
-        JSON.stringify(theme),
-      ]);
+      statements.push({
+        sql: "INSERT INTO user_themes (id, data) VALUES (?, ?)",
+        params: [t.id, JSON.stringify(theme)],
+      });
     }
+    await db.transaction(statements);
   },
 };
 
@@ -1100,9 +1129,12 @@ export const aiChatsRepo = {
     chatId: string,
     messages: PersistedAIMessage[],
   ): Promise<void> {
-    await _messageRepo.removeBy(db, "chat_id = ?", [chatId]);
+    const statements: Array<{ sql: string; params?: unknown[] }> = [
+      { sql: `DELETE FROM ai_messages WHERE chat_id = ?`, params: [chatId] },
+    ];
     for (const m of messages) {
-      await db.execute(_messageRepo.insertSql, _messageRepo.toParams(m));
+      statements.push({ sql: _messageRepo.insertSql, params: _messageRepo.toParams(m) });
     }
+    await db.transaction(statements);
   },
 };

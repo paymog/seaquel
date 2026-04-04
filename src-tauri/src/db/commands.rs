@@ -3,8 +3,8 @@ use tauri::{command, State};
 
 use super::{
     duckdb::DuckdbDriver, mssql::MssqlDriver, mysql::MysqlDriver, postgres::PostgresDriver,
-    sqlite::SqliteDriver, ConnectConfig, ConnectResult, ConnectionManager, DbError, Driver,
-    DriverType, ExecuteResult, QueryResult,
+    sqlite::SqliteDriver, BatchStatement, ConnectConfig, ConnectResult, ConnectionManager, DbError,
+    Driver, DriverType, ExecuteResult, QueryResult,
 };
 
 async fn connect_driver(config: &ConnectConfig) -> Result<Box<dyn Driver>, DbError> {
@@ -72,6 +72,20 @@ pub async fn db_execute(
         .get(&connection_id)
         .ok_or_else(|| DbError::connection_not_found(&connection_id))?;
     driver.execute(&sql, values).await
+}
+
+#[command]
+pub async fn db_transaction(
+    connection_id: String,
+    statements: Vec<BatchStatement>,
+    manager: State<'_, ConnectionManager>,
+) -> Result<(), DbError> {
+    debug!("db_transaction on {} ({} stmts)", connection_id, statements.len());
+    let connections = manager.connections.read().await;
+    let driver = connections
+        .get(&connection_id)
+        .ok_or_else(|| DbError::connection_not_found(&connection_id))?;
+    driver.transaction(statements).await
 }
 
 #[command]

@@ -11,9 +11,11 @@
 		columnType?: CellType;
 		onSave: (newValue: string | null) => Promise<void>;
 		onTextareaToggle?: (active: boolean) => void;
+		/** When true, render the idle state with green pending-change styling */
+		pendingDisplay?: boolean;
 	}
 
-	let { value, isEditable = false, columnType = 'text', onSave, onTextareaToggle = () => {} }: Props = $props();
+	let { value, isEditable = false, columnType = 'text', onSave, onTextareaToggle = () => {}, pendingDisplay = false }: Props = $props();
 
 	const monoTypes = new Set(['integer', 'float', 'date', 'datetime', 'time', 'uuid', 'json']);
 	const useMono = $derived(monoTypes.has(columnType));
@@ -121,12 +123,21 @@
 {:else}
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<span
-		class={[isEditable ? "cursor-pointer hover:bg-muted rounded px-1 -mx-1 w-full min-w-0 min-h-5 block" : "block min-w-0", "truncate", (columnType === 'integer' || columnType === 'float') && "w-full"]}
+		class={[
+			isEditable ? "cursor-pointer hover:bg-muted rounded px-1 -mx-1 w-full min-w-0 min-h-5 block" : "block min-w-0",
+			"truncate",
+			(columnType === 'integer' || columnType === 'float') && "w-full",
+			pendingDisplay && "w-full text-xs text-green-700 dark:text-green-400 bg-green-500/10 rounded px-1 leading-tight",
+		]}
 		ondblclick={startEditing}
 		role={isEditable ? "button" : undefined}
 		tabindex={isEditable ? 0 : undefined}
 		onkeydown={(e) => e.key === 'Enter' && startEditing()}
 	>
-		<FormattedCell {value} {columnType} {isEditable} {onSave} />
+		{#if pendingDisplay}
+			{value === null ? 'NULL' : value === undefined ? 'DEFAULT' : String(value)}
+		{:else}
+			<FormattedCell {value} {columnType} {isEditable} {onSave} />
+		{/if}
 	</span>
 {/if}

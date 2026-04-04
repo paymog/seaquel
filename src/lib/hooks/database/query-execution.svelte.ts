@@ -16,6 +16,9 @@ import type { ProviderRegistry } from "$lib/providers";
 import { extractErrorMessage } from "$lib/errors";
 import { log } from "$lib/utils/logger";
 import { resolveQuery } from "./resolve-query.js";
+import type { PendingChangesManager } from "./pending-changes.svelte.js";
+import type { PendingChangeOrigin, PendingChangeTarget } from "$lib/types";
+import { describePendingChange } from "$lib/db/pending-change-description";
 
 /**
  * Manages query execution, pagination, and CRUD operations.
@@ -27,6 +30,7 @@ export class QueryExecutionManager {
     private state: DatabaseState,
     private queryHistory: QueryHistoryManager,
     private providers: ProviderRegistry,
+    private pendingChanges: PendingChangesManager,
   ) {}
 
   /**
@@ -137,13 +141,46 @@ export class QueryExecutionManager {
    * Build a WHERE clause for MSSQL using bracket-quoted identifiers and escaped values.
    */
   private buildMssqlWhereClause(primaryKeys: string[], row: Record<string, unknown>): string {
+    return this.buildInlineWhereClause(primaryKeys, row, true);
+  }
+
+  private buildInlineWhereClause(
+    primaryKeys: string[],
+    row: Record<string, unknown>,
+    useBrackets: boolean,
+  ): string {
     return primaryKeys
       .map((pk) => {
         const val = row[pk];
-        const escapedVal = typeof val === "string" ? `'${val.replace(/'/g, "''")}'` : String(val);
-        return `[${pk}] = ${escapedVal}`;
+        const escapedVal = this.formatLiteralValue(val);
+        const quotedPk = useBrackets ? this.quoteBracket(pk) : this.quoteDouble(pk);
+        return `${quotedPk} = ${escapedVal}`;
       })
       .join(" AND ");
+  }
+
+  /** Quote an identifier with double quotes, escaping embedded double quotes. */
+  private quoteDouble(id: string): string {
+    return `"${id.replace(/"/g, '""')}"`;
+  }
+
+  /** Quote an identifier with brackets, escaping embedded `]`. */
+  private quoteBracket(id: string): string {
+    return `[${id.replace(/\]/g, "]]")}]`;
+  }
+
+  private formatLiteralValue(v: unknown): string {
+    if (v === null || v === undefined) return "NULL";
+    if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
+    if (typeof v === "number" || typeof v === "bigint") {
+      const s = String(v);
+      // Ensure it's actually a numeric literal to prevent injection via crafted toString
+      if (/^-?\d+(\.\d+)?$/.test(s)) return s;
+      return `'${s.replace(/'/g, "''")}'`;
+    }
+    if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
+    // Objects/arrays: serialize as JSON string to avoid [object Object]
+    return `'${JSON.stringify(v).replace(/'/g, "''")}'`;
   }
 
   /**
@@ -285,15 +322,29 @@ export class QueryExecutionManager {
     let sourceTable: QueryResult["sourceTable"] | undefined;
 
     if (tableInfo) {
-      const defaultSchema = isMssql ? "dbo" : "public";
-      const schema = tableInfo.schema || defaultSchema;
-      const primaryKeys = this.getPrimaryKeysForTable(schema, tableInfo.table);
-      if (primaryKeys.length > 0) {
-        sourceTable = {
-          schema,
-          name: tableInfo.table,
-          primaryKeys,
-        };
+      if (tableInfo.schema) {
+        const primaryKeys = this.getPrimaryKeysForTable(tableInfo.schema, tableInfo.table);
+        if (primaryKeys.length > 0) {
+          sourceTable = {
+            schema: tableInfo.schema,
+            name: tableInfo.table,
+            primaryKeys,
+          };
+        }
+      } else {
+        // No schema specified in query — search all cached schemas for the table
+        const tables = this.state.schemas[this.state.activeConnectionId!] ?? [];
+        const match = tables.find((t) => t.name === tableInfo.table);
+        if (match) {
+          const primaryKeys = match.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
+          if (primaryKeys.length > 0) {
+            sourceTable = {
+              schema: match.schema,
+              name: match.name,
+              primaryKeys,
+            };
+          }
+        }
       }
     }
 
@@ -346,6 +397,23 @@ export class QueryExecutionManager {
 
     // Keep original SQL (before parameter substitution) for display
     const originalSql = resolveQuery(this.state, tabId, cursorOffset)?.query ?? resolved.query;
+
+    // Queue non-SELECT statements when pending changes is enabled
+    if (this.pendingChanges.isEnabled() && !isSelectQuery(resolved.query)) {
+      const origin: PendingChangeOrigin = "query-editor";
+      this.pendingChanges.add(
+        connection.id,
+        resolved.query,
+        detectQueryType(resolved.query),
+        origin,
+        tabId,
+        resolved.bindValues,
+      );
+      this.updateQueryTabState(tabId, { isExecuting: false });
+      toast.info("Statement added to pending changes");
+      this.pendingChanges.openSheet();
+      return;
+    }
 
     try {
       const result = await this.executeStatement(
@@ -448,6 +516,7 @@ export class QueryExecutionManager {
     }
 
     const allResults: StatementResult[] = [];
+    let queuedCount = 0;
 
     // Execute each statement, updating the UI incrementally
     for (let i = 0; i < statements.length; i++) {
@@ -460,6 +529,21 @@ export class QueryExecutionManager {
           const substituted = substituteParameters(stmt.sql, parameterValues, dbType);
           sql = substituted.sql;
           bindValues = substituted.bindValues;
+        }
+
+        // Queue write/DDL statements when pending changes is enabled
+        if (this.pendingChanges.isEnabled() && !isSelectQuery(sql)) {
+          const origin: PendingChangeOrigin = "query-editor";
+          this.pendingChanges.add(
+            connection.id,
+            sql,
+            detectQueryType(sql),
+            origin,
+            tabId,
+            bindValues,
+          );
+          queuedCount++;
+          continue;
         }
 
         const result = await this.executeStatement(
@@ -485,6 +569,12 @@ export class QueryExecutionManager {
         results: this.filterAndIndexResults(allResults),
         activeResultIndex: 0,
       });
+    }
+
+    // Show toast for queued statements
+    if (queuedCount > 0) {
+      toast.info(`${queuedCount} statement${queuedCount > 1 ? "s" : ""} added to pending changes`);
+      this.pendingChanges.openSheet();
     }
 
     // Log summary for all statements
@@ -628,7 +718,7 @@ export class QueryExecutionManager {
     column: string,
     newValue: unknown,
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
     const tabs = this.state.queryTabsByProject[this.state.activeProjectId!] ?? [];
     const tab = tabs.find((t) => t.id === tabId);
     if (!tab?.results || resultIndex >= tab.results.length) {
@@ -651,24 +741,38 @@ export class QueryExecutionManager {
     void log.debug(`Cell update on ${connection?.id}`);
     try {
       const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql") {
-        // SQL Server: use square brackets for identifiers and inline values
-        const whereClause = this.buildMssqlWhereClause(sourceTable.primaryKeys, row);
-        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-        const escapedNewValue =
-          typeof newValue === "string"
-            ? `'${newValue.replace(/'/g, "''")}'`
-            : newValue === null
-              ? "NULL"
-              : // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-                String(newValue);
-        const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = ${escapedNewValue} WHERE ${whereClause}`;
+      if (connection.type === "mssql" || connection.type === "duckdb") {
+        const useBrackets = connection.type === "mssql";
+        const whereClause = this.buildInlineWhereClause(sourceTable.primaryKeys, row, useBrackets);
+        const escapedNewValue = this.formatLiteralValue(newValue);
+        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
+        const query = `UPDATE ${qi(sourceTable.schema)}.${qi(sourceTable.name)} SET ${qi(column)} = ${escapedNewValue} WHERE ${whereClause}`;
+
+        if (this.pendingChanges.isEnabled()) {
+          const pkValues = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
+          const target: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            column,
+            primaryKeyValues: pkValues,
+            newValue,
+          };
+          this.pendingChanges.add(
+            connection.id,
+            query,
+            "update",
+            "inline-edit",
+            tabId,
+            undefined,
+            target,
+          );
+          row[column] = newValue;
+          return { success: true, queued: true };
+        }
+
         await provider.execute(connection.providerConnectionId, query);
       } else {
-        // PostgreSQL/SQLite/DuckDB: use double quotes and parameterized queries
         const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 2}`);
-        // Look up column type for explicit CAST — sqlx binds strings as TEXT,
-        // and PostgreSQL won't implicitly cast TEXT to timestamp, date, etc.
         const valuePlaceholder = this.getCastPlaceholder(
           1,
           sourceTable.schema,
@@ -677,6 +781,29 @@ export class QueryExecutionManager {
         );
         const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = ${valuePlaceholder} WHERE ${whereConditions.join(" AND ")}`;
         const bindValues = [newValue, ...sourceTable.primaryKeys.map((pk) => row[pk])];
+
+        if (this.pendingChanges.isEnabled()) {
+          const pkValues = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
+          const target: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            column,
+            primaryKeyValues: pkValues,
+            newValue,
+          };
+          this.pendingChanges.add(
+            connection.id,
+            query,
+            "update",
+            "inline-edit",
+            tabId,
+            bindValues,
+            target,
+          );
+          row[column] = newValue;
+          return { success: true, queued: true };
+        }
+
         await provider.execute(connection.providerConnectionId, query, bindValues);
       }
       // Update the local row data
@@ -696,7 +823,7 @@ export class QueryExecutionManager {
     rowIndex: number,
     column: string,
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
     const tabs = this.state.queryTabsByProject[this.state.activeProjectId!] ?? [];
     const tab = tabs.find((t) => t.id === tabId);
     if (!tab?.results || resultIndex >= tab.results.length) {
@@ -719,18 +846,61 @@ export class QueryExecutionManager {
     void log.debug(`Cell set default on ${connection?.id}`);
     try {
       const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql") {
-        const whereClause = this.buildMssqlWhereClause(sourceTable.primaryKeys, row);
-        const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = DEFAULT WHERE ${whereClause}`;
+      if (connection.type === "mssql" || connection.type === "duckdb") {
+        const useBrackets = connection.type === "mssql";
+        const whereClause = this.buildInlineWhereClause(sourceTable.primaryKeys, row, useBrackets);
+        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
+        const query = `UPDATE ${qi(sourceTable.schema)}.${qi(sourceTable.name)} SET ${qi(column)} = DEFAULT WHERE ${whereClause}`;
+
+        if (this.pendingChanges.isEnabled()) {
+          const pkVals = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
+          const tgt: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            column,
+            primaryKeyValues: pkVals,
+          };
+          this.pendingChanges.add(
+            connection.id,
+            query,
+            "update",
+            "set-default",
+            tabId,
+            undefined,
+            tgt,
+          );
+          return { success: true, queued: true };
+        }
+
         await provider.execute(connection.providerConnectionId, query);
       } else {
         const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 1}`);
         const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = DEFAULT WHERE ${whereConditions.join(" AND ")}`;
         const bindValues = sourceTable.primaryKeys.map((pk) => row[pk]);
+
+        if (this.pendingChanges.isEnabled()) {
+          const pkVals2 = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
+          const tgt2: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            column,
+            primaryKeyValues: pkVals2,
+          };
+          this.pendingChanges.add(
+            connection.id,
+            query,
+            "update",
+            "set-default",
+            tabId,
+            bindValues,
+            tgt2,
+          );
+          return { success: true, queued: true };
+        }
+
         await provider.execute(connection.providerConnectionId, query, bindValues);
       }
       // Re-fetch the row to get the actual default value
-      // For now, we don't know the default value, so re-execute the query
       await this.execute(tabId);
       return { success: true };
     } catch (error) {
@@ -744,7 +914,7 @@ export class QueryExecutionManager {
   async insertRow(
     sourceTable: { schema: string; name: string },
     values: Record<string, unknown>,
-  ): Promise<{ success: boolean; error?: string; lastInsertId?: number }> {
+  ): Promise<{ success: boolean; error?: string; lastInsertId?: number; queued?: boolean }> {
     const columns = Object.keys(values);
     if (columns.length === 0) {
       return { success: false, error: "No values provided" };
@@ -758,22 +928,36 @@ export class QueryExecutionManager {
     void log.debug(`Row insert on ${connection?.id}`);
     try {
       const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql") {
-        // SQL Server: use square brackets for identifiers and inline values
-        const columnNames = columns.map((c) => `[${c}]`).join(", ");
-        // oxlint-disable-next-line typescript-eslint(no-base-to-string)
+      if (connection.type === "mssql" || connection.type === "duckdb") {
+        const useBrackets = connection.type === "mssql";
+        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
+        const columnNames = columns.map((c) => qi(c)).join(", ");
         const valuesList = Object.values(values)
-          .map((v) => {
-            if (v === null || v === undefined) return "NULL";
-            if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
-            return v;
-          })
+          .map((v) => this.formatLiteralValue(v))
           .join(", ");
-        const query = `INSERT INTO [${sourceTable.schema}].[${sourceTable.name}] (${columnNames}) VALUES (${valuesList})`;
+        const query = `INSERT INTO ${qi(sourceTable.schema)}.${qi(sourceTable.name)} (${columnNames}) VALUES (${valuesList})`;
+
+        if (this.pendingChanges.isEnabled()) {
+          const target: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            insertValues: values,
+          };
+          this.pendingChanges.add(
+            connection.id,
+            query,
+            "insert",
+            "insert-row",
+            undefined,
+            undefined,
+            target,
+          );
+          return { success: true, queued: true };
+        }
+
         await provider.execute(connection.providerConnectionId, query);
         return { success: true };
       } else {
-        // PostgreSQL/SQLite/DuckDB: use double quotes and parameterized queries
         const columnNames = columns.map((c) => `"${c}"`).join(", ");
         const placeholders = columns
           .map((col, i) =>
@@ -781,6 +965,25 @@ export class QueryExecutionManager {
           )
           .join(", ");
         const query = `INSERT INTO "${sourceTable.schema}"."${sourceTable.name}" (${columnNames}) VALUES (${placeholders})`;
+
+        if (this.pendingChanges.isEnabled()) {
+          const target: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            insertValues: values,
+          };
+          this.pendingChanges.add(
+            connection.id,
+            query,
+            "insert",
+            "insert-row",
+            undefined,
+            Object.values(values),
+            target,
+          );
+          return { success: true, queued: true };
+        }
+
         const result = await provider.execute(
           connection.providerConnectionId,
           query,
@@ -821,7 +1024,7 @@ export class QueryExecutionManager {
     row: Record<string, unknown>,
     column: string,
     newValue: unknown,
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
     if (sourceTable.primaryKeys.length === 0) {
       return { success: false, error: "No primary key found" };
     }
@@ -833,15 +1036,49 @@ export class QueryExecutionManager {
 
     try {
       const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql") {
-        const whereClause = this.buildMssqlWhereClause(sourceTable.primaryKeys, row);
-        const escapedNewValue =
-          typeof newValue === "string"
-            ? `'${newValue.replace(/'/g, "''")}'`
-            : newValue === null
-              ? "NULL"
-              : String(newValue as string | number | boolean);
-        const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = ${escapedNewValue} WHERE ${whereClause}`;
+      if (connection.type === "mssql" || connection.type === "duckdb") {
+        const useBrackets = connection.type === "mssql";
+        const whereClause = this.buildInlineWhereClause(sourceTable.primaryKeys, row, useBrackets);
+        const escapedNewValue = this.formatLiteralValue(newValue);
+        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
+        const query = `UPDATE ${qi(sourceTable.schema)}.${qi(sourceTable.name)} SET ${qi(column)} = ${escapedNewValue} WHERE ${whereClause}`;
+
+        if (this.pendingChanges.isEnabled()) {
+          const pkValues = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
+          const target: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            column,
+            primaryKeyValues: pkValues,
+            newValue,
+          };
+          const existingChange = this.pendingChanges.findForCell(
+            connection.id,
+            sourceTable.schema,
+            sourceTable.name,
+            column,
+            pkValues,
+          );
+          if (existingChange) {
+            this.pendingChanges.update(connection.id, existingChange.id, {
+              sql: query,
+              target,
+              description: describePendingChange(query, "inline-edit"),
+            });
+          } else {
+            this.pendingChanges.add(
+              connection.id,
+              query,
+              "update",
+              "inline-edit",
+              undefined,
+              undefined,
+              target,
+            );
+          }
+          return { success: true, queued: true };
+        }
+
         await provider.execute(connection.providerConnectionId, query);
       } else {
         const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 2}`);
@@ -853,6 +1090,44 @@ export class QueryExecutionManager {
         );
         const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = ${valuePlaceholder} WHERE ${whereConditions.join(" AND ")}`;
         const bindValues = [newValue, ...sourceTable.primaryKeys.map((pk) => row[pk])];
+
+        if (this.pendingChanges.isEnabled()) {
+          const pkValues2 = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
+          const target2: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            column,
+            primaryKeyValues: pkValues2,
+            newValue,
+          };
+          const existingChange2 = this.pendingChanges.findForCell(
+            connection.id,
+            sourceTable.schema,
+            sourceTable.name,
+            column,
+            pkValues2,
+          );
+          if (existingChange2) {
+            this.pendingChanges.update(connection.id, existingChange2.id, {
+              sql: query,
+              bindValues,
+              target: target2,
+              description: describePendingChange(query, "inline-edit"),
+            });
+          } else {
+            this.pendingChanges.add(
+              connection.id,
+              query,
+              "update",
+              "inline-edit",
+              undefined,
+              bindValues,
+              target2,
+            );
+          }
+          return { success: true, queued: true };
+        }
+
         await provider.execute(connection.providerConnectionId, query, bindValues);
       }
       return { success: true };
@@ -869,7 +1144,7 @@ export class QueryExecutionManager {
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
     row: Record<string, unknown>,
     column: string,
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
     if (sourceTable.primaryKeys.length === 0) {
       return { success: false, error: "No primary key found" };
     }
@@ -881,14 +1156,89 @@ export class QueryExecutionManager {
 
     try {
       const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql") {
-        const whereClause = this.buildMssqlWhereClause(sourceTable.primaryKeys, row);
-        const query = `UPDATE [${sourceTable.schema}].[${sourceTable.name}] SET [${column}] = DEFAULT WHERE ${whereClause}`;
+      if (connection.type === "mssql" || connection.type === "duckdb") {
+        const useBrackets = connection.type === "mssql";
+        const whereClause = this.buildInlineWhereClause(sourceTable.primaryKeys, row, useBrackets);
+        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
+        const query = `UPDATE ${qi(sourceTable.schema)}.${qi(sourceTable.name)} SET ${qi(column)} = DEFAULT WHERE ${whereClause}`;
+
+        if (this.pendingChanges.isEnabled()) {
+          const pkV = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
+          const t: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            column,
+            primaryKeyValues: pkV,
+          };
+          const existingChange = this.pendingChanges.findForCell(
+            connection.id,
+            sourceTable.schema,
+            sourceTable.name,
+            column,
+            pkV,
+          );
+          if (existingChange) {
+            this.pendingChanges.update(connection.id, existingChange.id, {
+              sql: query,
+              target: t,
+              description: describePendingChange(query, "set-default"),
+            });
+          } else {
+            this.pendingChanges.add(
+              connection.id,
+              query,
+              "update",
+              "set-default",
+              undefined,
+              undefined,
+              t,
+            );
+          }
+          return { success: true, queued: true };
+        }
+
         await provider.execute(connection.providerConnectionId, query);
       } else {
         const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 1}`);
         const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = DEFAULT WHERE ${whereConditions.join(" AND ")}`;
         const bindValues = sourceTable.primaryKeys.map((pk) => row[pk]);
+
+        if (this.pendingChanges.isEnabled()) {
+          const pkV2 = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
+          const t2: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            column,
+            primaryKeyValues: pkV2,
+          };
+          const existingChange2 = this.pendingChanges.findForCell(
+            connection.id,
+            sourceTable.schema,
+            sourceTable.name,
+            column,
+            pkV2,
+          );
+          if (existingChange2) {
+            this.pendingChanges.update(connection.id, existingChange2.id, {
+              sql: query,
+              bindValues,
+              target: t2,
+              description: describePendingChange(query, "set-default"),
+            });
+          } else {
+            this.pendingChanges.add(
+              connection.id,
+              query,
+              "update",
+              "set-default",
+              undefined,
+              bindValues,
+              t2,
+            );
+          }
+          return { success: true, queued: true };
+        }
+
         await provider.execute(connection.providerConnectionId, query, bindValues);
       }
       return { success: true };
@@ -897,14 +1247,27 @@ export class QueryExecutionManager {
     }
   }
 
-  async executeRawDdl(query: string): Promise<void> {
+  async executeRawDdl(query: string): Promise<{ queued?: boolean }> {
     const connection = this.state.activeConnection;
     if (!connection?.providerConnectionId) {
       throw new Error("Not connected to database");
     }
 
+    if (this.pendingChanges.isEnabled()) {
+      const upper = query.trimStart().toUpperCase();
+      let origin: PendingChangeOrigin;
+      if (upper.startsWith("TRUNCATE")) origin = "truncate-table";
+      else if (upper.startsWith("ALTER TABLE")) origin = "alter-table";
+      else if (upper.startsWith("CREATE TABLE")) origin = "create-table";
+      else if (upper.startsWith("DROP TABLE")) origin = "drop-table";
+      else origin = "query-editor";
+      this.pendingChanges.add(connection.id, query, "other", origin);
+      return { queued: true };
+    }
+
     const provider = await this.providers.getForType(connection.type);
     await provider.execute(connection.providerConnectionId, query);
+    return {};
   }
 
   /**
@@ -913,7 +1276,7 @@ export class QueryExecutionManager {
   async deleteRow(
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
     row: Record<string, unknown>,
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
     if (sourceTable.primaryKeys.length === 0) {
       return { success: false, error: "No primary key found" };
     }
@@ -926,16 +1289,56 @@ export class QueryExecutionManager {
     void log.debug(`Row delete on ${connection?.id}`);
     try {
       const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql") {
-        // SQL Server: use square brackets for identifiers and inline values
-        const whereClause = this.buildMssqlWhereClause(sourceTable.primaryKeys, row);
-        const query = `DELETE FROM [${sourceTable.schema}].[${sourceTable.name}] WHERE ${whereClause}`;
+      if (connection.type === "mssql" || connection.type === "duckdb") {
+        const useBrackets = connection.type === "mssql";
+        const whereClause = this.buildInlineWhereClause(sourceTable.primaryKeys, row, useBrackets);
+        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
+        const query = `DELETE FROM ${qi(sourceTable.schema)}.${qi(sourceTable.name)} WHERE ${whereClause}`;
+
+        if (this.pendingChanges.isEnabled()) {
+          const delPk = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
+          const delTgt: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            primaryKeyValues: delPk,
+          };
+          this.pendingChanges.add(
+            connection.id,
+            query,
+            "delete",
+            "delete-row",
+            undefined,
+            undefined,
+            delTgt,
+          );
+          return { success: true, queued: true };
+        }
+
         await provider.execute(connection.providerConnectionId, query);
       } else {
-        // PostgreSQL/SQLite/DuckDB: use double quotes and parameterized queries
         const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 1}`);
         const query = `DELETE FROM "${sourceTable.schema}"."${sourceTable.name}" WHERE ${whereConditions.join(" AND ")}`;
         const bindValues = sourceTable.primaryKeys.map((pk) => row[pk]);
+
+        if (this.pendingChanges.isEnabled()) {
+          const delPk2 = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
+          const delTgt2: PendingChangeTarget = {
+            schema: sourceTable.schema,
+            table: sourceTable.name,
+            primaryKeyValues: delPk2,
+          };
+          this.pendingChanges.add(
+            connection.id,
+            query,
+            "delete",
+            "delete-row",
+            undefined,
+            bindValues,
+            delTgt2,
+          );
+          return { success: true, queued: true };
+        }
+
         await provider.execute(connection.providerConnectionId, query, bindValues);
       }
       return { success: true };

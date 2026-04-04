@@ -211,6 +211,54 @@ let showParamsDialog = $state(false);
 		activeResult?.sourceTable.primaryKeys.length > 0 &&
 		!activeResult?.isError
 	);
+	
+	$inspect(isEditable)
+	$inspect(activeResult)
+
+	// Pending changes indicators for query results
+	const qePendingChangesForTable = $derived.by(() => {
+		const st = activeResult?.sourceTable;
+		if (!st) return [];
+		return db.state.activePendingChanges.filter(
+			(c) => c.target?.schema === st.schema && c.target?.table === st.name,
+		);
+	});
+
+	const qePendingCellEdits = $derived.by(() => {
+		const st = activeResult?.sourceTable;
+		const rows = activeResult?.rows;
+		if (!st || !rows || st.primaryKeys.length === 0) return undefined;
+		const edits = new Map<string, unknown>();
+		for (const change of qePendingChangesForTable) {
+			if ((change.origin === "inline-edit" || change.origin === "set-default") && change.target?.primaryKeyValues && change.target.column) {
+				const rowIdx = rows.findIndex((row) =>
+					st.primaryKeys.every((pk) => String(row[pk]) === String(change.target!.primaryKeyValues![pk])),
+				);
+				if (rowIdx >= 0) {
+					edits.set(`${rowIdx}:${change.target.column}`, change.target.newValue);
+				}
+			}
+		}
+		return edits.size > 0 ? edits : undefined;
+	});
+
+	const qePendingRowDeletes = $derived.by(() => {
+		const st = activeResult?.sourceTable;
+		const rows = activeResult?.rows;
+		if (!st || !rows || st.primaryKeys.length === 0) return undefined;
+		const deletes = new Set<number>();
+		for (const change of qePendingChangesForTable) {
+			if (change.origin === "delete-row" && change.target?.primaryKeyValues) {
+				const rowIdx = rows.findIndex((row) =>
+					st.primaryKeys.every((pk) => String(row[pk]) === String(change.target!.primaryKeyValues![pk])),
+				);
+				if (rowIdx >= 0) {
+					deletes.add(rowIdx);
+				}
+			}
+		}
+		return deletes.size > 0 ? deletes : undefined;
+	});
 
 	// Get sample queries for the active connection type
 	const activeSampleQueries = $derived(
@@ -239,7 +287,11 @@ let showParamsDialog = $state(false);
 		);
 
 		if (result.success) {
-			toast.success(m.query_cell_updated());
+			if (result.queued) {
+				toast.info("Change added to pending changes");
+			} else {
+				toast.success(m.query_cell_updated());
+			}
 		} else {
 			errorToast(m.query_cell_update_failed({ error: result.error || '' }));
 		}
@@ -262,8 +314,12 @@ let showParamsDialog = $state(false);
 		);
 
 		if (result.success) {
-			toast.success(m.query_row_deleted());
-			await db.queries.execute(activeTabId);
+			if (result.queued) {
+				toast.info("Delete added to pending changes");
+			} else {
+				toast.success(m.query_row_deleted());
+				await db.queries.execute(activeTabId);
+			}
 		} else {
 			errorToast(m.query_row_delete_failed({ error: result.error || '' }));
 		}
@@ -640,7 +696,11 @@ let showParamsDialog = $state(false);
 		);
 
 		if (result.success) {
-			toast.success(m.query_cell_updated());
+			if (result.queued) {
+				toast.info("Change added to pending changes");
+			} else {
+				toast.success(m.query_cell_updated());
+			}
 		} else {
 			errorToast(m.query_cell_update_failed({ error: result.error || '' }));
 		}
@@ -1083,6 +1143,8 @@ let showParamsDialog = $state(false);
 									onCellRightClick={handleCellRightClick}
 									onSetNull={setNull}
 									onSetDefault={setDefault}
+									pendingCellEdits={qePendingCellEdits}
+									pendingRowDeletes={qePendingRowDeletes}
 								/>
 							{/if}
 

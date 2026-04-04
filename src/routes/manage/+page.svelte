@@ -8,11 +8,17 @@
     import { useShortcuts } from "$lib/shortcuts/index.js";
     import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
     import PaneContainer from "$lib/components/pane-container.svelte";
+    import PendingChangesSheet from "$lib/components/pending-changes-sheet.svelte";
     import { aiSettingsStore } from "$lib/stores/ai-settings.svelte.js";
 
     const db = useDatabase();
     const shortcuts = useShortcuts();
     const sidebar = useSidebar();
+
+    const rightPanelOpen = $derived(
+        db.state.activeRightPanel === "pendingChanges" ||
+        (db.state.activeRightPanel === "ai" && !db.state.isDashboardFullscreen && aiSettingsStore.settings.enabled)
+    );
 
     // Register keyboard shortcuts (settings + sidebar only; tab shortcuts are in header-tabs)
     onMount(() => {
@@ -52,10 +58,19 @@
     {/if}
 </SidebarInset>
 
-{#if !db.state.isDashboardFullscreen && aiSettingsStore.settings.enabled}
-    <Sidebar.Provider class="contents" open={db.state.isAIOpen} onOpenChange={(open) => { if (open !== db.state.isAIOpen) db.ui.toggleAI(); }} style="--sidebar-width: 24rem">
-        <Sidebar.Root side="right" collapsible="offcanvas" class="top-(--header-height) h-[calc(100svh-var(--header-height))]">
+<Sidebar.Provider
+    class="contents"
+    open={rightPanelOpen}
+    onOpenChange={(open) => {
+        if (!open) db.state.activeRightPanel = null;
+    }}
+    style="--sidebar-width: 24rem"
+>
+    <Sidebar.Root side="right" collapsible="offcanvas" class="top-(--header-height) h-[calc(100svh-var(--header-height))]">
+        {#if db.state.activeRightPanel === "pendingChanges"}
+            <PendingChangesSheet />
+        {:else if db.state.activeRightPanel === "ai"}
             <AIAssistant />
-        </Sidebar.Root>
-    </Sidebar.Provider>
-{/if}
+        {/if}
+    </Sidebar.Root>
+</Sidebar.Provider>

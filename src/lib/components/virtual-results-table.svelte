@@ -2,7 +2,7 @@
 	import EditableCell from "$lib/components/editable-cell.svelte";
 	import RowActions from "$lib/components/row-actions.svelte";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-	import { CopyIcon, CircleOffIcon, RotateCcwIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon } from "@lucide/svelte";
+	import { CopyIcon, CircleOffIcon, RotateCcwIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon, XIcon } from "@lucide/svelte";
 	import { m } from "$lib/paraglide/messages.js";
 	import { detectColumnTypes, getFormattedCellText } from "$lib/utils/cell-type";
 
@@ -31,6 +31,14 @@
 		onAddRow?: () => void;
 		/** Snippet rendered inline between data rows and the "Add Row" link. Receives gridTemplate string. */
 		pendingRowsContent?: import('svelte').Snippet<[string]>;
+		/** Map of "rowIndex:column" keys to new values for pending cell edits */
+		pendingCellEdits?: Map<string, unknown>;
+		/** Set of row indices with pending deletes */
+		pendingRowDeletes?: Set<number>;
+		/** Pending insert rows to display at the bottom of the table */
+		pendingInsertRows?: { id: string; values: Record<string, unknown> }[];
+		/** Called to remove a pending insert row by its change ID */
+		onRemovePendingInsert?: (changeId: string) => void;
 	}
 
 	let {
@@ -52,6 +60,10 @@
 		sortDirection = null,
 		onAddRow,
 		pendingRowsContent,
+		pendingCellEdits,
+		pendingRowDeletes,
+		pendingInsertRows = [],
+		onRemovePendingInsert,
 	}: Props = $props();
 
 	// Column type detection for formatted cells
@@ -218,8 +230,15 @@
 			<div style="height: {totalHeight}px; position: relative;">
 				{#each visibleRows as { row, index: rowIndex, offset } (rowIndex)}
 					{@const rowHasTextarea = textareaCell?.startsWith(`${rowIndex}:`) ?? false}
+					{@const isRowPendingDelete = pendingRowDeletes?.has(rowIndex) ?? false}
 					<div
-						class={["border-b hover:bg-muted/50 grid", compact ? "text-xs" : "text-sm", rowIndex % 2 === 0 && "bg-muted/20", rowHasTextarea && "overflow-visible z-20"]}
+						class={[
+							"border-b hover:bg-muted/50 grid",
+							compact ? "text-xs" : "text-sm",
+							rowIndex % 2 === 0 && "bg-muted/20",
+							rowHasTextarea && "overflow-visible z-20",
+							isRowPendingDelete && "bg-destructive/10 line-through opacity-60",
+						]}
 						style="position: absolute; top: {offset}px; left: 0; right: 0; height: {ROW_HEIGHT}px; grid-template-columns: {gridTemplate};"
 					>
 						{#if isEditable}
@@ -232,18 +251,38 @@
 						{/if}
 						{#each columns as column}
 							{@const cellKey = `${rowIndex}:${column}`}
+							{@const isCellPendingEdit = pendingCellEdits?.has(cellKey) ?? false}
+							{@const pendingNewValue = isCellPendingEdit ? pendingCellEdits?.get(cellKey) : undefined}
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
-								class={["flex items-center", textareaCell === cellKey ? "overflow-visible relative" : "overflow-hidden", compact ? "px-2 py-1" : "px-4 py-2"]}
+								class={[
+									"flex",
+									isCellPendingEdit ? "flex-col justify-center" : "items-center",
+									textareaCell === cellKey ? "overflow-visible relative" : "overflow-hidden",
+									compact ? "px-2 py-0.5" : "px-4 py-0.5",
+									isCellPendingEdit && "bg-amber-500/10 border-l-2 border-l-amber-500",
+								]}
 								oncontextmenu={() => onCellRightClick(row[column], column, row, rowIndex)}
 							>
-								<EditableCell
-									value={row[column]}
-									{isEditable}
-									columnType={columnTypes[column]}
-									onSave={(newValue) => onCellSave(rowIndex, column, newValue)}
-									onTextareaToggle={(active) => { textareaCell = active ? cellKey : null; }}
-								/>
+								{#if isCellPendingEdit}
+									<span class="w-full -mx-1 truncate text-xs line-through text-amber-700 dark:text-amber-400 bg-amber-500/10 rounded px-1 leading-tight">{row[column] === null ? 'NULL' : row[column] === undefined ? '' : String(row[column])}</span>
+									<EditableCell
+										value={pendingNewValue}
+										{isEditable}
+										columnType={columnTypes[column]}
+										onSave={(newValue) => onCellSave(rowIndex, column, newValue)}
+										onTextareaToggle={(active) => { textareaCell = active ? cellKey : null; }}
+										pendingDisplay
+									/>
+								{:else}
+									<EditableCell
+										value={row[column]}
+										{isEditable}
+										columnType={columnTypes[column]}
+										onSave={(newValue) => onCellSave(rowIndex, column, newValue)}
+										onTextareaToggle={(active) => { textareaCell = active ? cellKey : null; }}
+									/>
+								{/if}
 							</div>
 						{/each}
 					</div>
@@ -254,6 +293,33 @@
 			{#if pendingRowsContent}
 				{@render pendingRowsContent(gridTemplate)}
 			{/if}
+
+			<!-- Pending insert rows -->
+			{#each pendingInsertRows as insertRow (insertRow.id)}
+				<div
+					class={["border-b grid bg-green-500/15", compact ? "text-xs" : "text-sm"]}
+					style="height: {ROW_HEIGHT}px; grid-template-columns: {gridTemplate};"
+				>
+					{#if isEditable}
+						<div class={["flex items-center justify-center", compact ? "px-1 py-0.5" : "px-2 py-1"]}>
+							{#if onRemovePendingInsert}
+								<button
+									class="size-6 flex items-center justify-center rounded-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+									onclick={() => onRemovePendingInsert(insertRow.id)}
+									title="Remove pending insert"
+								>
+									<XIcon class="size-3.5" />
+								</button>
+							{/if}
+						</div>
+					{/if}
+					{#each columns as column}
+						<div class={["flex items-center overflow-hidden", compact ? "px-2 py-1" : "px-4 py-2"]}>
+							<span class="truncate text-muted-foreground">{insertRow.values[column] != null ? String(insertRow.values[column]) : ""}</span>
+						</div>
+					{/each}
+				</div>
+			{/each}
 
 			<!-- Add Row -->
 			{#if onAddRow}

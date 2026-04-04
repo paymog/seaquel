@@ -30,6 +30,7 @@ import type {
   DashboardVersion,
   CreateTableTab,
   DataTab,
+  PendingChange,
 } from "$lib/types";
 import type { PaneLayout } from "$lib/types";
 import type { ConnectionLabel } from "$lib/types/project";
@@ -154,9 +155,37 @@ export class DatabaseState {
   aiChatsByConnection = $state<Record<string, AIChat[]>>({});
   activeAIChatIdByConnection = $state<Record<string, string | null>>({});
   aiMessagesByChat = $state<Record<string, AIMessage[]>>({});
-  isAIOpen = $state(false);
   isAIStreaming = $state(false);
   isDashboardFullscreen = $state(false);
+
+  // === RIGHT PANEL STATE ===
+  /** Which right-side panel is currently open, or null if none */
+  activeRightPanel = $state<"ai" | "pendingChanges" | null>(null);
+
+  get isAIOpen() {
+    return this.activeRightPanel === "ai";
+  }
+  set isAIOpen(v: boolean) {
+    this.activeRightPanel = v
+      ? "ai"
+      : this.activeRightPanel === "ai"
+        ? null
+        : this.activeRightPanel;
+  }
+
+  get isPendingChangesOpen() {
+    return this.activeRightPanel === "pendingChanges";
+  }
+  set isPendingChangesOpen(v: boolean) {
+    this.activeRightPanel = v
+      ? "pendingChanges"
+      : this.activeRightPanel === "pendingChanges"
+        ? null
+        : this.activeRightPanel;
+  }
+
+  // === PENDING CHANGES STATE (per-connection) ===
+  pendingChangesByConnection = $state<Record<string, PendingChange[]>>({});
 
   // === VIEW STATE ===
   activeView = $state<
@@ -203,6 +232,14 @@ export class DatabaseState {
   activeSchema = $derived(
     this.activeConnectionId ? (this.schemas[this.activeConnectionId] ?? []) : [],
   );
+
+  // === PENDING CHANGES DERIVED VALUES ===
+
+  activePendingChanges = $derived(
+    this.activeConnectionId ? (this.pendingChangesByConnection[this.activeConnectionId] ?? []) : [],
+  );
+
+  activePendingChangesCount = $derived(this.activePendingChanges.length);
 
   // === QUERY TAB DERIVED VALUES ===
 

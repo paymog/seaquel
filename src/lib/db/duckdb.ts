@@ -24,6 +24,7 @@ interface DuckDBColumnRow {
   data_type: string;
   is_nullable: string;
   column_default: string | null;
+  is_primary_key: boolean;
 }
 
 /**
@@ -46,13 +47,21 @@ export class DuckDBAdapter implements DatabaseAdapter {
 
   getColumnsQuery(table: string, schema: string): string {
     return `SELECT
-			column_name,
-			data_type,
-			is_nullable,
-			column_default
-		FROM information_schema.columns
-		WHERE table_name = '${validateIdentifier(table)}' AND table_schema = '${validateIdentifier(schema)}'
-		ORDER BY ordinal_position`;
+			c.column_name,
+			c.data_type,
+			c.is_nullable,
+			c.column_default,
+			COALESCE((
+				SELECT true
+				FROM duckdb_constraints() dc
+				WHERE dc.constraint_type = 'PRIMARY KEY'
+					AND dc.table_name = c.table_name
+					AND dc.schema_name = c.table_schema
+					AND list_contains(dc.constraint_column_names, c.column_name)
+			), false) AS is_primary_key
+		FROM information_schema.columns c
+		WHERE c.table_name = '${validateIdentifier(table)}' AND c.table_schema = '${validateIdentifier(schema)}'
+		ORDER BY c.ordinal_position`;
   }
 
   getIndexesQuery(_table: string, _schema: string): string {
@@ -126,7 +135,7 @@ export class DuckDBAdapter implements DatabaseAdapter {
       type: col.data_type,
       nullable: col.is_nullable === "YES",
       defaultValue: col.column_default || undefined,
-      isPrimaryKey: false, // DuckDB in-memory doesn't track PK metadata well
+      isPrimaryKey: !!col.is_primary_key,
       isForeignKey: fkMap.has(col.column_name),
       foreignKeyRef: fkMap.get(col.column_name),
     }));
@@ -265,6 +274,6 @@ export class DuckDBAdapter implements DatabaseAdapter {
   }
 
   getSchemasQuery(): string {
-    return `SELECT schema_name FROM information_schema.schemata ORDER BY schema_name;`;
+    return `SELECT schema_name FROM information_schema.schemata WHERE catalog_name NOT IN ('system', 'temp') ORDER BY schema_name;`;
   }
 }

@@ -54,6 +54,61 @@
 	let contextRowIndex = $state<number | null>(null);
 	let contextColumn = $state<string | null>(null);
 
+	// Pending changes indicators for this table
+	const primaryKeyColumns = $derived(tableColumns.filter((c) => c.isPrimaryKey).map((c) => c.name));
+
+	const pendingChangesForTable = $derived.by(() => {
+		if (!tab) return [];
+		return db.state.activePendingChanges.filter(
+			(c) => c.target?.schema === tab.schemaName && c.target?.table === tab.tableName,
+		);
+	});
+
+	const pendingCellEdits = $derived.by(() => {
+		if (!tab?.results?.rows) return undefined;
+		const edits = new Map<string, unknown>();
+		for (const change of pendingChangesForTable) {
+			if ((change.origin === "inline-edit" || change.origin === "set-default") && change.target?.primaryKeyValues && change.target.column) {
+				const rowIdx = tab.results.rows.findIndex((row) =>
+					primaryKeyColumns.every((pk) => String(row[pk]) === String(change.target!.primaryKeyValues![pk])),
+				);
+				if (rowIdx >= 0) {
+					edits.set(`${rowIdx}:${change.target.column}`, change.target.newValue);
+				}
+			}
+		}
+		return edits.size > 0 ? edits : undefined;
+	});
+
+	const pendingRowDeletes = $derived.by(() => {
+		if (!tab?.results?.rows) return undefined;
+		const deletes = new Set<number>();
+		for (const change of pendingChangesForTable) {
+			if (change.origin === "delete-row" && change.target?.primaryKeyValues) {
+				const rowIdx = tab.results.rows.findIndex((row) =>
+					primaryKeyColumns.every((pk) => String(row[pk]) === String(change.target!.primaryKeyValues![pk])),
+				);
+				if (rowIdx >= 0) {
+					deletes.add(rowIdx);
+				}
+			}
+		}
+		return deletes.size > 0 ? deletes : undefined;
+	});
+
+	const pendingInsertRows = $derived(
+		pendingChangesForTable
+			.filter((c) => c.origin === "insert-row" && c.target?.insertValues)
+			.map((c) => ({ id: c.id, values: c.target!.insertValues as Record<string, unknown> })),
+	);
+
+	function handleRemovePendingInsert(changeId: string) {
+		const connectionId = db.state.activeConnectionId;
+		if (connectionId) {
+			db.pendingChanges.remove(connectionId, changeId);
+		}
+	}
+
 	// Pagination derived
 	const totalPages = $derived(
 		tab?.results ? Math.max(1, Math.ceil((tab.totalRows ?? 0) / tab.pageSize)) : 1,
@@ -144,7 +199,11 @@
 		);
 
 		if (result.success) {
-			void db.dataTabs.refresh(tabId);
+			if (result.queued) {
+				toast.info("Change added to pending changes");
+			} else {
+				void db.dataTabs.refresh(tabId);
+			}
 		} else {
 			toast.error(`Failed to update cell: ${result.error ?? "Unknown error"}`);
 		}
@@ -155,8 +214,12 @@
 		deletingRowIndex = rowIndex;
 
 		try {
-			await db.queries.deleteRow(tab.results.sourceTable, row);
-			void db.dataTabs.refresh(tabId);
+			const result = await db.queries.deleteRow(tab.results.sourceTable, row);
+			if (result.queued) {
+				toast.info("Delete added to pending changes");
+			} else {
+				void db.dataTabs.refresh(tabId);
+			}
 		} catch (error) {
 			toast.error(
 				`Failed to delete row: ${error instanceof Error ? error.message : String(error)}`,
@@ -195,7 +258,11 @@
 		);
 
 		if (result.success) {
-			void db.dataTabs.refresh(tabId);
+			if (result.queued) {
+				toast.info("Change added to pending changes");
+			} else {
+				void db.dataTabs.refresh(tabId);
+			}
 		} else {
 			toast.error(`Failed to set default: ${result.error ?? "Unknown error"}`);
 		}
@@ -338,6 +405,10 @@
 							sortDirection={currentSort?.direction}
 							onAddRow={hasPrimaryKey ? handleAddRow : undefined}
 							{pendingRowsContent}
+							{pendingCellEdits}
+							{pendingRowDeletes}
+							{pendingInsertRows}
+							onRemovePendingInsert={handleRemovePendingInsert}
 						/>
 					</div>
 				{/if}

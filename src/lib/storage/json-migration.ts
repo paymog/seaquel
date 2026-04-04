@@ -147,6 +147,10 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
     }
 
     // === Connection Data (dynamic filenames) ===
+    // Accumulate saved queries per project so that saveAll (which deletes missing IDs)
+    // doesn't discard queries from earlier connections in the same project.
+    const queriesByProject = new Map<string, PersistedSavedQuery[]>();
+
     for (const connectionId of connectionIds) {
       try {
         const dataStore = await loadStore(`connection_data_${connectionId}.json`, {
@@ -165,12 +169,13 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
             [connectionId],
           );
           const projectId = connRows.length > 0 ? connRows[0].project_id : DEFAULT_PROJECT_ID;
-          // Remap connectionId → projectId on migrated saved queries
           const migratedQueries: PersistedSavedQuery[] = savedQueries.map((q) => ({
             ...q,
             projectId,
           }));
-          await savedQueriesRepo.saveAll(db, projectId, migratedQueries);
+          const existing = queriesByProject.get(projectId) ?? [];
+          existing.push(...migratedQueries);
+          queriesByProject.set(projectId, existing);
         }
         if (queryHistory && queryHistory.length > 0) {
           await queryHistoryRepo.replaceAll(db, connectionId, queryHistory);
@@ -178,6 +183,11 @@ export async function migrateJsonToSqlite(db: SqliteDatabase): Promise<boolean> 
       } catch {
         // No data file for this connection
       }
+    }
+
+    // Save all accumulated queries per project in one batch
+    for (const [projectId, queries] of queriesByProject) {
+      await savedQueriesRepo.saveAll(db, projectId, queries);
     }
 
     // === Shared Repos ===

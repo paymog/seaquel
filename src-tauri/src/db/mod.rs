@@ -105,6 +105,14 @@ pub struct ConnectConfig {
     pub path: Option<String>,
 }
 
+/// A single statement in a batch/transaction
+#[derive(Debug, Deserialize)]
+pub struct BatchStatement {
+    pub sql: String,
+    #[serde(default)]
+    pub params: Vec<serde_json::Value>,
+}
+
 /// Trait that all drivers implement
 #[async_trait]
 pub trait Driver: Send + Sync {
@@ -119,6 +127,15 @@ pub trait Driver: Send + Sync {
         sql: &str,
         params: Vec<serde_json::Value>,
     ) -> Result<ExecuteResult, DbError>;
+
+    /// Execute multiple statements in a single transaction on one connection.
+    /// Default implementation falls back to individual execute calls.
+    async fn transaction(&self, statements: Vec<BatchStatement>) -> Result<(), DbError> {
+        for stmt in statements {
+            self.execute(&stmt.sql, stmt.params).await?;
+        }
+        Ok(())
+    }
 
     async fn close(&self) -> Result<(), DbError>;
 }
@@ -217,6 +234,35 @@ macro_rules! impl_sqlx_driver {
                     rows_affected: result.rows_affected(),
                     last_insert_id: ($last_insert_id)(&result),
                 })
+            }
+
+            async fn transaction(&self, statements: Vec<super::BatchStatement>) -> Result<(), super::DbError> {
+                use sqlx::{Acquire, Executor};
+
+                let mut conn = self
+                    .pool
+                    .acquire()
+                    .await
+                    .map_err(|e| DbError::execute_error(e))?;
+
+                let mut tx = conn
+                    .begin()
+                    .await
+                    .map_err(|e| DbError::execute_error(e))?;
+
+                for stmt in &statements {
+                    let query = sqlx::query(&stmt.sql);
+                    let query = bind_params(query, &stmt.params);
+                    tx.execute(query)
+                        .await
+                        .map_err(|e| DbError::execute_error(e))?;
+                }
+
+                tx.commit()
+                    .await
+                    .map_err(|e| DbError::execute_error(e))?;
+
+                Ok(())
             }
 
             async fn close(&self) -> Result<(), DbError> {

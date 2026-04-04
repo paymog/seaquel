@@ -7,7 +7,8 @@ export type SettingsSection =
   | "learn"
   | "ai-provider"
   | "ai-privacy"
-  | "query-history";
+  | "query-history"
+  | "pending-changes";
 export type SettingsGroup = "general" | "appearance" | "features" | "ai";
 export type SettingsView = SettingsGroup | SettingsSection;
 
@@ -22,13 +23,14 @@ export const sectionToGroup: Record<SettingsSection, SettingsGroup> = {
   "ai-provider": "ai",
   "ai-privacy": "ai",
   "query-history": "general",
+  "pending-changes": "features",
 };
 
 // Map groups to their sections
 export const groupSections: Record<SettingsGroup, SettingsSection[]> = {
   general: ["app-info", "license", "query-history"],
   appearance: ["theme", "themes"],
-  features: ["ai-feature", "learn"],
+  features: ["ai-feature", "learn", "pending-changes"],
   ai: ["ai-provider", "ai-privacy"],
 };
 

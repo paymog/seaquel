@@ -49,7 +49,8 @@ import { log } from "$lib/utils/logger";
  * Storage: single seaquel.db SQLite database with tables for each domain.
  */
 export class PersistenceManager {
-  private persistenceTimer: ReturnType<typeof setTimeout> | null = null;
+  private projectTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectionDataTimer: ReturnType<typeof setTimeout> | null = null;
   private sharedReposTimer: ReturnType<typeof setTimeout> | null = null;
   private aiChatTimers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly PERSISTENCE_DEBOUNCE_MS = 500;
@@ -61,9 +62,13 @@ export class PersistenceManager {
    * Cancel any pending debounced persistence timer.
    */
   cancelPendingPersistence(): void {
-    if (this.persistenceTimer) {
-      clearTimeout(this.persistenceTimer);
-      this.persistenceTimer = null;
+    if (this.projectTimer) {
+      clearTimeout(this.projectTimer);
+      this.projectTimer = null;
+    }
+    if (this.connectionDataTimer) {
+      clearTimeout(this.connectionDataTimer);
+      this.connectionDataTimer = null;
     }
   }
 
@@ -73,12 +78,12 @@ export class PersistenceManager {
   scheduleProject(projectId: string | null): void {
     if (!projectId) return;
 
-    if (this.persistenceTimer) {
-      clearTimeout(this.persistenceTimer);
+    if (this.projectTimer) {
+      clearTimeout(this.projectTimer);
     }
-    this.persistenceTimer = setTimeout(() => {
+    this.projectTimer = setTimeout(() => {
       void this.persistProjectState(projectId);
-      this.persistenceTimer = null;
+      this.projectTimer = null;
     }, this.PERSISTENCE_DEBOUNCE_MS);
   }
 
@@ -88,12 +93,12 @@ export class PersistenceManager {
   scheduleConnectionData(connectionId: string | null): void {
     if (!connectionId) return;
 
-    if (this.persistenceTimer) {
-      clearTimeout(this.persistenceTimer);
+    if (this.connectionDataTimer) {
+      clearTimeout(this.connectionDataTimer);
     }
-    this.persistenceTimer = setTimeout(() => {
+    this.connectionDataTimer = setTimeout(() => {
       void this.persistConnectionData(connectionId);
-      this.persistenceTimer = null;
+      this.connectionDataTimer = null;
     }, this.PERSISTENCE_DEBOUNCE_MS);
   }
 
@@ -114,9 +119,13 @@ export class PersistenceManager {
    * Immediately flush any pending persistence operations.
    */
   async flush(): Promise<void> {
-    if (this.persistenceTimer) {
-      clearTimeout(this.persistenceTimer);
-      this.persistenceTimer = null;
+    if (this.projectTimer) {
+      clearTimeout(this.projectTimer);
+      this.projectTimer = null;
+    }
+    if (this.connectionDataTimer) {
+      clearTimeout(this.connectionDataTimer);
+      this.connectionDataTimer = null;
     }
     if (this.sharedReposTimer) {
       clearTimeout(this.sharedReposTimer);
@@ -394,8 +403,11 @@ export class PersistenceManager {
 
       await projectStateRepo.save(db, state);
 
-      // Also persist saved queries (per-project)
-      await savedQueriesRepo.saveAll(db, projectId, this.serializeSavedQueries(projectId));
+      // Only persist saved queries if they've been loaded into memory for this project.
+      // Otherwise saveAll would delete all queries (since the in-memory list is empty).
+      if (projectId in this.state.queriesByProject) {
+        await savedQueriesRepo.saveAll(db, projectId, this.serializeSavedQueries(projectId));
+      }
     } catch (error) {
       void log.error(`Persistence failed: ${projectId}`);
       void log.error(`Failed to persist state for project ${projectId}:`, error);

@@ -399,6 +399,12 @@ export class ProjectManager {
       await this.persistence.persistProjectState(this.state.activeProjectId);
     }
 
+    // Preload saved queries/dashboards before changing activeProjectId so that
+    // $derived values (e.g. projectQueries) see the data immediately.
+    if (id && !(id in this.state.queriesByProject)) {
+      await this.stateRestoration.loadProjectData(id);
+    }
+
     this.state.activeProjectId = id;
     await this.persistence.persistAppState();
 
@@ -688,6 +694,11 @@ export class ProjectManager {
   }
 
   private async loadProjectState(projectId: string): Promise<void> {
+    // Load saved queries and dashboards FIRST, before any state assignments
+    // that trigger UI re-renders via $derived. This ensures queriesByProject
+    // is populated when projectQueries recomputes after activeProjectId changes.
+    await this.stateRestoration.loadProjectData(projectId);
+
     const persistedState = (await this.persistence.loadProjectState(
       projectId,
     )) as LegacyPersistedProjectState | null;
@@ -718,8 +729,6 @@ export class ProjectManager {
       this.state.activeDataTabIdByProject[projectId] = null;
       // Initialize starter tabs for new projects
       this.starterTabManager?.initializeDefaults(projectId);
-      // Load saved queries and dashboards for the project
-      await this.stateRestoration.loadProjectData(projectId);
       return;
     }
 
@@ -904,9 +913,6 @@ export class ProjectManager {
     // Connection tabs are transient - always initialize empty
     this.state.connectionTabsByProject[projectId] = [];
     this.state.activeConnectionTabIdByProject[projectId] = null;
-
-    // Load saved queries and dashboards for the project
-    await this.stateRestoration.loadProjectData(projectId);
 
     // Clear any pane layout created prematurely by $effect (before tab data was loaded)
     if (!persistedState.paneLayout || persistedState.paneLayout.panes.length === 0) {

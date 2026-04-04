@@ -20,6 +20,7 @@
     import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
     import CircleDollarSignIcon from "@lucide/svelte/icons/circle-dollar-sign";
     import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+    import ListChecksIcon from "@lucide/svelte/icons/list-checks";
     import MessageSquareTextIcon from "@lucide/svelte/icons/message-square-text";
     import BookOpenIcon from "@lucide/svelte/icons/book-open";
     import LanguageToggle from "./language-toggle.svelte";
@@ -239,6 +240,21 @@
                 </button>
             {/if}
             {#if !isLearnPage && (db.state.activeConnection?.providerConnectionId)}
+                <Button
+                    size="icon"
+                    variant="ghost"
+                    class="size-6 relative {db.state.activePendingChangesCount > 0 ? 'text-amber-600 dark:text-amber-400' : ''}"
+                    title={db.state.activePendingChangesCount > 0 ? `Pending Changes (${db.state.activePendingChangesCount})` : "Pending Changes"}
+                    aria-label="Pending Changes"
+                    onclick={() => db.pendingChanges.toggleSheet()}
+                >
+                    <ListChecksIcon class="size-3.5" />
+                    {#if db.state.activePendingChangesCount > 0}
+                        <Badge variant="destructive" class="absolute -top-1.5 -right-2 size-4 p-0 text-[10px] flex items-center justify-center bg-amber-500 text-white border-0 animate-pulse">
+                            {db.state.activePendingChangesCount}
+                        </Badge>
+                    {/if}
+                </Button>
                 <Button
                     size="icon"
                     variant="ghost"
