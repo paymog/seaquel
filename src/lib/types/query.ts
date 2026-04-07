@@ -276,6 +276,8 @@ export interface AIMessage {
   timestamp: Date;
   /** SQL query suggested or discussed, if any */
   query?: string;
+  /** Dashboard ID created or referenced during this message turn (persisted for follow-ups) */
+  dashboardId?: string;
   /** Set while waiting for the user to approve an AI-requested query. Cleared once resolved. */
   pendingApproval?: {
     query: string;

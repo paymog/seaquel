@@ -1092,6 +1092,7 @@ const _messageRepo = createRepo<PersistedAIMessage>({
     content: col("content"),
     timestamp: col("timestamp"),
     query: nullable("query"),
+    dashboardId: nullable("dashboard_id"),
   },
 });
 

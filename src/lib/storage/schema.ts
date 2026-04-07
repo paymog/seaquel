@@ -267,7 +267,8 @@ const DDL_STATEMENTS = [
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     timestamp TEXT NOT NULL,
-    query TEXT
+    query TEXT,
+    dashboard_id TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_ai_messages_chat ON ai_messages(chat_id)`,
 ];
@@ -416,6 +417,11 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
       table: "project_state",
       column: "active_data_tab_id",
       sql: "ALTER TABLE project_state ADD COLUMN active_data_tab_id TEXT",
+    },
+    {
+      table: "ai_messages",
+      column: "dashboard_id",
+      sql: "ALTER TABLE ai_messages ADD COLUMN dashboard_id TEXT",
     },
   ];
 

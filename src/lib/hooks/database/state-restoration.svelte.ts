@@ -206,6 +206,7 @@ export class StateRestorationManager {
         content: m.content,
         timestamp: new Date(m.timestamp),
         query: m.query,
+        dashboardId: m.dashboardId,
       })),
     };
   }

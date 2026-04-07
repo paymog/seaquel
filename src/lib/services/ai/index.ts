@@ -45,6 +45,7 @@ export interface SendAIMessageParams {
   onChunk: (delta: string) => void;
   onDone: () => void;
   onError: (msg: string) => void;
+  onDashboardCreated?: (dashboardId: string) => void;
   onCreateDashboard?: (name: string) => Promise<{ dashboardId: string } | null>;
   onAddWidget?: (
     dashboardId: string,
@@ -102,7 +103,18 @@ async function handleToolCall(
   if (DASHBOARD_TOOL_NAMES.has(toolName)) {
     const callbacks = getDashboardCallbacks(params);
     if (!callbacks) return JSON.stringify({ error: "Dashboard tools not available" });
-    return handleDashboardToolCall(toolName, input, callbacks);
+    const result = await handleDashboardToolCall(toolName, input, callbacks);
+    if (toolName === "create_dashboard" && params.onDashboardCreated) {
+      try {
+        const parsed = JSON.parse(result);
+        if (parsed.dashboard_id) {
+          params.onDashboardCreated(parsed.dashboard_id);
+        }
+      } catch {
+        // parse failed — skip callback
+      }
+    }
+    return result;
   }
 
   if (toolName !== "run_query") {

@@ -654,6 +654,7 @@ export class PersistenceManager {
           content: m.content,
           timestamp: m.timestamp.toISOString(),
           query: m.query,
+          dashboardId: m.dashboardId,
         })),
       );
     } catch (error) {

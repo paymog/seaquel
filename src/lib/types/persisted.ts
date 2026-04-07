@@ -265,6 +265,7 @@ export interface PersistedAIMessage {
   content: string;
   timestamp: string;
   query?: string;
+  dashboardId?: string;
 }
 
 export type ActiveViewType =

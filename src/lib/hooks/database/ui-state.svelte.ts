@@ -150,13 +150,37 @@ export class UIStateManager {
     const rawMessages = this._getMessages(chatId).filter(
       (m) => m.id !== assistantMessageId && !m.pendingModelSelection,
     );
-    if (!enrichedContent) return rawMessages;
-    return rawMessages.map((msg, i) => {
-      if (i === rawMessages.length - 1 && msg.role === "user") {
-        return { ...msg, content: enrichedContent };
+
+    // Find the most recent dashboard ID from prior assistant messages
+    const lastDashboardId = rawMessages.findLast((m) => m.dashboardId)?.dashboardId;
+
+    let messages = rawMessages;
+    if (enrichedContent) {
+      messages = messages.map((msg, i) => {
+        if (i === messages.length - 1 && msg.role === "user") {
+          return { ...msg, content: enrichedContent };
+        }
+        return msg;
+      });
+    }
+
+    // Inject dashboard context so the AI knows which dashboard to operate on
+    if (lastDashboardId) {
+      const lastUserIdx = messages.findLastIndex((m) => m.role === "user");
+      if (lastUserIdx !== -1) {
+        const msg = messages[lastUserIdx];
+        messages = messages.map((m, i) =>
+          i === lastUserIdx
+            ? {
+                ...m,
+                content: `${msg.content}\n\n[Context: The active dashboard ID is "${lastDashboardId}". Use this ID for any dashboard tool calls.]`,
+              }
+            : m,
+        );
       }
-      return msg;
-    });
+    }
+
+    return messages;
   }
 
   private _formatAIError(err: string): string {
@@ -262,6 +286,12 @@ export class UIStateManager {
         this._updateMessage(chatId, assistantMessageId, (m) => ({
           ...m,
           pendingApproval: { query, connectionName: connName, approve, deny },
+        }));
+      },
+      onDashboardCreated: (dashboardId: string) => {
+        this._updateMessage(chatId, assistantMessageId, (m) => ({
+          ...m,
+          dashboardId,
         }));
       },
       onChunk: (delta: string) => {
