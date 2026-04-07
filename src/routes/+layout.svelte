@@ -34,6 +34,8 @@
     import DeepLinkCloneDialog from "$lib/components/deep-link-clone-dialog.svelte";
     import DeepLinkProjectPickerDialog from "$lib/components/deep-link-project-picker-dialog.svelte";
     import { handleDeepLink } from "$lib/services/deep-link";
+    import { setupFileDropListener } from "$lib/services/file-drop.svelte.js";
+    import FileDropOverlay from "$lib/components/file-drop-overlay.svelte";
 
     setDatabase();
 
@@ -149,6 +151,10 @@
             );
             cleanupFns.push(unlistenThemeCancel);
 
+            // File drag-and-drop handling
+            const unlistenFileDrop = await setupFileDropListener(db);
+            cleanupFns.push(unlistenFileDrop);
+
             // Deep link handling
             const { onOpenUrl, getCurrent } = await import("@tauri-apps/plugin-deep-link");
 
@@ -190,6 +196,8 @@
 />
 <ModeWatcher />
 <Toaster position="bottom-right" richColors expand />
+
+<FileDropOverlay />
 
 {#if isStandaloneWindow}
     <!-- Standalone window: minimal layout, no app shell -->

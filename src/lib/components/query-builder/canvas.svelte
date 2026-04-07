@@ -24,9 +24,14 @@
 	import { useDnD } from './dnd-provider.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 
-	const type = useDnD();
+	const dnd = useDnD();
 	const qb = useQueryBuilder();
 	const { screenToFlowPosition } = useSvelteFlow();
+
+	// Register pointer-based drop handler for table palette DnD
+	dnd.onDrop = (clientX: number, clientY: number) => {
+		handlePaletteDrop(clientX, clientY);
+	};
 
 	// Custom node types
 	const nodeTypes = {
@@ -661,12 +666,6 @@
 		}
 	};
 
-	function handleDragOver(event: DragEvent) {
-		event.preventDefault();
-		if (event.dataTransfer) {
-			event.dataTransfer.dropEffect = 'move';
-		}
-	}
 
 	/**
 	 * Calculate the absolute position of a subquery on the canvas (recursive).
@@ -693,16 +692,14 @@
 		return null;
 	}
 
-	function handleDrop(event: DragEvent) {
-		event.preventDefault();
-
-		const dragType = type.current;
+	function handlePaletteDrop(clientX: number, clientY: number) {
+		const dragType = dnd.current;
 		if (!dragType) return;
 
 		// Convert screen coordinates to flow coordinates
 		const position = screenToFlowPosition({
-			x: event.clientX,
-			y: event.clientY
+			x: clientX,
+			y: clientY
 		});
 
 		// Check if dropping on a CTE or subquery
@@ -1050,8 +1047,6 @@
 		fitView
 		onnodedrag={handleNodeDrag}
 		onnodedragstop={handleNodeDragStop}
-		ondrop={handleDrop}
-		ondragover={handleDragOver}
 		onconnect={handleConnect}
 		onreconnect={handleReconnect}
 		ondelete={handleDelete}

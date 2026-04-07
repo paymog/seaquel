@@ -20,16 +20,49 @@
 	// Use provided schema or convert tutorial schema as default
 	const tables = $derived(schema ?? tutorialToQueryBuilder(TUTORIAL_SCHEMA));
 
-	const type = useDnD();
+	const dnd = useDnD();
 	const qb = useQueryBuilder();
 
-	function handleDragStart(event: DragEvent, dragType: string) {
-		if (!event.dataTransfer) return;
-		// Store the drag type in shared context (more reliable than dataTransfer)
-		type.current = dragType;
-		// setData is required for the drag operation to be valid in some browsers
-		event.dataTransfer.setData('text/plain', dragType);
-		event.dataTransfer.effectAllowed = 'move';
+	let ghost: HTMLElement | null = null;
+
+	function handlePointerDown(event: PointerEvent, dragType: string) {
+		if (event.button !== 0) return;
+
+		const sourceEl = event.currentTarget as HTMLElement;
+		dnd.current = dragType;
+
+		// Clone the source element as a floating ghost
+		ghost = sourceEl.cloneNode(true) as HTMLElement;
+		ghost.style.position = 'fixed';
+		ghost.style.pointerEvents = 'none';
+		ghost.style.zIndex = '9999';
+		ghost.style.opacity = '0.85';
+		ghost.style.width = `${sourceEl.offsetWidth}px`;
+		ghost.style.left = `${event.clientX - sourceEl.offsetWidth / 2}px`;
+		ghost.style.top = `${event.clientY - 16}px`;
+		document.body.appendChild(ghost);
+
+		function handlePointerMove(e: PointerEvent) {
+			if (ghost) {
+				ghost.style.left = `${e.clientX - sourceEl.offsetWidth / 2}px`;
+				ghost.style.top = `${e.clientY - 16}px`;
+			}
+		}
+
+		function handlePointerUp(e: PointerEvent) {
+			if (ghost) {
+				ghost.remove();
+				ghost = null;
+			}
+			if (dnd.current) {
+				dnd.drop(e.clientX, e.clientY);
+			}
+			window.removeEventListener('pointermove', handlePointerMove);
+			window.removeEventListener('pointerup', handlePointerUp);
+		}
+
+		window.addEventListener('pointermove', handlePointerMove);
+		window.addEventListener('pointerup', handlePointerUp);
 	}
 </script>
 
@@ -52,9 +85,8 @@
 			{#each tables as table (table.name)}
 				<div
 					role="listitem"
-					class="flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-grab hover:bg-muted"
-					draggable={true}
-					ondragstart={(e) => handleDragStart(e, table.name)}
+					class="flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-grab hover:bg-muted select-none"
+					onpointerdown={(e) => handlePointerDown(e, table.name)}
 				>
 					<!-- Drag handle -->
 					<GripVerticalIcon class="size-4 text-muted-foreground shrink-0" />
@@ -81,9 +113,8 @@
 				<!-- Subquery -->
 				<div
 					role="listitem"
-					class="flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-grab hover:bg-indigo-500/10 border border-dashed border-indigo-500/30"
-					draggable={true}
-					ondragstart={(e) => handleDragStart(e, '__subquery__')}
+					class="flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-grab hover:bg-indigo-500/10 border border-dashed border-indigo-500/30 select-none"
+					onpointerdown={(e) => handlePointerDown(e, '__subquery__')}
 				>
 					<GripVerticalIcon class="size-4 text-indigo-500/70 shrink-0" />
 					<BracesIcon class="size-4 text-indigo-500 shrink-0" />
@@ -98,9 +129,8 @@
 				<!-- CTE -->
 				<div
 					role="listitem"
-					class="flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-grab hover:bg-violet-500/10 border border-dashed border-violet-500/30"
-					draggable={true}
-					ondragstart={(e) => handleDragStart(e, '__cte__')}
+					class="flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-grab hover:bg-violet-500/10 border border-dashed border-violet-500/30 select-none"
+					onpointerdown={(e) => handlePointerDown(e, '__cte__')}
 				>
 					<GripVerticalIcon class="size-4 text-violet-500/70 shrink-0" />
 					<LayersIcon class="size-4 text-violet-500 shrink-0" />
@@ -120,9 +150,8 @@
 						{#if cte.name}
 							<div
 								role="listitem"
-								class="flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-grab hover:bg-violet-500/10"
-								draggable={true}
-								ondragstart={(e) => handleDragStart(e, `__cte__${cte.id}`)}
+								class="flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-grab hover:bg-violet-500/10 select-none"
+								onpointerdown={(e) => handlePointerDown(e, `__cte__${cte.id}`)}
 							>
 								<GripVerticalIcon class="size-4 text-muted-foreground shrink-0" />
 								<LayersIcon class="size-4 text-violet-500 shrink-0" />

@@ -477,15 +477,54 @@ pub fn run() {
             license::deactivate_license,
         ])
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                if window.label() == "main" {
-                    // Close all other windows when the main window is closed
-                    for (label, w) in window.app_handle().webview_windows() {
-                        if label != "main" {
-                            let _ = w.destroy();
+            match event {
+                tauri::WindowEvent::Destroyed => {
+                    if window.label() == "main" {
+                        for (label, w) in window.app_handle().webview_windows() {
+                            if label != "main" {
+                                let _ = w.destroy();
+                            }
                         }
                     }
                 }
+                tauri::WindowEvent::DragDrop(drag_drop_event) => {
+                    match drag_drop_event {
+                        tauri::DragDropEvent::Drop { paths, .. } => {
+                            let supported_extensions = [
+                                "parquet", "csv", "json", "duckdb", "db", "xlsx", "xls",
+                            ];
+                            let supported_paths: Vec<String> = paths
+                                .iter()
+                                .filter(|p| {
+                                    p.extension()
+                                        .and_then(|ext| ext.to_str())
+                                        .map(|ext| {
+                                            supported_extensions
+                                                .contains(&ext.to_lowercase().as_str())
+                                        })
+                                        .unwrap_or(false)
+                                })
+                                .filter_map(|p| p.to_str().map(String::from))
+                                .collect();
+                            if !supported_paths.is_empty() {
+                                let _ = window.emit("file-drop", supported_paths);
+                            }
+                        }
+                        tauri::DragDropEvent::Enter { paths, .. } => {
+                            let paths: Vec<String> = paths
+                                .iter()
+                                .filter_map(|p| p.to_str().map(String::from))
+                                .collect();
+                            let _ = window.emit("file-drop-hover", paths);
+                        }
+                        tauri::DragDropEvent::Over { .. } => {}
+                        tauri::DragDropEvent::Leave => {
+                            let _ = window.emit("file-drop-leave", ());
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
             }
         })
         .setup(|app| {
