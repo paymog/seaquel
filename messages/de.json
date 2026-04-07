@@ -618,6 +618,7 @@
   "license_tier_business": "Kommerzielle Nutzung - Unternehmen",
   "license_activate": "Lizenz aktivieren",
   "license_activate_description": "Geben Sie Ihren Lizenzschlüssel ein, um die kommerzielle Nutzung zu aktivieren.",
+  "license_purchase": "Lizenz kaufen",
   "license_key_placeholder": "Geben Sie Ihren Lizenzschlüssel ein",
   "license_activate_button": "Aktivieren",
   "license_deactivate_button": "Lizenz deaktivieren",

@@ -439,6 +439,16 @@
 		}
 	}
 
+	function openExternal(url: string) {
+		if (isTauri()) {
+			import("$lib/api/tauri").then(({ openPath }) => {
+				openPath(url);
+			});
+		} else {
+			window.open(url, "_blank");
+		}
+	}
+
 	// AI provider management state
 	let isAddingProvider = $state(false);
 	let editingProviderId = $state<string | null>(null);
@@ -909,9 +919,14 @@
 								</Button>
 							</div>
 						{:else}
-							<Button variant="outline" size="sm" onclick={() => showActivationInput = true}>
-								{m.license_activate()}
-							</Button>
+							<div class="flex gap-2">
+								<Button variant="outline" size="sm" onclick={() => showActivationInput = true}>
+									{m.license_activate()}
+								</Button>
+								<Button size="sm" onclick={() => openExternal("https://seaquel.app/pricing")}>
+									{m.license_purchase()}
+								</Button>
+							</div>
 						{/if}
 					</div>
 				{/if}

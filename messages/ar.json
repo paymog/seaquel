@@ -622,6 +622,7 @@
   "license_tier_business": "الاستخدام التجاري - أعمال",
   "license_activate": "تفعيل الترخيص",
   "license_activate_description": "أدخل مفتاح الترخيص لتفعيل الاستخدام التجاري.",
+  "license_purchase": "شراء ترخيص",
   "license_key_placeholder": "أدخل مفتاح الترخيص",
   "license_activate_button": "تفعيل",
   "license_deactivate_button": "إلغاء تفعيل الترخيص",

@@ -887,6 +887,7 @@
   "license_tier_business": "Commercial Use - Business",
   "license_activate": "Activate License",
   "license_activate_description": "Enter your license key to activate commercial use.",
+  "license_purchase": "Purchase License",
   "license_key_placeholder": "Enter your license key",
   "license_activate_button": "Activate",
   "license_deactivate_button": "Deactivate License",

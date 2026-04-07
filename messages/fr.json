@@ -618,6 +618,7 @@
   "license_tier_business": "Usage Commercial - Entreprise",
   "license_activate": "Activer la Licence",
   "license_activate_description": "Entrez votre clé de licence pour activer l'usage commercial.",
+  "license_purchase": "Acheter une licence",
   "license_key_placeholder": "Entrez votre clé de licence",
   "license_activate_button": "Activer",
   "license_deactivate_button": "Désactiver la Licence",

@@ -618,6 +618,7 @@
   "license_tier_business": "Uso Comercial - Empresa",
   "license_activate": "Activar Licencia",
   "license_activate_description": "Ingresa tu clave de licencia para activar el uso comercial.",
+  "license_purchase": "Comprar licencia",
   "license_key_placeholder": "Ingresa tu clave de licencia",
   "license_activate_button": "Activar",
   "license_deactivate_button": "Desactivar Licencia",
