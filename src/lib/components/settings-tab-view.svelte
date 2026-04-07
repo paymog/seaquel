@@ -44,6 +44,7 @@
 	import PencilIcon from "@lucide/svelte/icons/pencil";
 	import ShieldIcon from "@lucide/svelte/icons/shield";
 	import HistoryIcon from "@lucide/svelte/icons/history";
+	import KeyboardIcon from "@lucide/svelte/icons/keyboard";
 	import ThemePreview from "./theme-preview.svelte";
 	import { openThemeEditor } from "$lib/utils/theme-editor-window";
 	import type { Theme } from "$lib/types/theme";
@@ -52,6 +53,7 @@
 	import { onboardingStore } from "$lib/stores/onboarding.svelte.js";
 	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte.js";
 	import { pendingChangesSettingsStore } from "$lib/stores/pending-changes-settings.svelte.js";
+	import { editorSettingsStore, type EditorKeybindingMode } from "$lib/stores/editor-settings.svelte.js";
 	import { getDatabase } from "$lib/storage/db";
 	import { appStateRepo } from "$lib/storage/repository";
 	import { getKeyringService } from "$lib/services/keyring";
@@ -294,6 +296,7 @@
 			items: [
 				{ id: "theme", name: m.settings_theme(), icon: SunMoonIcon },
 				{ id: "themes", name: m.settings_themes(), icon: SwatchBookIcon },
+				{ id: "editor", name: m.settings_editor(), icon: KeyboardIcon },
 			],
 		},
 		{
@@ -365,6 +368,7 @@
 		license: "general",
 		theme: "appearance",
 		themes: "appearance",
+		editor: "appearance",
 		"ai-feature": "features",
 		learn: "features",
 		"pending-changes": "features",
@@ -1143,6 +1147,46 @@
 									</div>
 								</div>
 							{/each}
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			{#if shouldShowSection("editor")}
+				<div class="space-y-6" data-section="editor">
+					<div>
+						<h2 class="text-lg font-medium">{m.settings_editor()}</h2>
+						<p class="text-sm text-muted-foreground mt-1">
+							{m.settings_editor_description()}
+						</p>
+					</div>
+
+					<div class="space-y-4">
+						<div class="flex items-center justify-between">
+							<div>
+								<p class="text-sm font-medium">{m.settings_editor_keybinding_mode()}</p>
+								<p class="text-xs text-muted-foreground">
+									{m.settings_editor_keybinding_mode_description()}
+								</p>
+							</div>
+							<Select
+								type="single"
+								value={editorSettingsStore.keybindingMode}
+								onValueChange={(v) => editorSettingsStore.setKeybindingMode(v as EditorKeybindingMode)}
+							>
+								<SelectTrigger class="w-32">
+									{editorSettingsStore.keybindingMode === "vim"
+										? m.settings_editor_keybinding_vim()
+										: editorSettingsStore.keybindingMode === "emacs"
+											? m.settings_editor_keybinding_emacs()
+											: m.settings_editor_keybinding_default()}
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="default">{m.settings_editor_keybinding_default()}</SelectItem>
+									<SelectItem value="vim">{m.settings_editor_keybinding_vim()}</SelectItem>
+									<SelectItem value="emacs">{m.settings_editor_keybinding_emacs()}</SelectItem>
+								</SelectContent>
+							</Select>
 						</div>
 					</div>
 				</div>

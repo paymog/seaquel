@@ -9,6 +9,7 @@
 	import { onMount, onDestroy } from "svelte";
 	import { mode } from "mode-watcher";
 	import { initMonaco, monaco, createSchemaCompletionProvider } from "$lib/monaco";
+	import { editorSettingsStore } from "$lib/stores/editor-settings.svelte.js";
 	import type { SchemaTable } from "$lib/types";
 
 	let {
@@ -33,8 +34,39 @@
 
 	// oxlint-disable-next-line eslint(no-unassigned-vars)
 	let container: HTMLDivElement;
+	// oxlint-disable-next-line eslint(no-unassigned-vars)
+	let vimStatusBar: HTMLDivElement;
 	let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 	let completionDisposable: monaco.IDisposable | null = null;
+	let keybindingDisposable: monaco.IDisposable | null = null;
+	let unsubscribeKeybindings: (() => void) | null = null;
+
+	function applyKeybindingMode() {
+		if (!editor) return;
+
+		if (keybindingDisposable) {
+			keybindingDisposable.dispose();
+			keybindingDisposable = null;
+		}
+
+		const keybindingMode = editorSettingsStore.keybindingMode;
+
+		if (keybindingMode === "vim") {
+			import("monaco-vim").then(({ initVimMode }) => {
+				if (editor && editorSettingsStore.keybindingMode === "vim") {
+					keybindingDisposable = initVimMode(editor, vimStatusBar);
+				}
+			});
+		} else if (keybindingMode === "emacs") {
+			import("monaco-emacs").then(({ EmacsExtension }) => {
+				if (editor && editorSettingsStore.keybindingMode === "emacs") {
+					const emacs = new EmacsExtension(editor);
+					emacs.start();
+					keybindingDisposable = emacs;
+				}
+			});
+		}
+	}
 
 	// Track if we're updating programmatically to avoid loops
 	let isUpdatingFromProp = false;
@@ -209,9 +241,15 @@
 				editor.focus();
 			}
 		};
+
+		// Apply keybinding mode (vim/emacs) after editor is ready
+		applyKeybindingMode();
+		unsubscribeKeybindings = editorSettingsStore.onChange(applyKeybindingMode);
 	});
 
 	onDestroy(() => {
+		unsubscribeKeybindings?.();
+		keybindingDisposable?.dispose();
 		completionDisposable?.dispose();
 		editor?.dispose();
 	});
@@ -237,9 +275,19 @@
 			monaco.editor.setTheme(theme);
 		}
 	});
+
 </script>
 
-<div bind:this={container} dir="ltr" class={["h-full w-full", className].filter(Boolean).join(" ")}></div>
+<div class="flex h-full w-full flex-col">
+	<div bind:this={container} dir="ltr" class={["min-h-0 flex-1", className].filter(Boolean).join(" ")}></div>
+	<div
+		bind:this={vimStatusBar}
+		class={[
+			"vim-status-bar px-2 py-0.5 text-xs font-mono text-muted-foreground bg-muted/50 border-t",
+			editorSettingsStore.keybindingMode !== "vim" && "hidden"
+		].filter(Boolean).join(" ")}
+	></div>
+</div>
 
 <style>
 	/* Template variable styling - applied via Monaco decorations */

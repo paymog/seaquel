@@ -38,6 +38,7 @@ import { PendingChangesManager } from "./database/pending-changes.svelte.js";
 import { ProviderRegistry } from "$lib/providers";
 import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 import { pendingChangesSettingsStore } from "$lib/stores/pending-changes-settings.svelte";
+import { editorSettingsStore } from "$lib/stores/editor-settings.svelte";
 import { getDatabase } from "$lib/storage/db";
 
 /**
@@ -368,6 +369,7 @@ class UseDatabase {
       const sqliteDb = await getDatabase();
       await aiSettingsStore.initialize(sqliteDb);
       await pendingChangesSettingsStore.load();
+      await editorSettingsStore.load();
       void log.info("AI settings initialized");
 
       // Initialize connections (also loads saved queries, history, and dashboards)
