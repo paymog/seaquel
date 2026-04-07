@@ -1,5 +1,6 @@
 import * as monaco from "monaco-editor";
 import { setupLanguageFeatures, LanguageIdEnum } from "monaco-sql-languages";
+import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 
 let isInitialized = false;
 
@@ -7,16 +8,11 @@ export async function initMonaco(): Promise<void> {
   if (isInitialized) return;
 
   // Configure Monaco workers for Vite ESM
+  // Using Vite's ?worker import ensures the worker is properly bundled
+  // in production (plain `new URL()` creates a data: URL with unresolved imports)
   self.MonacoEnvironment = {
-    getWorker(_workerId: string, _label: string) {
-      const workerUrl = new URL("monaco-editor/esm/vs/editor/editor.worker.js", import.meta.url);
-      const worker = new Worker(workerUrl, { type: "module" });
-      // Suppress worker errors (Monaco still works, just without some features)
-      worker.onerror = (e) => {
-        e.preventDefault();
-        console.debug("[Monaco] Worker failed to load, some features may be limited");
-      };
-      return worker;
+    getWorker() {
+      return new EditorWorker();
     },
   };
 
