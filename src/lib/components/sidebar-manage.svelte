@@ -787,6 +787,17 @@
 									</CollapsibleContent>
 								</Sidebar.MenuItem>
 							</Collapsible>
+						{:else}
+							<div class="text-center py-4 text-muted-foreground px-2">
+								{#if schemaSearchQuery}
+									<p class="text-xs">{m.sidebar_no_schema_search()} <button class="text-foreground underline underline-offset-4 hover:text-primary" onclick={() => { schemaSearchQuery = ""; }}>{m.sidebar_no_schema_clear_search()}</button></p>
+								{:else}
+									<p class="text-xs">{m.sidebar_no_schema()} <button class="text-foreground underline underline-offset-4 hover:text-primary" onclick={() => {
+										db.createTableTabs.add();
+										db.ui.setActiveView("createTable");
+									}}>{m.sidebar_no_schema_create_table()}</button></p>
+								{/if}
+							</div>
 						{/each}
 					</Sidebar.Menu>
 				</Sidebar.GroupContent>
