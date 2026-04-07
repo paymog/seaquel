@@ -143,6 +143,7 @@
   "command_group_open_tabs": "علامات التبويب المفتوحة",
   "command_group_navigation": "التنقل",
   "command_toggle_sidebar": "تبديل الشريط الجانبي",
+  "command_keyboard_shortcuts": "اختصارات لوحة المفاتيح",
   "command_view_erd": "عرض مخطط ERD",
   "command_group_tables": "الجداول",
   "command_open_table": "فتح: {schema}.{table}",

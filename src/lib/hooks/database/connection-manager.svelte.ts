@@ -557,7 +557,7 @@ export class ConnectionManager {
   /**
    * Remove a connection and all its state.
    */
-  async remove(id: string): Promise<void> {
+  async remove(id: string, { skipUnshare = false } = {}): Promise<void> {
     void log.info(`Removing connection: ${id}`);
     // Prevent deletion of demo connection in demo mode
     if (isDemo() && id === "demo-connection") {
@@ -581,7 +581,9 @@ export class ConnectionManager {
     }
 
     // Remove the YAML file from the git directory if the connection is shared
-    if (connection && !connection.isLocalOnly && this.sharedRepos) {
+    // Skip unsharing when removing as part of project deletion — the user is only
+    // removing the project from their local Seaquel instance, not from the git repo.
+    if (!skipUnshare && connection && !connection.isLocalOnly && this.sharedRepos) {
       await this.sharedRepos.unshareConnection(connection);
     }
 

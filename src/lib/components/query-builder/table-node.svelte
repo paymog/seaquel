@@ -4,7 +4,6 @@
 	import { useQueryBuilder } from "$lib/hooks/query-builder.svelte.js";
 	import { Checkbox } from "$lib/components/ui/checkbox";
 	import { Button } from "$lib/components/ui/button";
-	import { ScrollArea } from "$lib/components/ui/scroll-area";
 	import * as Select from "$lib/components/ui/select";
 	import TableIcon from "@lucide/svelte/icons/table";
 	import LayersIcon from "@lucide/svelte/icons/layers";
@@ -41,7 +40,6 @@
 	let { id, data, isConnectable = true }: Props = $props();
 
 	const queryBuilder = useQueryBuilder();
-
 	// Check if this table is a CTE reference (not inside a CTE, but referencing one)
 	const isCteReference = $derived.by(() => {
 		// If cteId is passed directly in data (for subquery tables), use it
@@ -192,7 +190,7 @@
 	}
 </script>
 
-<div class="bg-card border rounded-lg shadow-md min-w-[220px] {isCteReference ? 'border-violet-500/30' : 'border-border'}">
+<div class="bg-card border rounded-lg shadow-md min-w-[220px] overflow-hidden {isCteReference ? 'border-violet-500/30' : 'border-border'}">
 	<!-- Table Header -->
 	<div class="border-b border-border px-3 py-2 flex items-center justify-between gap-2 {isCteReference ? 'bg-violet-500/10' : 'bg-muted/50'}">
 		<div class="flex items-center gap-2 min-w-0">
@@ -228,7 +226,7 @@
 
 	<!-- Columns List -->
 	{#if tableSchema}
-		<ScrollArea class="max-h-[240px] overflow-x-visible" orientation="vertical">
+		<div>
 			<div class="text-xs divide-y divide-border">
 				{#each tableSchema.columns as column (column.name)}
 					{@const isSelected = data.selectedColumns.has(column.name)}
@@ -310,7 +308,7 @@
 					</div>
 				{/each}
 			</div>
-		</ScrollArea>
+		</div>
 	{:else}
 		<div class="px-3 py-4 text-sm text-muted-foreground text-center">
 			{m.qb_table_not_found()}

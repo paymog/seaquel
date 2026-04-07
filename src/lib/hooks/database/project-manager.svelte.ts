@@ -37,7 +37,9 @@ interface LegacyPersistedProjectState extends PersistedProjectState {
  */
 export class ProjectManager {
   private migration: MigrationManager;
-  private removeConnection: ((connectionId: string) => Promise<void>) | null = null;
+  private removeConnection:
+    | ((connectionId: string, options?: { skipUnshare?: boolean }) => Promise<void>)
+    | null = null;
   private starterTabManager: StarterTabManager | null = null;
   private sharedRepos: SharedRepoManager | null = null;
   private sharedQueryManager: SharedQueryManager | null = null;
@@ -79,7 +81,9 @@ export class ProjectManager {
    * Set the callback for removing connections.
    * This is called by the main database class after ConnectionManager is created.
    */
-  setRemoveConnectionCallback(callback: (connectionId: string) => Promise<void>): void {
+  setRemoveConnectionCallback(
+    callback: (connectionId: string, options?: { skipUnshare?: boolean }) => Promise<void>,
+  ): void {
     this.removeConnection = callback;
   }
 
@@ -360,7 +364,7 @@ export class ProjectManager {
     const projectConnections = this.state.connections.filter((c) => c.projectId === id);
     if (this.removeConnection) {
       for (const connection of projectConnections) {
-        await this.removeConnection(connection.id);
+        await this.removeConnection(connection.id, { skipUnshare: true });
         // Cancel any debounced persistence scheduled by removeConnection
         // (e.g. via setActiveForProject) before the next iteration's await
         // gives the timer a chance to fire against the soon-to-be-deleted project

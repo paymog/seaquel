@@ -143,6 +143,7 @@
   "command_group_open_tabs": "열린 탭",
   "command_group_navigation": "탐색",
   "command_toggle_sidebar": "사이드바 전환",
+  "command_keyboard_shortcuts": "키보드 단축키",
   "command_view_erd": "ERD 다이어그램 보기",
   "command_group_tables": "테이블",
   "command_open_table": "열기: {schema}.{table}",

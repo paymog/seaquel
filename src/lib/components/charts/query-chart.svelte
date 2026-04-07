@@ -158,8 +158,8 @@
 	{:else if chartConfig.type === 'scatter'}
 		<ScatterChart
 			data={chartData}
-			x={(d) => d[chartConfig.yAxis[0] ?? 'x'] as number}
-			y={(d) => d[chartConfig.yAxis[1] ?? chartConfig.yAxis[0] ?? 'x'] as number}
+			x={(d) => Number(d.x) || 0}
+			y={(d) => d[chartConfig.yAxis[0] ?? 'x'] as number}
 			axis
 			grid
 			tooltip

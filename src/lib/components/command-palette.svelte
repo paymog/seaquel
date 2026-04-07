@@ -24,6 +24,7 @@
 		LayoutDashboard,
 		BookOpen,
 		GraduationCap,
+		Keyboard,
 	} from "@lucide/svelte";
 	import { m } from "$lib/paraglide/messages.js";
 	import { Link } from "@lucide/svelte";
@@ -111,6 +112,12 @@
 		runAndClose(() => {
 			tabManagerByType[type].setActive(tabId);
 			db.ui.setActiveView(type);
+		});
+	}
+
+	function showKeyboardShortcuts() {
+		runAndClose(() => {
+			shortcuts.showHelp = true;
 		});
 	}
 
@@ -401,6 +408,11 @@
 				<PanelLeft class="size-4" />
 				<span>{m.command_toggle_sidebar()}</span>
 				<Command.Shortcut>⌘B</Command.Shortcut>
+			</Command.Item>
+			<Command.Item value="keyboard-shortcuts" onSelect={showKeyboardShortcuts}>
+				<Keyboard class="size-4" />
+				<span>{m.command_keyboard_shortcuts()}</span>
+				<Command.Shortcut>?</Command.Shortcut>
 			</Command.Item>
 			{#if isConnected}
 				<Command.Item value="view-erd" onSelect={viewErd}>

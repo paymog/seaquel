@@ -143,6 +143,7 @@
   "command_group_open_tabs": "Pestañas abiertas",
   "command_group_navigation": "Navegación",
   "command_toggle_sidebar": "Alternar barra lateral",
+  "command_keyboard_shortcuts": "Atajos de teclado",
   "command_view_erd": "Ver diagrama ERD",
   "command_group_tables": "Tablas",
   "command_open_table": "Abrir: {schema}.{table}",

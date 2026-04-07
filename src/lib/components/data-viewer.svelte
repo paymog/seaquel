@@ -422,7 +422,7 @@
 		</div>
 
 		<!-- Pagination -->
-		<div class="flex items-center justify-between px-4 py-2 border-t shrink-0 text-xs">
+		<div class="flex items-center justify-between px-4 py-2 border-t shrink-0 text-xs bg-background relative z-10">
 			<div class="flex items-center gap-2">
 				<span class="text-muted-foreground">
 					{#if (tab.totalRows ?? 0) > 0}
@@ -438,7 +438,7 @@
 					value={String(tab.pageSize)}
 					onValueChange={(v) => db.dataTabs.setPageSize(tabId, Number(v))}
 				>
-					<Select.Trigger class="h-7 text-xs w-[80px]">
+					<Select.Trigger class="h-7 text-xs w-[100px]">
 						{tab.pageSize} rows
 					</Select.Trigger>
 					<Select.Content>

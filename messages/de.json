@@ -143,6 +143,7 @@
   "command_group_open_tabs": "Offene Registerkarten",
   "command_group_navigation": "Navigation",
   "command_toggle_sidebar": "Seitenleiste umschalten",
+  "command_keyboard_shortcuts": "Tastenkürzel",
   "command_view_erd": "ERD-Diagramm anzeigen",
   "command_group_tables": "Tabellen",
   "command_open_table": "Öffnen: {schema}.{table}",

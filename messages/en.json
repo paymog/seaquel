@@ -143,6 +143,7 @@
   "command_group_open_tabs": "Open Tabs",
   "command_group_navigation": "Navigation",
   "command_toggle_sidebar": "Toggle Sidebar",
+  "command_keyboard_shortcuts": "Keyboard Shortcuts",
   "command_view_erd": "View ERD Diagram",
   "command_group_tables": "Tables",
   "command_open_table": "Open: {schema}.{table}",

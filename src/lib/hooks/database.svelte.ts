@@ -314,9 +314,11 @@ class UseDatabase {
     );
 
     // Set up cross-manager callbacks
-    this.projects.setRemoveConnectionCallback(async (connectionId: string) => {
-      await this.connections.remove(connectionId);
-    });
+    this.projects.setRemoveConnectionCallback(
+      async (connectionId: string, options?: { skipUnshare?: boolean }) => {
+        await this.connections.remove(connectionId, options);
+      },
+    );
 
     this.projects.setSharedRepoManager(this.sharedRepos);
     this.projects.setSharedQueryManager(this.sharedQueries);

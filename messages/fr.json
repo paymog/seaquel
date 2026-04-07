@@ -143,6 +143,7 @@
   "command_group_open_tabs": "Onglets ouverts",
   "command_group_navigation": "Navigation",
   "command_toggle_sidebar": "Basculer la barre latérale",
+  "command_keyboard_shortcuts": "Raccourcis clavier",
   "command_view_erd": "Voir le diagramme ERD",
   "command_group_tables": "Tables",
   "command_open_table": "Ouvrir : {schema}.{table}",

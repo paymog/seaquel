@@ -220,8 +220,13 @@ export function parseSql(sql: string, options?: ParseSqlOptions): ParsedQuery | 
             if (fromItem.on) {
               const joinInfo = parseJoinCondition(fromItem.on, tableAliasMap);
               if (joinInfo) {
+                // If the ON condition has the joined table on the left side,
+                // swap so sourceTable/sourceColumn refer to the existing table
+                const needsSwap = joinInfo.sourceTable === tableName;
                 joins.push({
-                  ...joinInfo,
+                  sourceTable: needsSwap ? joinInfo.rightTable : joinInfo.sourceTable,
+                  sourceColumn: needsSwap ? joinInfo.targetColumn : joinInfo.sourceColumn,
+                  targetColumn: needsSwap ? joinInfo.sourceColumn : joinInfo.targetColumn,
                   joinType,
                   targetTable: tableName,
                 });
@@ -503,6 +508,7 @@ function findTableForColumn(tables: ParsedTable[], columnName: string): ParsedTa
 interface JoinConditionInfo {
   sourceTable: string;
   sourceColumn: string;
+  rightTable: string;
   targetColumn: string;
 }
 
@@ -541,6 +547,7 @@ function parseJoinCondition(
   return {
     sourceTable: leftTable,
     sourceColumn: leftColumn,
+    rightTable: rightTable,
     targetColumn: rightColumn,
   };
 }
@@ -790,8 +797,11 @@ function parseSubqueryAst(
           if (fi.on) {
             const joinInfo = parseJoinCondition(fi.on, tableAliasMap);
             if (joinInfo) {
+              const needsSwap = joinInfo.sourceTable === tableName;
               joins.push({
-                ...joinInfo,
+                sourceTable: needsSwap ? joinInfo.rightTable : joinInfo.sourceTable,
+                sourceColumn: needsSwap ? joinInfo.targetColumn : joinInfo.sourceColumn,
+                targetColumn: needsSwap ? joinInfo.sourceColumn : joinInfo.targetColumn,
                 joinType,
                 targetTable: tableName,
               });
