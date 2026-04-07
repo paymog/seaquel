@@ -105,7 +105,7 @@ export function buildQuerySql(
       if (agg) {
         // Column with aggregate
         const expr = `${agg.function}(${table.tableName}.${column})`;
-        selectParts.push(agg.alias ? `${expr} AS ${agg.alias}` : expr);
+        selectParts.push(agg.alias ? `${expr} AS "${agg.alias}"` : expr);
       } else {
         // Regular column
         selectParts.push(`${table.tableName}.${column}`);
@@ -116,7 +116,7 @@ export function buildQuerySql(
   // Add standalone aggregates
   for (const agg of selectAggregates) {
     const expr = `${agg.function}(${agg.expression})`;
-    selectParts.push(agg.alias ? `${expr} AS ${agg.alias}` : expr);
+    selectParts.push(agg.alias ? `${expr} AS "${agg.alias}"` : expr);
   }
 
   // Add SELECT subqueries (scalar subqueries)
@@ -125,7 +125,7 @@ export function buildQuerySql(
     const subquerySql = buildSubquerySql(sq.innerQuery);
     if (subquerySql) {
       const expr = `(${subquerySql})`;
-      selectParts.push(sq.alias ? `${expr} AS ${sq.alias}` : expr);
+      selectParts.push(sq.alias ? `${expr} AS "${sq.alias}"` : expr);
     }
   }
 
