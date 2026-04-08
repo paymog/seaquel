@@ -10,7 +10,7 @@ export interface WorkflowTableNodeData extends Record<string, unknown> {
   tableName: string;
   schemaName: string;
   connectionId: string;
-  tableType: "table" | "view";
+  tableType: "table" | "view" | "materialized-view";
   rowCount?: number;
   columns: {
     name: string;

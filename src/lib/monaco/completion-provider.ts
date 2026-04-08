@@ -257,7 +257,7 @@ export function createSchemaCompletionProvider(
         suggestions.push({
           label: table.name,
           kind:
-            table.type === "view"
+            table.type !== "table"
               ? monaco.languages.CompletionItemKind.Interface
               : monaco.languages.CompletionItemKind.Struct,
           detail: `${table.schema}.${table.name} (${table.type})`,
@@ -270,7 +270,7 @@ export function createSchemaCompletionProvider(
         suggestions.push({
           label: `${table.schema}.${table.name}`,
           kind:
-            table.type === "view"
+            table.type !== "table"
               ? monaco.languages.CompletionItemKind.Interface
               : monaco.languages.CompletionItemKind.Struct,
           detail: table.columns.length ? `${table.columns.length} columns` : "",

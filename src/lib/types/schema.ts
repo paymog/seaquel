@@ -59,7 +59,7 @@ export interface SchemaTable {
   /** Schema name (e.g., 'public' in PostgreSQL) */
   schema: string;
   /** Whether this is a table or view */
-  type: "table" | "view";
+  type: "table" | "view" | "materialized-view";
   /** Approximate row count, if available */
   rowCount?: number;
   /** Column definitions */

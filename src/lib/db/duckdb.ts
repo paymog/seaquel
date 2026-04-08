@@ -17,6 +17,7 @@ import type {
 interface DuckDBSchemaRow {
   schema_name: string;
   table_name: string;
+  table_type: string;
 }
 
 interface DuckDBColumnRow {
@@ -35,11 +36,12 @@ export class DuckDBAdapter implements DatabaseAdapter {
   getSchemaQuery(): string {
     return `SELECT
 			table_schema AS schema_name,
-			table_name
+			table_name,
+			table_type
 		FROM
 			information_schema.tables
 		WHERE
-			table_type = 'BASE TABLE'
+			table_type IN ('BASE TABLE', 'VIEW')
 			AND table_schema NOT IN ('pg_catalog', 'information_schema')
 		ORDER BY
 			table_schema, table_name`;
@@ -106,7 +108,7 @@ export class DuckDBAdapter implements DatabaseAdapter {
     return (rows as DuckDBSchemaRow[]).map((row) => ({
       name: row.table_name,
       schema: row.schema_name,
-      type: "table" as const,
+      type: row.table_type === "VIEW" ? "view" : "table",
       columns: [],
       indexes: [],
     }));

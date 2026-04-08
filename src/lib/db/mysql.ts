@@ -25,6 +25,7 @@ function decodeValue(value: unknown): string {
 interface MysqlSchemaRow {
   schema_name: string;
   table_name: string;
+  table_type: string;
 }
 
 interface MysqlColumnRow {
@@ -77,11 +78,12 @@ export class MysqlAdapter implements DatabaseAdapter {
   getSchemaQuery(): string {
     return `SELECT
 			table_schema AS schema_name,
-			table_name AS table_name
+			table_name AS table_name,
+			table_type
 		FROM
 			information_schema.tables
 		WHERE
-			table_type = 'BASE TABLE'
+			table_type IN ('BASE TABLE', 'VIEW')
 			AND table_schema = DATABASE()
 		ORDER BY
 			table_schema, table_name`;
@@ -193,7 +195,7 @@ export class MysqlAdapter implements DatabaseAdapter {
       .map((row) => ({
         name: decodeValue(row.table_name),
         schema: decodeValue(row.schema_name),
-        type: "table" as const,
+        type: (row.table_type === "VIEW" ? "view" : "table") as SchemaTable["type"],
         columns: [],
         indexes: [],
       }))

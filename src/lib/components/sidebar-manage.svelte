@@ -7,7 +7,7 @@
 	import { Button } from "$lib/components/ui/button";
 	import { Input } from "$lib/components/ui/input";
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
-	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, WorkflowIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon } from "@lucide/svelte";
+	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, WorkflowIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon, EyeIcon } from "@lucide/svelte";
 	import type { Dashboard } from "$lib/types";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -90,7 +90,7 @@
 	};
 
 	// Drop/Truncate table state
-	let dropTableTarget = $state<{ schema: string; name: string } | null>(null);
+	let dropTableTarget = $state<{ schema: string; name: string; type: "table" | "view" | "materialized-view" } | null>(null);
 	let showDropDialog = $state(false);
 	let truncateTableTarget = $state<{ schema: string; name: string } | null>(null);
 	let showTruncateDialog = $state(false);
@@ -102,22 +102,28 @@
 		return (n: string) => `"${n}"`;
 	});
 
+	const dropKeyword = (type: "table" | "view" | "materialized-view") =>
+		type === "materialized-view" ? "MATERIALIZED VIEW" : type === "view" ? "VIEW" : "TABLE";
+
+	const dropLabel = (type: "table" | "view" | "materialized-view") =>
+		type === "materialized-view" ? "Materialized View" : type === "view" ? "View" : "Table";
+
 	const handleDropTable = async () => {
 		if (!dropTableTarget || !db.state.activeConnectionId) return;
-		const schema = dropTableTarget.schema;
-		const name = dropTableTarget.name;
+		const { schema, name, type } = dropTableTarget;
+		const keyword = dropKeyword(type);
 		showDropDialog = false;
 		dropTableTarget = null;
 		try {
 			const result = await db.queries.executeRawDdl(
-				`DROP TABLE ${quoteId(schema)}.${quoteId(name)}`,
+				`DROP ${keyword} ${quoteId(schema)}.${quoteId(name)}`,
 			);
 			if (result.queued) {
 				const { toast } = await import("svelte-sonner");
-				toast.info(`Drop table "${name}" added to pending changes`);
+				toast.info(`Drop ${keyword.toLowerCase()} "${name}" added to pending changes`);
 				return;
 			}
-			// Close tabs referencing the dropped table
+			// Close tabs referencing the dropped object
 			for (const tab of db.state.schemaTabs) {
 				if (tab.table.name === name && tab.table.schema === schema) {
 					db.schemaTabs.remove(tab.id);
@@ -135,10 +141,10 @@
 			}
 			await db.connections.refreshSchema(db.state.activeConnectionId);
 			const { toast } = await import("svelte-sonner");
-			toast.success(`Table "${name}" dropped`);
+			toast.success(`${keyword} "${name}" dropped`);
 		} catch (error) {
 			const { errorToast } = await import("$lib/utils/toast");
-			errorToast(`Failed to drop table: ${error instanceof Error ? error.message : String(error)}`);
+			errorToast(`Failed to drop ${keyword.toLowerCase()}: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	};
 
@@ -736,8 +742,15 @@
 											{#each tables as table (table.name)}
 												<Sidebar.MenuItem class="group/table-row flex">
 													<Sidebar.MenuButton onclick={() => handleTableClick(table)}>
-														<TableIcon class="size-4" />
-														<span class="flex-1">{table.name}</span>
+														{#if table.type === "table"}
+															<TableIcon class="size-4" />
+														{:else}
+															<EyeIcon class="size-4" />
+														{/if}
+														<Tooltip.Root>
+															<Tooltip.Trigger class="flex-1 truncate text-left">{table.name}</Tooltip.Trigger>
+															<Tooltip.Content side="top">{table.name}</Tooltip.Content>
+														</Tooltip.Root>
 													<DropdownMenu.Root>
 														<DropdownMenu.Trigger>
 															{#snippet child({ props })}
@@ -773,14 +786,16 @@
 																	<Trash2Icon class="size-4 me-2" />
 																	{m.sidebar_truncate_table()}
 																</DropdownMenu.Item>
-																<DropdownMenu.Item class="text-destructive" onclick={() => {
-																	dropTableTarget = { schema: table.schema, name: table.name };
-																	showDropDialog = true;
-																}}>
-																	<Trash2Icon class="size-4 me-2" />
-																	{m.sidebar_drop_table()}
-																</DropdownMenu.Item>
+															{:else}
+																<DropdownMenu.Separator />
 															{/if}
+															<DropdownMenu.Item class="text-destructive" onclick={() => {
+																dropTableTarget = { schema: table.schema, name: table.name, type: table.type };
+																showDropDialog = true;
+															}}>
+																<Trash2Icon class="size-4 me-2" />
+																Drop {dropLabel(table.type)}
+															</DropdownMenu.Item>
 														</DropdownMenu.Content>
 													</DropdownMenu.Root>
 													</Sidebar.MenuButton>
@@ -1698,13 +1713,13 @@
 	onconfirm={confirmDeleteDashboard}
 />
 
-<!-- Drop Table Confirmation Dialog -->
+<!-- Drop Table/View Confirmation Dialog -->
 <DeleteConfirmDialog
 	bind:open={showDropDialog}
-	title={m.drop_table_confirm_title()}
+	title={`Drop ${dropLabel(dropTableTarget?.type ?? "table")}`}
 	description={m.drop_table_confirm_description({ schema: dropTableTarget?.schema ?? "", table: dropTableTarget?.name ?? "" })}
 	cancelText={m.theme_delete_cancel()}
-	confirmText={m.sidebar_drop_table()}
+	confirmText={`Drop ${dropLabel(dropTableTarget?.type ?? "table")}`}
 	onconfirm={handleDropTable}
 />
 

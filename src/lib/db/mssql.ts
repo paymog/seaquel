@@ -14,6 +14,7 @@ import type {
 interface MssqlSchemaRow {
   schema_name: string;
   table_name: string;
+  object_type: string;
 }
 
 interface MssqlColumnRow {
@@ -37,13 +38,16 @@ interface MssqlIndexRow {
 
 export class MssqlAdapter implements DatabaseAdapter {
   getSchemaQuery(): string {
-    return `SELECT
-			s.name AS schema_name,
-			t.name AS table_name
+    return `SELECT s.name AS schema_name, t.name AS table_name, 'TABLE' AS object_type
 		FROM sys.tables t
 		INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
 		WHERE t.is_ms_shipped = 0
-		ORDER BY s.name, t.name`;
+		UNION ALL
+		SELECT s.name AS schema_name, v.name AS table_name, 'VIEW' AS object_type
+		FROM sys.views v
+		INNER JOIN sys.schemas s ON v.schema_id = s.schema_id
+		WHERE v.is_ms_shipped = 0
+		ORDER BY schema_name, table_name`;
   }
 
   getColumnsQuery(table: string, schema: string): string {
@@ -124,7 +128,7 @@ export class MssqlAdapter implements DatabaseAdapter {
     return (rows as MssqlSchemaRow[]).map((row) => ({
       name: row.table_name,
       schema: row.schema_name,
-      type: "table" as const,
+      type: row.object_type === "VIEW" ? "view" : "table",
       columns: [],
       indexes: [],
     }));

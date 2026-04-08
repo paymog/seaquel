@@ -17,6 +17,7 @@ import type {
 interface PostgresSchemaRow {
   schema_name: string;
   table_name: string;
+  table_type: string;
 }
 
 interface PostgresColumnRow {
@@ -67,16 +68,15 @@ interface PostgresDatabaseOverviewRow {
 
 export class PostgresAdapter implements DatabaseAdapter {
   getSchemaQuery(): string {
-    return `SELECT
-			table_schema AS schema_name,
-			table_name
-		FROM
-			information_schema.tables
-		WHERE
-			table_type = 'BASE TABLE'
+    return `SELECT table_schema AS schema_name, table_name, table_type
+		FROM information_schema.tables
+		WHERE table_type IN ('BASE TABLE', 'VIEW')
 			AND table_schema NOT IN ('pg_catalog', 'information_schema')
-		ORDER BY
-			table_schema, table_name`;
+		UNION ALL
+		SELECT schemaname AS schema_name, matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type
+		FROM pg_matviews
+		WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+		ORDER BY schema_name, table_name`;
   }
 
   getColumnsQuery(table: string, schema: string): string {
@@ -190,7 +190,12 @@ export class PostgresAdapter implements DatabaseAdapter {
     return (rows as PostgresSchemaRow[]).map((row) => ({
       name: row.table_name,
       schema: row.schema_name,
-      type: "table" as const,
+      type:
+        row.table_type === "VIEW"
+          ? "view"
+          : row.table_type === "MATERIALIZED VIEW"
+            ? "materialized-view"
+            : "table",
       columns: [],
       indexes: [],
     }));

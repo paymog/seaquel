@@ -55,7 +55,7 @@ interface SqliteForeignKeyRow {
 export class SqliteAdapter implements DatabaseAdapter {
   getSchemaQuery(): string {
     return `SELECT name, type FROM sqlite_master
-			WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+			WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
 			ORDER BY name`;
   }
 
@@ -141,7 +141,7 @@ export class SqliteAdapter implements DatabaseAdapter {
     return (rows as SqliteSchemaRow[]).map((row) => ({
       name: row.name,
       schema: "main", // SQLite uses "main" as the default schema
-      type: "table" as const,
+      type: row.type === "view" ? "view" : "table",
       columns: [],
       indexes: [],
     }));
