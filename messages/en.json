@@ -269,7 +269,16 @@
   "query_statements_count": "{count} statements",
   "query_error": "Error",
   "query_statement_n": "Statement {n}",
-  "query_result_rows_time": "({rows} rows, {time}ms)",
+  "query_result_rows_time": [
+    {
+      "declarations": ["input rows", "input time", "local rowsPlural = rows: plural"],
+      "selectors": ["rowsPlural"],
+      "match": {
+        "rowsPlural=one": "({rows} row, {time}ms)",
+        "rowsPlural=other": "({rows} rows, {time}ms)"
+      }
+    }
+  ],
   "query_result_affected_time": "({affected} affected, {time}ms)",
   "query_result_time": "({time}ms)",
   "query_result_error": "(error)",

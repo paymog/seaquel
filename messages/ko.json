@@ -261,7 +261,16 @@
   "query_statements_count": "{count}개 문장",
   "query_error": "오류",
   "query_statement_n": "문장 {n}",
-  "query_result_rows_time": "({rows}행, {time}ms)",
+  "query_result_rows_time": [
+    {
+      "declarations": ["input rows", "input time", "local rowsPlural = rows: plural"],
+      "selectors": ["rowsPlural"],
+      "match": {
+        "rowsPlural=one": "({rows}행, {time}ms)",
+        "rowsPlural=other": "({rows}행, {time}ms)"
+      }
+    }
+  ],
   "query_result_affected_time": "({affected}개 영향, {time}ms)",
   "query_result_time": "({time}ms)",
   "query_result_error": "(오류)",

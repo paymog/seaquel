@@ -261,7 +261,16 @@
   "query_statements_count": "{count} عبارات",
   "query_error": "خطأ",
   "query_statement_n": "العبارة {n}",
-  "query_result_rows_time": "({rows} صفوف، {time}مللي ثانية)",
+  "query_result_rows_time": [
+    {
+      "declarations": ["input rows", "input time", "local rowsPlural = rows: plural"],
+      "selectors": ["rowsPlural"],
+      "match": {
+        "rowsPlural=one": "({rows} صف، {time}مللي ثانية)",
+        "rowsPlural=other": "({rows} صفوف، {time}مللي ثانية)"
+      }
+    }
+  ],
   "query_result_affected_time": "({affected} متأثرة، {time}مللي ثانية)",
   "query_result_time": "({time}مللي ثانية)",
   "query_result_error": "(خطأ)",

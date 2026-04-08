@@ -261,7 +261,16 @@
   "query_statements_count": "{count} instructions",
   "query_error": "Erreur",
   "query_statement_n": "Instruction {n}",
-  "query_result_rows_time": "({rows} lignes, {time}ms)",
+  "query_result_rows_time": [
+    {
+      "declarations": ["input rows", "input time", "local rowsPlural = rows: plural"],
+      "selectors": ["rowsPlural"],
+      "match": {
+        "rowsPlural=one": "({rows} ligne, {time}ms)",
+        "rowsPlural=other": "({rows} lignes, {time}ms)"
+      }
+    }
+  ],
   "query_result_affected_time": "({affected} affectées, {time}ms)",
   "query_result_time": "({time}ms)",
   "query_result_error": "(erreur)",
