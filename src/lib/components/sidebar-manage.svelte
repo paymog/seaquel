@@ -479,28 +479,12 @@
 												{/if}
 											</span>
 											<span class="flex-1 truncate text-sm">{connection.name}</span>
-											{#if db.state.activeProjectHasGit}
-												<Tooltip.Root>
-												<Tooltip.Trigger>
-													{#snippet child({ props })}
-														<button
-															{...props}
-															type="button"
-															class="shrink-0 cursor-pointer"
-															onclick={(e) => { e.stopPropagation(); db.connections.toggleLocalOnly(connection.id); }}
-														>
-															<GitBranchIcon class={["size-3!", connection.isLocalOnly ? "text-muted-foreground/40" : "text-green-500"]} />
-														</button>
-													{/snippet}
-												</Tooltip.Trigger>
-												<Tooltip.Content>
-													{connection.isLocalOnly ? m.connection_share() : m.connection_mark_local_only()}
-												</Tooltip.Content>
-											</Tooltip.Root>
-											{/if}
 											{#if getConnectionLabels(connection).length > 0}
 												<Tooltip.Root>
-													<Tooltip.Trigger class="flex items-center">
+													<Tooltip.Trigger
+														class="flex items-center cursor-pointer"
+														onclick={(e: MouseEvent) => { e.stopPropagation(); openLabelsDialog(connection.id, connection.name); }}
+													>
 														{#each getConnectionLabels(connection) as label, i (label.id)}
 															<span
 																class="size-2.5 rounded-full shrink-0 ring-1 ring-sidebar-background"
@@ -522,6 +506,25 @@
 														</div>
 													</Tooltip.Content>
 												</Tooltip.Root>
+											{/if}
+											{#if db.state.activeProjectHasGit}
+												<Tooltip.Root>
+												<Tooltip.Trigger>
+													{#snippet child({ props })}
+														<button
+															{...props}
+															type="button"
+															class="shrink-0 cursor-pointer"
+															onclick={(e) => { e.stopPropagation(); db.connections.toggleLocalOnly(connection.id); }}
+														>
+															<GitBranchIcon class={["size-3!", connection.isLocalOnly ? "text-muted-foreground/40" : "text-green-500"]} />
+														</button>
+													{/snippet}
+												</Tooltip.Trigger>
+												<Tooltip.Content>
+													{connection.isLocalOnly ? m.connection_share() : m.connection_mark_local_only()}
+												</Tooltip.Content>
+											</Tooltip.Root>
 											{/if}
 										</Sidebar.MenuButton>
 									</Sidebar.MenuItem>
