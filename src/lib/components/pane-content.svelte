@@ -16,6 +16,7 @@
     import ConnectionTabView from "$lib/components/connection-tab-view.svelte";
     import CreateTableView from "$lib/components/create-table-view.svelte";
     import DataViewer from "$lib/components/data-viewer.svelte";
+    import ExtensionsDuckdbTab from "$lib/components/extensions-duckdb-tab.svelte";
     import SettingsTabView from "$lib/components/settings-tab-view.svelte";
     import ProjectSettingsTabView from "$lib/components/project-settings-tab-view.svelte";
     import { DashboardView } from "$lib/components/dashboard";
@@ -45,6 +46,11 @@
     const activeStarterTab = $derived(
         paneViewType === 'starter' && pane.activeTabId
             ? db.state.starterTabs.find(t => t.id === pane.activeTabId) ?? null
+            : null
+    );
+    const activeExtensionsDuckdbTab = $derived(
+        paneViewType === 'extensionsDuckdb' && pane.activeTabId
+            ? db.state.extensionsDuckdbTabs.find(t => t.id === pane.activeTabId) ?? null
             : null
     );
     const activeSettingsTab = $derived(
@@ -150,6 +156,8 @@
                 <ErdViewer />
             {:else if paneViewType === "statistics" && activeStatisticsTab}
                 <StatisticsDashboard tab={activeStatisticsTab} />
+            {:else if paneViewType === "extensionsDuckdb" && activeExtensionsDuckdbTab}
+                <ExtensionsDuckdbTab tab={activeExtensionsDuckdbTab} />
             {:else if paneViewType === "workflow"}
                 <WorkflowView />
             {:else if paneViewType === "visualize" && pane.activeTabId}

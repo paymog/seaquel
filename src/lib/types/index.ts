@@ -87,6 +87,9 @@ export type {
   StatisticsTab,
 } from "./statistics";
 
+// DuckDB extensions types
+export type { DuckDBExtension, CommunityExtension, ExtensionsDuckdbTab } from "./extensions-duckdb";
+
 // Pane layout types
 export type { Pane, PaneLayout } from "./pane";
 

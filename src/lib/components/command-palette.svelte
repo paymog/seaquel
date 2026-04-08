@@ -13,6 +13,7 @@
 		Loader,
 		History,
 		FileText,
+		FileCode,
 		Sparkles,
 		PanelLeft,
 		Download,
@@ -25,8 +26,19 @@
 		BookOpen,
 		GraduationCap,
 		Keyboard,
+		Activity,
+		Network,
+		Workflow,
+		Cable,
+		Rocket,
+		Settings,
+		PlusSquare,
+		Puzzle,
 	} from "@lucide/svelte";
 	import { m } from "$lib/paraglide/messages.js";
+	import { getKeySymbols } from "$lib/shortcuts/platform";
+
+	const keys = getKeySymbols();
 	import { Link } from "@lucide/svelte";
 	import { handleDeepLink } from "$lib/services/deep-link";
 	import { toast } from "svelte-sonner";
@@ -106,7 +118,10 @@
 		settings: db.settingsTabs,
 		createTable: db.createTableTabs,
 		data: db.dataTabs,
+		extensionsDuckdb: db.extensionsDuckdbTabs,
 	} as const;
+
+	type TabType = keyof typeof tabManagerByType;
 
 	function goToTab(tabId: string, type: import('$lib/types').ActiveViewType) {
 		runAndClose(() => {
@@ -279,7 +294,7 @@
 		}
 	}
 
-	function getTabName(tab: { type: string; tab: any }): string {
+	function getTabName(tab: { type: TabType; tab: any }): string {
 		switch (tab.type) {
 			case "query":
 				return tab.tab.name || "Query";
@@ -293,31 +308,63 @@
 				return tab.tab.name || "Statistics";
 			case "dashboard":
 				return tab.tab.name || "Dashboard";
-			default:
-				return "Tab";
+			case "workflow":
+				return tab.tab.name || "Workflow";
+			case "visualize":
+				return tab.tab.name || "Visualize";
+			case "connection":
+				return tab.tab.name || "Connection";
+			case "starter":
+				return "Get Started";
+			case "settings":
+				return "Settings";
+			case "createTable":
+				return tab.tab.name || "Create Table";
+			case "data":
+				return tab.tab.name || "Data";
+			case "extensionsDuckdb":
+				return "Extensions";
+			default: {
+				const _exhaustive: never = tab.type;
+				return _exhaustive;
+			}
 		}
 	}
 
-	function getTabIcon(type: string) {
+	function getTabIcon(type: TabType) {
 		switch (type) {
 			case "query":
-				return Code;
+				return FileCode;
 			case "schema":
 				return Table2;
 			case "explain":
-				return GitBranch;
+				return Activity;
 			case "erd":
-				return GitBranch;
+				return Network;
 			case "statistics":
 				return BarChart3;
 			case "workflow":
-				return LayoutGrid;
+				return Workflow;
 			case "visualize":
 				return GitBranch;
+			case "connection":
+				return Cable;
 			case "dashboard":
 				return LayoutDashboard;
-			default:
+			case "starter":
+				return Rocket;
+			case "settings":
+				return Settings;
+			case "createTable":
+				return PlusSquare;
+			case "data":
+				return Database;
+			case "extensionsDuckdb":
+				return Puzzle;
+			default: {
+				const _exhaustive: never = type;
 				return FileText;
+			}
 		}
 	}
 
@@ -353,7 +400,7 @@
 					<Command.Item value="new-query-tab" onSelect={newQueryTab}>
 						<Plus class="size-4" />
 						<span>{m.command_new_query_tab()}</span>
-						<Command.Shortcut>⌘T</Command.Shortcut>
+						<Command.Shortcut>{keys.mod}T</Command.Shortcut>
 					</Command.Item>
 					<Command.Item value="new-dashboard" onSelect={newDashboard}>
 						<LayoutDashboard class="size-4" />
@@ -364,12 +411,12 @@
 					<Command.Item value="execute-query" onSelect={executeQuery}>
 						<Play class="size-4" />
 						<span>{m.command_execute_query()}</span>
-						<Command.Shortcut>⌘↵</Command.Shortcut>
+						<Command.Shortcut>{keys.mod}{keys.enter}</Command.Shortcut>
 					</Command.Item>
 					<Command.Item value="save-query" onSelect={saveQuery}>
 						<Save class="size-4" />
 						<span>{m.command_save_query()}</span>
-						<Command.Shortcut>⌘S</Command.Shortcut>
+						<Command.Shortcut>{keys.mod}S</Command.Shortcut>
 					</Command.Item>
 					<Command.Item value="explain-query" onSelect={explainQuery}>
 						<GitBranch class="size-4" />
@@ -392,12 +439,14 @@
 		<!-- Navigation -->
 		{#if openTabs.length > 0}
 			<Command.Group heading={m.command_group_open_tabs()}>
-				{#each openTabs as tab}
+				{#each openTabs as tab, i}
 					{@const TabIcon = getTabIcon(tab.type)}
 					<Command.Item value="tab-{tab.id}" onSelect={() => goToTab(tab.id, tab.type)}>
 						<TabIcon class="size-4" />
 						<span>{getTabName(tab)}</span>
-						<span class="text-muted-foreground ms-auto text-xs">{tab.type}</span>
+						{#if i < 9}
+							<Command.Shortcut>{keys.mod}{i + 1}</Command.Shortcut>
+						{/if}
 					</Command.Item>
 				{/each}
 			</Command.Group>
@@ -407,7 +456,7 @@
 			<Command.Item value="toggle-sidebar" onSelect={toggleSidebar}>
 				<PanelLeft class="size-4" />
 				<span>{m.command_toggle_sidebar()}</span>
-				<Command.Shortcut>⌘B</Command.Shortcut>
+				<Command.Shortcut>{keys.mod}B</Command.Shortcut>
 			</Command.Item>
 			<Command.Item value="keyboard-shortcuts" onSelect={showKeyboardShortcuts}>
 				<Keyboard class="size-4" />

@@ -257,6 +257,17 @@ export class PersistenceManager {
     }));
   }
 
+  serializeExtensionsDuckdbTabs(
+    projectId: string,
+  ): { id: string; name: string; connectionId: string }[] {
+    const tabs = this.state.extensionsDuckdbTabsByProject[projectId] ?? [];
+    return tabs.map((tab) => ({
+      id: tab.id,
+      name: tab.name,
+      connectionId: tab.connectionId,
+    }));
+  }
+
   serializePaneLayout(projectId: string): PersistedProjectState["paneLayout"] | undefined {
     const layout = this.state.paneLayoutByProject[projectId];
     if (!layout || layout.panes.length <= 1) return undefined;
@@ -396,6 +407,9 @@ export class PersistenceManager {
         activeCreateTableTabId: this.state.activeCreateTableTabIdByProject[projectId] ?? null,
         dataTabs: this.serializeDataTabs(projectId),
         activeDataTabId: this.state.activeDataTabIdByProject[projectId] ?? null,
+        extensionsDuckdbTabs: this.serializeExtensionsDuckdbTabs(projectId),
+        activeExtensionsDuckdbTabId:
+          this.state.activeExtensionsDuckdbTabIdByProject[projectId] ?? null,
         starredSharedQueryIds: [], // Legacy: starring is now on the Query object
         starredSharedDashboardIds: [], // Legacy: starring is now on the Dashboard object
         paneLayout: this.serializePaneLayout(projectId),

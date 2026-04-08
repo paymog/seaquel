@@ -281,7 +281,8 @@ export type ActiveViewType =
   | "starter"
   | "settings"
   | "createTable"
-  | "data";
+  | "data"
+  | "extensionsDuckdb";
 
 /**
  * Persisted create table tab state.

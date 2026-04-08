@@ -30,6 +30,7 @@ import type {
   DashboardVersion,
   CreateTableTab,
   DataTab,
+  ExtensionsDuckdbTab,
   PendingChange,
 } from "$lib/types";
 import type { PaneLayout } from "$lib/types";
@@ -117,6 +118,10 @@ export class DatabaseState {
   dataTabsByProject = $state<Record<string, DataTab[]>>({});
   activeDataTabIdByProject = $state<Record<string, string | null>>({});
 
+  // === DUCKDB EXTENSIONS TABS STATE (per-project) ===
+  extensionsDuckdbTabsByProject = $state<Record<string, ExtensionsDuckdbTab[]>>({});
+  activeExtensionsDuckdbTabIdByProject = $state<Record<string, string | null>>({});
+
   // Tab ordering state (stores ordered array of all tab IDs per project)
   tabOrderByProject = $state<Record<string, string[]>>({});
 
@@ -202,6 +207,7 @@ export class DatabaseState {
     | "settings"
     | "createTable"
     | "data"
+    | "extensionsDuckdb"
   >("query");
 
   // === PROJECT DERIVED VALUES ===
@@ -479,6 +485,22 @@ export class DatabaseState {
 
   activeDataTab = $derived(this.dataTabs.find((t) => t.id === this.activeDataTabId) || null);
 
+  // === DUCKDB EXTENSIONS TAB DERIVED VALUES ===
+
+  extensionsDuckdbTabs = $derived(
+    this.activeProjectId ? (this.extensionsDuckdbTabsByProject[this.activeProjectId] ?? []) : [],
+  );
+
+  activeExtensionsDuckdbTabId = $derived(
+    this.activeProjectId
+      ? (this.activeExtensionsDuckdbTabIdByProject[this.activeProjectId] ?? null)
+      : null,
+  );
+
+  activeExtensionsDuckdbTab = $derived(
+    this.extensionsDuckdbTabs.find((t) => t.id === this.activeExtensionsDuckdbTabId) || null,
+  );
+
   // === TAB TYPE UTILITIES ===
 
   /** Get the active tab ID for a given view type */
@@ -510,6 +532,8 @@ export class DatabaseState {
         return this.activeCreateTableTabId;
       case "data":
         return this.activeDataTabId;
+      case "extensionsDuckdb":
+        return this.activeExtensionsDuckdbTabId;
       default:
         return null;
     }

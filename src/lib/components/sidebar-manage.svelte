@@ -7,7 +7,7 @@
 	import { Button } from "$lib/components/ui/button";
 	import { Input } from "$lib/components/ui/input";
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs";
-	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, WorkflowIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon, EyeIcon } from "@lucide/svelte";
+	import { TableIcon, ChevronRightIcon, FolderIcon, HistoryIcon, StarIcon, ClockIcon, BookmarkIcon, Trash2Icon, SearchIcon, DatabaseIcon, FileTextIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, LayoutGridIcon, WorkflowIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, RefreshCwIcon, LoaderIcon, LayoutDashboardIcon, EyeIcon, PuzzleIcon } from "@lucide/svelte";
 	import type { Dashboard } from "$lib/types";
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "$lib/components/ui/collapsible";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -549,6 +549,15 @@
 											<BarChart3Icon class="size-4 me-2" />
 											{m.sidebar_database_statistics()}
 										</ContextMenu.Item>
+										{#if connection.type === "duckdb"}
+											<ContextMenu.Item onclick={() => {
+												db.connections.setActive(connection.id);
+												db.extensionsDuckdbTabs.add();
+											}}>
+												<PuzzleIcon class="size-4 me-2" />
+												{m.ext_sidebar_extensions()}
+											</ContextMenu.Item>
+										{/if}
 										<ContextMenu.Item onclick={() => {
 											db.connections.setActive(connection.id);
 											db.erdTabs.add();

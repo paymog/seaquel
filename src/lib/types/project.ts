@@ -152,6 +152,10 @@ export interface PersistedProjectState {
   dataTabs?: import("./persisted").PersistedDataTab[];
   /** Currently active data tab */
   activeDataTabId?: string | null;
+  /** DuckDB extensions tabs */
+  extensionsDuckdbTabs?: { id: string; name: string; connectionId: string }[];
+  /** Currently active DuckDB extensions tab */
+  activeExtensionsDuckdbTabId?: string | null;
   /** Split pane layout */
   paneLayout?: {
     panes: { id: string; tabIds: string[]; activeTabId: string | null }[];

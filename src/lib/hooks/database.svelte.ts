@@ -16,6 +16,7 @@ import { SchemaTabManager } from "./database/schema-tabs.svelte.js";
 import { ExplainTabManager } from "./database/explain-tabs.svelte.js";
 import { ErdTabManager } from "./database/erd-tabs.svelte.js";
 import { StatisticsTabManager } from "./database/statistics-tabs.svelte.js";
+import { ExtensionsDuckdbTabManager } from "./database/extensions-duckdb-tabs.svelte.js";
 import { WorkflowTabManager } from "./database/workflow-tabs.svelte.js";
 import { VisualizeTabManager } from "./database/visualize-tabs.svelte.js";
 import { ConnectionTabManager } from "./database/connection-tabs.svelte.js";
@@ -69,6 +70,7 @@ class UseDatabase {
   readonly explainTabs: ExplainTabManager;
   readonly erdTabs: ErdTabManager;
   readonly statisticsTabs: StatisticsTabManager;
+  readonly extensionsDuckdbTabs: ExtensionsDuckdbTabManager;
   readonly workflowTabs: WorkflowTabManager;
   readonly visualizeTabs: VisualizeTabManager;
   readonly starterTabs: StarterTabManager;
@@ -186,6 +188,16 @@ class UseDatabase {
       setActiveView,
       async (query: string) => {
         // Execute query on the active connection and return raw results
+        const result = await this.queries.executeRaw(query);
+        return result;
+      },
+    );
+    this.extensionsDuckdbTabs = new ExtensionsDuckdbTabManager(
+      this.state,
+      this.tabs,
+      scheduleProjectPersistence,
+      setActiveView,
+      async (query: string) => {
         const result = await this.queries.executeRaw(query);
         return result;
       },

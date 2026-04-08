@@ -731,6 +731,8 @@ export class ProjectManager {
       this.state.activeCreateTableTabIdByProject[projectId] = null;
       this.state.dataTabsByProject[projectId] = [];
       this.state.activeDataTabIdByProject[projectId] = null;
+      this.state.extensionsDuckdbTabsByProject[projectId] = [];
+      this.state.activeExtensionsDuckdbTabIdByProject[projectId] = null;
       // Initialize starter tabs for new projects
       this.starterTabManager?.initializeDefaults(projectId);
       return;
@@ -913,6 +915,20 @@ export class ProjectManager {
         pendingNewRows: [],
       }));
     this.state.activeDataTabIdByProject[projectId] = persistedState.activeDataTabId ?? null;
+
+    // Restore DuckDB extensions tabs
+    this.state.extensionsDuckdbTabsByProject[projectId] = (
+      persistedState.extensionsDuckdbTabs ?? []
+    )
+      .filter((t) => t.connectionId)
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        connectionId: t.connectionId,
+        isLoading: false,
+      }));
+    this.state.activeExtensionsDuckdbTabIdByProject[projectId] =
+      persistedState.activeExtensionsDuckdbTabId ?? null;
 
     // Connection tabs are transient - always initialize empty
     this.state.connectionTabsByProject[projectId] = [];

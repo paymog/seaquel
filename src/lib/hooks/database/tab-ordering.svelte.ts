@@ -10,9 +10,33 @@ import type {
   DashboardTab,
   StarterTab,
   SettingsTab,
+  CreateTableTab,
+  DataTab,
+  ExtensionsDuckdbTab,
 } from "$lib/types";
+import type { ActiveViewType } from "$lib/types/persisted";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PaneManager } from "./pane-manager.svelte.js";
+
+export type OrderedTabEntry = {
+  id: string;
+  type: ActiveViewType;
+  tab:
+    | QueryTab
+    | SchemaTab
+    | ExplainTab
+    | ErdTab
+    | StatisticsTab
+    | WorkflowTab
+    | VisualizeTab
+    | ConnectionTab
+    | DashboardTab
+    | StarterTab
+    | SettingsTab
+    | CreateTableTab
+    | DataTab
+    | ExtensionsDuckdbTab;
+};
 
 /**
  * Manages tab ordering across all tab types (query, schema, explain, ERD).
@@ -110,37 +134,7 @@ export class TabOrderingManager {
   /**
    * Get ordered tabs for a specific pane (filtered by pane's tabIds, preserving pane order).
    */
-  orderedForPane(paneId: string): Array<{
-    id: string;
-    type:
-      | "query"
-      | "schema"
-      | "explain"
-      | "erd"
-      | "statistics"
-      | "workflow"
-      | "visualize"
-      | "connection"
-      | "dashboard"
-      | "starter"
-      | "settings"
-      | "createTable"
-      | "data";
-    tab:
-      | QueryTab
-      | SchemaTab
-      | ExplainTab
-      | ErdTab
-      | StatisticsTab
-      | WorkflowTab
-      | VisualizeTab
-      | ConnectionTab
-      | DashboardTab
-      | StarterTab
-      | SettingsTab
-      | import("$lib/types").CreateTableTab
-      | import("$lib/types").DataTab;
-  }> {
+  orderedForPane(paneId: string): OrderedTabEntry[] {
     if (!this.state.activeProjectId) return [];
 
     const layout = this.state.paneLayoutByProject[this.state.activeProjectId];
@@ -170,37 +164,7 @@ export class TabOrderingManager {
   /**
    * Get all tabs ordered by user preference or creation time.
    */
-  get ordered(): Array<{
-    id: string;
-    type:
-      | "query"
-      | "schema"
-      | "explain"
-      | "erd"
-      | "statistics"
-      | "workflow"
-      | "visualize"
-      | "connection"
-      | "dashboard"
-      | "starter"
-      | "settings"
-      | "createTable"
-      | "data";
-    tab:
-      | QueryTab
-      | SchemaTab
-      | ExplainTab
-      | ErdTab
-      | StatisticsTab
-      | WorkflowTab
-      | VisualizeTab
-      | ConnectionTab
-      | DashboardTab
-      | StarterTab
-      | SettingsTab
-      | import("$lib/types").CreateTableTab
-      | import("$lib/types").DataTab;
-  }> {
+  get ordered(): OrderedTabEntry[] {
     if (!this.state.activeProjectId) return [];
 
     // Ensure we have arrays (defensive against undefined)
@@ -216,37 +180,7 @@ export class TabOrderingManager {
 
     const dashboardTabs = this.state.dashboardTabs || [];
 
-    const allTabsUnordered: Array<{
-      id: string;
-      type:
-        | "query"
-        | "schema"
-        | "explain"
-        | "erd"
-        | "statistics"
-        | "workflow"
-        | "visualize"
-        | "connection"
-        | "dashboard"
-        | "starter"
-        | "settings"
-        | "createTable"
-        | "data";
-      tab:
-        | QueryTab
-        | SchemaTab
-        | ExplainTab
-        | ErdTab
-        | StatisticsTab
-        | WorkflowTab
-        | VisualizeTab
-        | ConnectionTab
-        | DashboardTab
-        | StarterTab
-        | SettingsTab
-        | import("$lib/types").CreateTableTab
-        | import("$lib/types").DataTab;
-    }> = [];
+    const allTabsUnordered: OrderedTabEntry[] = [];
 
     for (const t of queryTabs) {
       allTabsUnordered.push({ id: t.id, type: "query", tab: t });
@@ -298,6 +232,12 @@ export class TabOrderingManager {
 
     for (const t of dataTabs) {
       allTabsUnordered.push({ id: t.id, type: "data", tab: t });
+    }
+
+    const extensionsDuckdbTabs = this.state.extensionsDuckdbTabs || [];
+
+    for (const t of extensionsDuckdbTabs) {
+      allTabsUnordered.push({ id: t.id, type: "extensionsDuckdb", tab: t });
     }
 
     const order = this.state.tabOrderByProject[this.state.activeProjectId] ?? [];

@@ -309,6 +309,8 @@ export class PaneManager {
     if ((this.state.createTableTabsByProject[projectId] ?? []).some((t) => t.id === tabId))
       return "createTable";
     if ((this.state.dataTabsByProject[projectId] ?? []).some((t) => t.id === tabId)) return "data";
+    if ((this.state.extensionsDuckdbTabsByProject[projectId] ?? []).some((t) => t.id === tabId))
+      return "extensionsDuckdb";
 
     return null;
   }
@@ -523,6 +525,12 @@ export class PaneManager {
           [projectId]: id,
         };
       },
+      extensionsDuckdb: (id) => {
+        this.state.activeExtensionsDuckdbTabIdByProject = {
+          ...this.state.activeExtensionsDuckdbTabIdByProject,
+          [projectId]: id,
+        };
+      },
     };
 
     setters[viewType](tabId);
@@ -561,6 +569,7 @@ export class PaneManager {
       settings: this.state.activeSettingsTabIdByProject[projectId] ?? null,
       createTable: this.state.activeCreateTableTabIdByProject[projectId] ?? null,
       data: this.state.activeDataTabIdByProject[projectId] ?? null,
+      extensionsDuckdb: this.state.activeExtensionsDuckdbTabIdByProject[projectId] ?? null,
     };
 
     return idMap[view] ?? null;
