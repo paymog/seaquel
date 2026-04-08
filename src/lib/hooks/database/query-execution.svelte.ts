@@ -3,16 +3,12 @@ import { errorToast } from "$lib/utils/toast";
 import type { DatabaseConnection, QueryResult, StatementResult, ParameterValue } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { QueryHistoryManager } from "./query-history.svelte.js";
-import {
-  detectQueryType,
-  isWriteQuery,
-  isSelectQuery,
-  extractTableFromSelect,
-} from "$lib/db/query-utils";
+import { detectQueryType, isSelectQuery, extractTableFromSelect } from "$lib/db/query-utils";
 import { splitSqlStatements } from "$lib/db/sql-parser";
 import { substituteParameters } from "$lib/db/query-params";
 import { m } from "$lib/paraglide/messages.js";
 import type { ProviderRegistry } from "$lib/providers";
+import type { DatabaseProvider } from "$lib/providers/types";
 import { extractErrorMessage } from "$lib/errors";
 import { log } from "$lib/utils/logger";
 import { resolveQuery } from "./resolve-query.js";
@@ -47,13 +43,15 @@ export class QueryExecutionManager {
     if (!this.state.activeProjectId) return;
 
     const projectId = this.state.activeProjectId;
-    const tabs = this.state.queryTabsByProject[projectId] ?? [];
-    const updatedTabs = tabs.map((tab) => (tab.id === tabId ? { ...tab, ...updates } : tab));
+    const tabs = this.state.queryTabsByProject[projectId];
+    if (!tabs) return;
 
-    this.state.queryTabsByProject = {
-      ...this.state.queryTabsByProject,
-      [projectId]: updatedTabs,
-    };
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+
+    Object.assign(tab, updates);
+    // Trigger Svelte 5 reactivity by reassigning the top-level object
+    this.state.queryTabsByProject = { ...this.state.queryTabsByProject };
   }
 
   /**
@@ -197,6 +195,7 @@ export class QueryExecutionManager {
     pageSize: number,
     connection: DatabaseConnection,
     bindValues?: unknown[],
+    cachedProvider?: DatabaseProvider,
   ): Promise<QueryResult> {
     const start = performance.now();
     const baseQuery = sql.replace(/;$/, "").trim();
@@ -205,14 +204,15 @@ export class QueryExecutionManager {
     if (!providerConnectionId) {
       throw new Error("No connection established");
     }
-    const provider = await this.providers.getForType(connection.type);
+    const provider = cachedProvider ?? (await this.providers.getForType(connection.type));
     const isMssql = connection.type === "mssql";
 
     // Handle utility/DDL statements (SET, PRAGMA, CREATE, ALTER, DROP, etc.)
     // These are not SELECT and not write queries — execute them without pagination.
     // Use select() (not execute()) so statements like SET properly modify connection state
     // in backends like DuckDB where conn.execute() may not apply settings.
-    if (!isSelectQuery(baseQuery) && !isWriteQuery(baseQuery)) {
+    const isWrite = queryType === "insert" || queryType === "update" || queryType === "delete";
+    if (queryType !== "select" && !isWrite) {
       await provider.select(providerConnectionId, baseQuery, bindValues);
 
       const totalMs = performance.now() - start;
@@ -231,7 +231,7 @@ export class QueryExecutionManager {
     }
 
     // Handle write queries (INSERT/UPDATE/DELETE)
-    if (isWriteQuery(baseQuery)) {
+    if (isWrite) {
       let rowsAffected = 0;
       let lastInsertId: number | undefined;
 
@@ -389,10 +389,23 @@ export class QueryExecutionManager {
       return;
     }
 
-    const resolved = resolveQuery(this.state, tabId, cursorOffset, parameterValues);
-    if (!resolved) {
+    // Resolve the statement at cursor once (without params) to get the original SQL
+    const baseResolved = resolveQuery(this.state, tabId, cursorOffset);
+    if (!baseResolved) {
       toast.info(m.query_no_executable_statements());
       return;
+    }
+
+    const originalSql = baseResolved.query;
+    const dbType = connection.type ?? "postgres";
+
+    // Substitute parameters if provided
+    let query = originalSql;
+    let bindValues: unknown[] | undefined;
+    if (parameterValues) {
+      const substituted = substituteParameters(originalSql, parameterValues, dbType);
+      query = substituted.sql;
+      bindValues = substituted.bindValues;
     }
 
     // Mark as executing
@@ -400,21 +413,18 @@ export class QueryExecutionManager {
 
     // Get effective page size
     const effectivePageSize =
-      pageSize ?? resolved.tab.results?.[0]?.pageSize ?? this.DEFAULT_PAGE_SIZE;
-
-    // Keep original SQL (before parameter substitution) for display
-    const originalSql = resolveQuery(this.state, tabId, cursorOffset)?.query ?? resolved.query;
+      pageSize ?? baseResolved.tab.results?.[0]?.pageSize ?? this.DEFAULT_PAGE_SIZE;
 
     // Queue non-SELECT statements when pending changes is enabled
-    if (this.pendingChanges.isEnabled() && !isSelectQuery(resolved.query)) {
+    if (this.pendingChanges.isEnabled() && !isSelectQuery(query)) {
       const origin: PendingChangeOrigin = "query-editor";
       this.pendingChanges.add(
         connection.id,
-        resolved.query,
-        detectQueryType(resolved.query),
+        query,
+        detectQueryType(query),
         origin,
         tabId,
-        resolved.bindValues,
+        bindValues,
       );
       this.updateQueryTabState(tabId, { isExecuting: false });
       toast.info("Statement added to pending changes");
@@ -424,11 +434,11 @@ export class QueryExecutionManager {
 
     try {
       const result = await this.executeStatement(
-        resolved.query,
+        query,
         page,
         effectivePageSize,
         connection,
-        resolved.bindValues,
+        bindValues,
       );
       void log.info(
         `Query executed on ${connection.id}: ${result.rowCount} rows in ${result.executionTime}ms`,
@@ -524,6 +534,7 @@ export class QueryExecutionManager {
 
     const allResults: StatementResult[] = [];
     let queuedCount = 0;
+    const provider = await this.providers.getForType(connection.type);
 
     // Execute each statement, updating the UI incrementally
     for (let i = 0; i < statements.length; i++) {
@@ -559,6 +570,7 @@ export class QueryExecutionManager {
           effectivePageSize,
           connection,
           bindValues,
+          provider,
         );
         allResults.push({
           ...result,
@@ -573,7 +585,7 @@ export class QueryExecutionManager {
 
       // Update UI incrementally after each statement completes
       this.updateQueryTabState(tabId, {
-        results: this.filterAndIndexResults(allResults),
+        results: [...allResults],
         activeResultIndex: 0,
       });
     }
@@ -598,13 +610,14 @@ export class QueryExecutionManager {
       );
     }
 
-    // Mark execution as complete
+    // Filter utility results and mark execution as complete
+    const indexedResults = this.filterAndIndexResults(allResults);
     this.updateQueryTabState(tabId, {
+      results: indexedResults,
       isExecuting: false,
     });
 
     // Add to history (only on first page to avoid duplicates, use first meaningful result)
-    const indexedResults = this.filterAndIndexResults(allResults);
     if (page === 1 && indexedResults.length > 0) {
       const historyResult = indexedResults.find((r) => !r.isUtility) ?? indexedResults[0];
       this.queryHistory.addToHistory(tab.query, historyResult);

@@ -54,14 +54,6 @@ export function detectQueryType(query: string): QueryType {
 }
 
 /**
- * Returns true if the query is a write operation (INSERT, UPDATE, DELETE).
- */
-export function isWriteQuery(query: string): boolean {
-  const type = detectQueryType(query);
-  return type === "insert" || type === "update" || type === "delete";
-}
-
-/**
  * Returns true if the query is a SELECT statement.
  */
 export function isSelectQuery(query: string): boolean {
