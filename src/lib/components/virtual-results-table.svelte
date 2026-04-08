@@ -2,9 +2,10 @@
 	import EditableCell from "$lib/components/editable-cell.svelte";
 	import RowActions from "$lib/components/row-actions.svelte";
 	import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-	import { CopyIcon, CircleOffIcon, RotateCcwIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon, XIcon } from "@lucide/svelte";
+	import { CopyIcon, CircleOffIcon, RotateCcwIcon, ArrowUpIcon, ArrowDownIcon, PlusIcon, XIcon, KeyRoundIcon, ArrowUpRightIcon } from "@lucide/svelte";
 	import { m } from "$lib/paraglide/messages.js";
 	import { detectColumnTypes, getFormattedCellText } from "$lib/utils/cell-type";
+	import type { ForeignKeyRef, SchemaTable } from "$lib/types";
 
 	interface Props {
 		columns: string[];
@@ -39,6 +40,10 @@
 		pendingInsertRows?: { id: string; values: Record<string, unknown> }[];
 		/** Called to remove a pending insert row by its change ID */
 		onRemovePendingInsert?: (changeId: string) => void;
+		/** Map of column names to their FK reference and resolved target table */
+		foreignKeyColumns?: Map<string, { ref: ForeignKeyRef; table: SchemaTable }>;
+		/** Called when a FK cell's navigation icon is clicked */
+		onForeignKeyClick?: (ref: ForeignKeyRef, table: SchemaTable, value: string) => void;
 	}
 
 	let {
@@ -64,6 +69,8 @@
 		pendingRowDeletes,
 		pendingInsertRows = [],
 		onRemovePendingInsert,
+		foreignKeyColumns,
+		onForeignKeyClick,
 	}: Props = $props();
 
 	// Column type detection for formatted cells
@@ -205,6 +212,9 @@
 							onclick={() => onColumnHeaderClick?.(column)}
 						>
 							{column}
+							{#if foreignKeyColumns?.has(column)}
+								<KeyRoundIcon class="size-3 shrink-0 text-muted-foreground" />
+							{/if}
 							{#if sortColumn === column}
 								{#if sortDirection === "ASC"}
 									<ArrowUpIcon class="size-3 shrink-0 text-primary" />
@@ -253,10 +263,13 @@
 							{@const cellKey = `${rowIndex}:${column}`}
 							{@const isCellPendingEdit = pendingCellEdits?.has(cellKey) ?? false}
 							{@const pendingNewValue = isCellPendingEdit ? pendingCellEdits?.get(cellKey) : undefined}
+							{@const fkInfo = foreignKeyColumns?.get(column)}
+							{@const cellValue = row[column]}
+							{@const showFkIcon = fkInfo && cellValue != null && onForeignKeyClick}
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
 								class={[
-									"flex",
+									"flex group/fk",
 									isCellPendingEdit ? "flex-col justify-center" : "items-center",
 									textareaCell === cellKey ? "overflow-visible relative" : "overflow-hidden",
 									compact ? "px-2 py-0.5" : "px-4 py-0.5",
@@ -282,6 +295,15 @@
 										onSave={(newValue) => onCellSave(rowIndex, column, newValue)}
 										onTextareaToggle={(active) => { textareaCell = active ? cellKey : null; }}
 									/>
+								{/if}
+								{#if showFkIcon}
+									<button
+										class="hidden group-hover/fk:flex items-center justify-center shrink-0 size-5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+										onclick={(e) => { e.stopPropagation(); onForeignKeyClick(fkInfo.ref, fkInfo.table, String(cellValue)); }}
+										title="{fkInfo.ref.referencedSchema}.{fkInfo.ref.referencedTable}.{fkInfo.ref.referencedColumn}"
+									>
+										<ArrowUpRightIcon class="size-3" />
+									</button>
 								{/if}
 							</div>
 						{/each}

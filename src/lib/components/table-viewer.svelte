@@ -4,7 +4,7 @@
 	import { Badge } from "$lib/components/ui/badge";
 	import { Button } from "$lib/components/ui/button";
 	import { Separator } from "$lib/components/ui/separator";
-	import { KeyIcon, DatabaseIcon, ListIcon, PencilIcon } from "@lucide/svelte";
+	import { KeyIcon, DatabaseIcon, ListIcon, PencilIcon, ArrowUpRightIcon } from "@lucide/svelte";
 	import { m } from "$lib/paraglide/messages.js";
 
 	let { tabId: propTabId = undefined }: { tabId?: string } = $props();
@@ -26,6 +26,18 @@
 		if (!activeSchemaTab?.table) return;
 		db.createTableTabs.addFromTable(activeSchemaTab.table);
 		db.ui.setActiveView("createTable");
+	};
+
+	const handleForeignKeyNavigate = (ref: import("$lib/types").ForeignKeyRef) => {
+		const connectionId = db.state.activeConnectionId;
+		if (!connectionId) return;
+		const schemas = db.state.schemas[connectionId] ?? [];
+		const refTable = schemas.find(
+			(t) => t.name === ref.referencedTable && t.schema === ref.referencedSchema,
+		);
+		if (refTable) {
+			db.schemaTabs.add(refTable);
+		}
 	};
 </script>
 
@@ -74,7 +86,7 @@
 								</thead>
 								<tbody>
 									{#each activeSchemaTab.table.columns as column, i}
-										<tr class={["border-t hover:bg-muted/50", i % 2 === 0 && "bg-muted/20"]}>
+										<tr class={["border-t hover:bg-muted/50 group/fkrow", i % 2 === 0 && "bg-muted/20"]}>
 											<td class="px-4 py-2 font-mono">{column.name}</td>
 											<td class="px-4 py-2">
 												<Badge variant="outline" class="font-mono text-xs">{column.type}</Badge>
@@ -90,12 +102,21 @@
 												{column.defaultValue || "-"}
 											</td>
 											<td class="px-4 py-2">
-												<div class="flex gap-1">
+												<div class="flex gap-1 items-center">
 													{#if column.isPrimaryKey}
 														<Badge variant="default" class="text-xs">PK</Badge>
 													{/if}
 													{#if column.isForeignKey}
 														<Badge variant="secondary" class="text-xs">FK</Badge>
+														{#if column.foreignKeyRef}
+															<button
+																class="flex items-center justify-center shrink-0 size-5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover/fkrow:opacity-100"
+																onclick={() => handleForeignKeyNavigate(column.foreignKeyRef!)}
+																title="{column.foreignKeyRef.referencedSchema}.{column.foreignKeyRef.referencedTable}.{column.foreignKeyRef.referencedColumn}"
+															>
+																<ArrowUpRightIcon class="size-3" />
+															</button>
+														{/if}
 													{/if}
 												</div>
 											</td>

@@ -32,14 +32,18 @@ export class DataTabManager extends BaseTabManager<DataTab> {
 
   /**
    * Open a data viewer for a table. Auto-executes the initial query.
+   * If initialFilter is provided, the tab opens pre-filtered to that value.
    */
-  add(table: SchemaTable): string | null {
-    const tabId = this.addWithoutRefresh(table);
+  add(table: SchemaTable, initialFilter?: { column: string; value: string }): string | null {
+    const tabId = this.addWithoutRefresh(table, initialFilter);
     if (tabId) void this.refresh(tabId);
     return tabId;
   }
 
-  addWithoutRefresh(table: SchemaTable): string | null {
+  addWithoutRefresh(
+    table: SchemaTable,
+    initialFilter?: { column: string; value: string },
+  ): string | null {
     if (!this.state.activeProjectId || !this.state.activeConnectionId) return null;
 
     // Check if already open for this table
@@ -48,15 +52,38 @@ export class DataTabManager extends BaseTabManager<DataTab> {
     );
     if (existing) {
       this.setActive(existing.id);
+      if (initialFilter) {
+        this.setFilters(existing.id, [
+          {
+            id: crypto.randomUUID(),
+            column: initialFilter.column,
+            operator: "=",
+            value: initialFilter.value,
+            enabled: true,
+          },
+        ]);
+      }
       return existing.id;
     }
+
+    const filters: DataFilter[] = initialFilter
+      ? [
+          {
+            id: crypto.randomUUID(),
+            column: initialFilter.column,
+            operator: "=",
+            value: initialFilter.value,
+            enabled: true,
+          },
+        ]
+      : [];
 
     const tab: DataTab = {
       id: `data-${crypto.randomUUID()}`,
       connectionId: this.state.activeConnectionId,
       tableName: table.name,
       schemaName: table.schema,
-      filters: [],
+      filters,
       filterLogic: "AND",
       sortColumns: [],
       page: 1,
@@ -291,7 +318,7 @@ export class DataTabManager extends BaseTabManager<DataTab> {
         if (f.operator === "IS NOT NULL") return `${col} IS NOT NULL`;
         params.push(f.value);
         const paramRef = dbType === "mssql" ? `@p${params.length}` : `$${params.length}`;
-        return `${col} ${f.operator} ${paramRef}`;
+        return `CAST(${col} AS TEXT) ${f.operator} ${paramRef}`;
       });
       where = ` WHERE ${conditions.join(` ${tab.filterLogic} `)}`;
     }
@@ -333,7 +360,7 @@ export class DataTabManager extends BaseTabManager<DataTab> {
       if (f.operator === "IS NOT NULL") return `${col} IS NOT NULL`;
       params.push(f.value);
       const paramRef = dbType === "mssql" ? `@p${params.length}` : `$${params.length}`;
-      return `${col} ${f.operator} ${paramRef}`;
+      return `CAST(${col} AS TEXT) ${f.operator} ${paramRef}`;
     });
 
     return { sql: `${base} WHERE ${conditions.join(` ${tab.filterLogic} `)}`, params };

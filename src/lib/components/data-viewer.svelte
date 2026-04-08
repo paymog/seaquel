@@ -15,7 +15,7 @@
 		CheckIcon,
 		XIcon,
 	} from "@lucide/svelte";
-	import type { DataFilter, SchemaColumn } from "$lib/types";
+	import type { DataFilter, ForeignKeyRef, SchemaColumn, SchemaTable } from "$lib/types";
 	import VirtualResultsTable from "$lib/components/virtual-results-table.svelte";
 	import DataFilterBar from "$lib/components/data-filter-bar.svelte";
 	import { inputTypeForColumnType, inputStepForColumnType } from "$lib/utils/cell-type";
@@ -38,7 +38,32 @@
 
 	const hasPrimaryKey = $derived(tableColumns.some((c) => c.isPrimaryKey));
 
-	let showFilters = $state(false);
+	// Build FK column map for navigation
+	const foreignKeyColumns = $derived.by((): Map<string, { ref: ForeignKeyRef; table: SchemaTable }> => {
+		const map = new Map<string, { ref: ForeignKeyRef; table: SchemaTable }>();
+		if (!tab) return map;
+		const schemas = db.state.schemas[tab.connectionId] ?? [];
+		for (const col of tableColumns) {
+			if (col.isForeignKey && col.foreignKeyRef) {
+				const ref = col.foreignKeyRef;
+				const refTable = schemas.find(
+					(t) => t.name === ref.referencedTable && t.schema === ref.referencedSchema,
+				);
+				if (refTable) {
+					map.set(col.name, { ref, table: refTable });
+				}
+			}
+		}
+		return map;
+	});
+
+	function handleForeignKeyClick(ref: ForeignKeyRef, table: SchemaTable, value: string) {
+		db.dataTabs.add(table, { column: ref.referencedColumn, value });
+		db.ui.setActiveView("data");
+	}
+
+	const initialTab = db.state.dataTabs.find((t) => t.id === tabId);
+	let showFilters = $state(initialTab?.filters.some((f) => f.enabled) ?? false);
 	let deletingRowIndex = $state<number | null>(null);
 	let savingRowIndex = $state<number | null>(null);
 
@@ -409,6 +434,8 @@
 							{pendingRowDeletes}
 							{pendingInsertRows}
 							onRemovePendingInsert={handleRemovePendingInsert}
+							{foreignKeyColumns}
+							onForeignKeyClick={handleForeignKeyClick}
 						/>
 					</div>
 				{/if}
