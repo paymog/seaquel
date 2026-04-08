@@ -129,11 +129,15 @@
 	const coreAll = $derived(
 		tab.extensions ? tab.extensions.filter((e) => !communityExtensionNames.has(e.extension_name)) : []
 	);
+	const coreLoadedCount = $derived(coreAll.filter((e) => e.loaded).length);
 	const coreInstalledCount = $derived(coreAll.filter((e) => e.installed).length);
 	const coreTotalCount = $derived(coreAll.length);
 	const communityTotalCount = $derived(tab.communityExtensions?.length ?? 0);
 	const communityInstalledCount = $derived(
 		tab.communityExtensions ? tab.communityExtensions.filter((e) => installedExtensionMap.has(e.name)).length : 0
+	);
+	const communityLoadedCount = $derived(
+		tab.communityExtensions ? tab.communityExtensions.filter((e) => installedExtensionMap.get(e.name)?.loaded).length : 0
 	);
 
 	// Collapsible group state
@@ -197,7 +201,7 @@
 </script>
 
 <div class="flex h-full flex-col overflow-hidden">
-	<div class="flex items-center justify-between border-b px-6 py-2">
+	<div class="flex items-center justify-between border-b pl-6 pr-2 py-2">
 		<div class="flex items-center gap-2">
 			<h2 class="font-medium">{tab.name}</h2>
 			{#if tab.lastRefreshed}
@@ -215,7 +219,7 @@
 					class="h-7 w-48 pl-7 text-xs"
 				/>
 			</div>
-			<Button variant="outline" size="sm" onclick={handleRefresh} disabled={tab.isLoading}>
+			<Button variant="outline" size="sm" class="h-7" onclick={handleRefresh} disabled={tab.isLoading}>
 				{#if tab.isLoading}
 					<Loader2Icon class="mr-2 size-4 animate-spin" />
 					{m.ext_loading()}
@@ -229,10 +233,10 @@
 
 	<div class="flex items-center gap-1 border-b px-6 py-1.5">
 		<Button variant={view === 'core' ? 'secondary' : 'ghost'} size="sm" class="h-6 text-xs" onclick={() => view = 'core'}>
-			{m.ext_core()} ({coreInstalledCount}/{coreTotalCount})
+			{m.ext_core()} ({coreLoadedCount}/{coreInstalledCount}/{coreTotalCount})
 		</Button>
 		<Button variant={view === 'community' ? 'secondary' : 'ghost'} size="sm" class="h-6 text-xs" onclick={() => view = 'community'}>
-			{m.ext_community()} ({communityInstalledCount}/{communityTotalCount})
+			{m.ext_community()} ({communityLoadedCount}/{communityInstalledCount}/{communityTotalCount})
 		</Button>
 		<span class="mx-1 text-muted-foreground">|</span>
 		{#each filterOptions as opt (opt.value)}
