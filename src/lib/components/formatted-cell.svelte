@@ -102,5 +102,22 @@
 		</Popover.Portal>
 	</Popover.Root>
 {:else}
-	{value === '' ? '\u00A0' : value}
+	{@const str = String(value)}
+	{@const trailingSpaces = str.length - str.trimEnd().length}
+	{#if trailingSpaces > 0}
+		{str.trimEnd()}{#each { length: trailingSpaces } as _, i (i)}<span title="Trailing space" class="trailing-space">&nbsp;</span>{/each}
+	{:else}
+		{value === '' ? '\u00A0' : value}
+	{/if}
 {/if}
+
+<style>
+	.trailing-space {
+		display: inline-block;
+		width: 0.5em;
+		margin-left: 1px;
+		background-color: color-mix(in srgb, currentColor 10%, transparent);
+		border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+		border-radius: 3px;
+	}
+</style>
