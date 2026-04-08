@@ -266,53 +266,60 @@ export class QueryExecutionManager {
     let totalRows = 0;
     let paginatedQuery = baseQuery;
 
-    if (!hasPagination) {
-      // Get total count first by wrapping in a subquery
-      const countQuery = `SELECT COUNT(*) as total FROM (${baseQuery}) AS count_query`;
-      try {
-        const countResult = await provider.select<{ total: string | number }>(
-          providerConnectionId,
-          countQuery,
-          bindValues,
-        );
-        totalRows = parseInt(String(countResult[0]?.total ?? "0"), 10);
-      } catch {
-        // If count fails, just run the query without pagination
-        totalRows = -1;
+    let dbResult: Record<string, unknown>[];
+
+    if (hasPagination || pageSize === 0) {
+      // Query has its own pagination or caller wants all rows — run as-is
+      dbResult = await provider.select<Record<string, unknown>>(
+        providerConnectionId,
+        baseQuery,
+        bindValues,
+      );
+      totalRows = dbResult?.length ?? 0;
+    } else {
+      // Optimistic pagination: fetch pageSize + 1 rows to detect whether more pages exist.
+      // Only run an expensive COUNT query when the result fills the page.
+      const offset = (page - 1) * pageSize;
+      const probeLimit = pageSize + 1;
+
+      if (isMssql) {
+        if (!/\bORDER\s+BY\b/i.test(baseQuery)) {
+          paginatedQuery = `${baseQuery} ORDER BY (SELECT NULL) OFFSET ${offset} ROWS FETCH NEXT ${probeLimit} ROWS ONLY`;
+        } else {
+          paginatedQuery = `${baseQuery} OFFSET ${offset} ROWS FETCH NEXT ${probeLimit} ROWS ONLY`;
+        }
+      } else {
+        paginatedQuery = `${baseQuery} LIMIT ${probeLimit} OFFSET ${offset}`;
       }
 
-      // Add pagination if we successfully got a count (it's a SELECT)
-      // pageSize === 0 means "all rows" — skip LIMIT/OFFSET
-      if (totalRows >= 0 && pageSize > 0) {
-        const offset = (page - 1) * pageSize;
-        if (isMssql) {
-          // SQL Server uses OFFSET FETCH syntax (requires ORDER BY)
-          if (!/\bORDER\s+BY\b/i.test(baseQuery)) {
-            paginatedQuery = `${baseQuery} ORDER BY (SELECT NULL) OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY`;
-          } else {
-            paginatedQuery = `${baseQuery} OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY`;
-          }
-        } else {
-          paginatedQuery = `${baseQuery} LIMIT ${pageSize} OFFSET ${offset}`;
+      dbResult = await provider.select<Record<string, unknown>>(
+        providerConnectionId,
+        paginatedQuery,
+        bindValues,
+      );
+
+      if ((dbResult?.length ?? 0) <= pageSize) {
+        // All results fit on this page — no COUNT needed
+        totalRows = offset + (dbResult?.length ?? 0);
+      } else {
+        // More rows exist — trim the extra probe row and run COUNT
+        dbResult = dbResult.slice(0, pageSize);
+        const countQuery = `SELECT COUNT(*) as total FROM (${baseQuery}) AS count_query`;
+        try {
+          const countResult = await provider.select<{ total: string | number }>(
+            providerConnectionId,
+            countQuery,
+            bindValues,
+          );
+          totalRows = parseInt(String(countResult[0]?.total ?? "0"), 10);
+        } catch {
+          totalRows = offset + pageSize + 1;
         }
       }
-    } else {
-      // Query has its own pagination, don't add more
-      totalRows = -1;
     }
 
-    const dbResult = await provider.select<Record<string, unknown>>(
-      providerConnectionId,
-      paginatedQuery,
-      bindValues,
-    );
     const resultColumns = (dbResult?.length ?? 0) > 0 ? Object.keys(dbResult[0]) : [];
     const totalMs = performance.now() - start;
-
-    // If count failed or query had LIMIT, use result length as total
-    if (totalRows < 0) {
-      totalRows = dbResult?.length ?? 0;
-    }
 
     const totalPages =
       hasPagination || pageSize === 0 ? 1 : Math.max(1, Math.ceil(totalRows / pageSize));
