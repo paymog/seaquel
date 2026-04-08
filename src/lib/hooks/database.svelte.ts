@@ -365,16 +365,17 @@ class UseDatabase {
       await this.projects.initialize();
       void log.info("Projects initialized");
 
-      // Initialize AI settings from persisted storage
+      // Initialize settings and connections in parallel (all independent after projects)
       const sqliteDb = await getDatabase();
-      await aiSettingsStore.initialize(sqliteDb);
-      await pendingChangesSettingsStore.load();
-      await editorSettingsStore.load();
-      void log.info("AI settings initialized");
-
-      // Initialize connections (also loads saved queries, history, and dashboards)
-      await this.connections.initializePersistedConnections();
-      void log.info(`Persisted connections loaded (count=${this.state.connections.length})`);
+      await Promise.all([
+        aiSettingsStore.initialize(sqliteDb),
+        pendingChangesSettingsStore.load(),
+        editorSettingsStore.load(),
+        this.connections.initializePersistedConnections(),
+      ]);
+      void log.info(
+        `Settings and connections initialized (count=${this.state.connections.length})`,
+      );
 
       // Initialize shared repos
       await this.initializeSharedRepos();
@@ -401,11 +402,13 @@ class UseDatabase {
       this.state.sharedRepos = repos.map(deserializeRepo);
       this.state.activeRepoId = activeRepoId;
 
-      // Load queries from each repo
-      for (const repo of this.state.sharedRepos) {
-        await this.sharedRepos.loadQueriesFromRepo(repo.id);
-        await this.sharedRepos.refreshRepoStatus(repo.id);
-      }
+      // Load queries and refresh status for each repo in parallel
+      await Promise.all(
+        this.state.sharedRepos.map(async (repo) => {
+          await this.sharedRepos.loadQueriesFromRepo(repo.id);
+          await this.sharedRepos.refreshRepoStatus(repo.id);
+        }),
+      );
 
       // Reconcile git files with local state for the active project
       if (this.state.activeProjectId && this.state.activeRepoId) {

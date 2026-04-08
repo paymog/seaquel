@@ -67,66 +67,73 @@ export class ConnectionManager {
       const persistedConnections = await this.persistence.loadPersistedConnections();
       const keyring = getKeyringService();
 
-      for (const persisted of persistedConnections) {
-        // Try to load password from keyring if it was saved
-        let password = "";
-        if (persisted.savePassword && keyring.isAvailable()) {
-          try {
-            const savedPassword = await keyring.getDbPassword(persisted.id);
-            if (savedPassword) {
-              password = savedPassword;
+      // Phase 1: Build connection objects + fetch keyring passwords in parallel
+      const connectionEntries = await Promise.all(
+        persistedConnections.map(async (persisted) => {
+          let password = "";
+          if (persisted.savePassword && keyring.isAvailable()) {
+            try {
+              const savedPassword = await keyring.getDbPassword(persisted.id);
+              if (savedPassword) {
+                password = savedPassword;
+              }
+            } catch (error) {
+              void log.warn("Failed to load password from keyring:", error);
             }
-          } catch (error) {
-            void log.warn("Failed to load password from keyring:", error);
           }
-        }
 
-        // Extract username from connection string if not stored separately (backwards compat)
-        let username = persisted.username ?? "";
-        if (!username && persisted.connectionString) {
-          try {
-            const connStr = persisted.connectionString.replace("postgresql://", "postgres://");
-            // SQLite and DuckDB use file-based connection strings, not URLs
-            if (!connStr.startsWith("sqlite") && !connStr.startsWith("duckdb")) {
-              const url = new URL(connStr);
-              username = url.username ? decodeURIComponent(url.username) : "";
+          // Extract username from connection string if not stored separately (backwards compat)
+          let username = persisted.username ?? "";
+          if (!username && persisted.connectionString) {
+            try {
+              const connStr = persisted.connectionString.replace("postgresql://", "postgres://");
+              // SQLite and DuckDB use file-based connection strings, not URLs
+              if (!connStr.startsWith("sqlite") && !connStr.startsWith("duckdb")) {
+                const url = new URL(connStr);
+                username = url.username ? decodeURIComponent(url.username) : "";
+              }
+            } catch {
+              // Ignore parsing errors
             }
-          } catch {
-            // Ignore parsing errors
           }
-        }
 
-        // Load the connection without connecting
-        const connection: DatabaseConnection = {
-          id: persisted.id,
-          name: persisted.name,
-          type: persisted.type,
-          host: persisted.host,
-          port: persisted.port,
-          databaseName: persisted.databaseName,
-          username,
-          password, // Load from keyring if available
-          sslMode: persisted.sslMode,
-          connectionString: persisted.connectionString,
-          lastConnected: persisted.lastConnected ? new Date(persisted.lastConnected) : undefined,
-          sshTunnel: persisted.sshTunnel,
-          savePassword: persisted.savePassword,
-          saveSshPassword: persisted.saveSshPassword,
-          saveSshKeyPassphrase: persisted.saveSshKeyPassphrase,
-          projectId: persisted.projectId || DEFAULT_PROJECT_ID,
-          labelIds: persisted.labelIds || [],
-          isLocalOnly: persisted.isLocalOnly,
-          sharedConnectionId: persisted.sharedConnectionId,
-          activeAIProviderId: persisted.activeAIProviderId,
-          activeAIModel: persisted.activeAIModel,
-          // database is undefined - user needs to provide password to connect
-        };
+          const connection: DatabaseConnection = {
+            id: persisted.id,
+            name: persisted.name,
+            type: persisted.type,
+            host: persisted.host,
+            port: persisted.port,
+            databaseName: persisted.databaseName,
+            username,
+            password,
+            sslMode: persisted.sslMode,
+            connectionString: persisted.connectionString,
+            lastConnected: persisted.lastConnected ? new Date(persisted.lastConnected) : undefined,
+            sshTunnel: persisted.sshTunnel,
+            savePassword: persisted.savePassword,
+            saveSshPassword: persisted.saveSshPassword,
+            saveSshKeyPassphrase: persisted.saveSshKeyPassphrase,
+            projectId: persisted.projectId || DEFAULT_PROJECT_ID,
+            labelIds: persisted.labelIds || [],
+            isLocalOnly: persisted.isLocalOnly,
+            sharedConnectionId: persisted.sharedConnectionId,
+            activeAIProviderId: persisted.activeAIProviderId,
+            activeAIModel: persisted.activeAIModel,
+          };
+          return connection;
+        }),
+      );
+
+      // Phase 2: Register all connections in state (must complete before loading data)
+      for (const connection of connectionEntries) {
         this.state.connections.push(connection);
         this.stateRestoration.initializeConnectionMaps(connection.id);
-
-        // Pre-load saved queries and history (doesn't require active DB connection)
-        await this.stateRestoration.loadConnectionData(connection.id);
       }
+
+      // Phase 3: Load connection data (query history, AI chats) in parallel
+      await Promise.all(
+        connectionEntries.map((conn) => this.stateRestoration.loadConnectionData(conn.id)),
+      );
     } catch (error) {
       void log.error("Failed to load persisted connections:", error);
       // Silently fail - app will continue with no persisted connections

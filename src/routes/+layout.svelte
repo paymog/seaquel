@@ -50,18 +50,24 @@
 
     // Initialize stores on mount
     onMount(async () => {
-        await initLogger();
-        await themeStore.initialize();
-        await tutorialProgressStore.initialize();
+        const commonInit = [
+            initLogger(),
+            themeStore.initialize(),
+            tutorialProgressStore.initialize(),
+        ];
 
         if (isTauri()) {
-            // Desktop app: initialize onboarding, license, and dbeaver import
-            await onboardingStore.initialize();
-            await licenseStore.initialize();
-            await dbeaverImportStore.initialize();
-            await tablePlusImportStore.initialize();
-            await updateStore.initialize();
+            // Desktop app: initialize all independent stores in parallel
+            await Promise.all([
+                ...commonInit,
+                onboardingStore.initialize(),
+                licenseStore.initialize(),
+                dbeaverImportStore.initialize(),
+                tablePlusImportStore.initialize(),
+                updateStore.initialize(),
+            ]);
         } else {
+            await Promise.all(commonInit);
             // Browser demo: initialize DuckDB with sample data
             try {
                 const providerConnectionId = await initializeDemo();
