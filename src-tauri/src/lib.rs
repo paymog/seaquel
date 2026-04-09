@@ -219,13 +219,20 @@ fn get_data_dir(app: tauri::AppHandle) -> Result<String, CommandError> {
         }
         Ok(custom_dir)
     } else {
-        app.path()
+        let path = app.path()
             .app_data_dir()
-            .map(|p| p.to_string_lossy().to_string())
             .map_err(|e| CommandError {
                 message: format!("Failed to get app data dir: {}", e),
                 code: "DIR_ERROR".to_string(),
-            })
+            })?;
+        if !path.exists() {
+            std::fs::create_dir_all(&path)
+                .map_err(|e| CommandError {
+                    message: format!("Failed to create data dir: {}", e),
+                    code: "DIR_ERROR".to_string(),
+                })?;
+        }
+        Ok(path.to_string_lossy().to_string())
     }
 }
 
