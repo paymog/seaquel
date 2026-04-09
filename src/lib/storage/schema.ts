@@ -425,19 +425,27 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
     },
   ];
 
+  // Fetch column info once per table for all migrations below
+  const tableNames = new Set(columnUpgrades.map((u) => u.table));
+  tableNames.add("saved_queries");
+  tableNames.add("dashboards");
+  tableNames.add("project_state");
+  const columnsByTable = new Map<string, Set<string>>();
+  for (const table of tableNames) {
+    const cols = await db.query<{ name: string }>(`PRAGMA table_info(${table})`);
+    columnsByTable.set(table, new Set(cols.map((c) => c.name)));
+  }
+
+  // Column additions (ALTER TABLE doesn't support IF NOT EXISTS)
   for (const upgrade of columnUpgrades) {
-    const cols = await db.query<{ name: string }>(`PRAGMA table_info(${upgrade.table})`);
-    if (!cols.some((c) => c.name === upgrade.column)) {
+    if (!columnsByTable.get(upgrade.table)!.has(upgrade.column)) {
       await db.execute(upgrade.sql);
     }
   }
 
   // Migrate saved_queries from connection_id to project_id
-  const sqCols = await db.query<{ name: string }>("PRAGMA table_info(saved_queries)");
-  if (
-    sqCols.some((c) => c.name === "connection_id") &&
-    !sqCols.some((c) => c.name === "project_id")
-  ) {
+  const sqCols = columnsByTable.get("saved_queries")!;
+  if (sqCols.has("connection_id") && !sqCols.has("project_id")) {
     await db.execute("ALTER TABLE saved_queries ADD COLUMN project_id TEXT");
     await db.execute(
       `UPDATE saved_queries SET project_id = (
@@ -448,17 +456,14 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
     await db.execute("DELETE FROM saved_queries WHERE project_id IS NULL");
   }
   // Drop legacy connection_id column and its index (now project-level)
-  if (sqCols.some((c) => c.name === "connection_id")) {
+  if (sqCols.has("connection_id")) {
     await db.execute("DROP INDEX IF EXISTS idx_saved_queries_connection");
     await db.execute("ALTER TABLE saved_queries DROP COLUMN connection_id");
   }
 
   // Migrate dashboards from connection_id to project_id
-  const dbCols = await db.query<{ name: string }>("PRAGMA table_info(dashboards)");
-  if (
-    dbCols.some((c) => c.name === "connection_id") &&
-    !dbCols.some((c) => c.name === "project_id")
-  ) {
+  const dbCols = columnsByTable.get("dashboards")!;
+  if (dbCols.has("connection_id") && !dbCols.has("project_id")) {
     await db.execute("ALTER TABLE dashboards ADD COLUMN project_id TEXT");
     await db.execute(
       `UPDATE dashboards SET project_id = (
@@ -469,17 +474,14 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
     await db.execute("DELETE FROM dashboards WHERE project_id IS NULL");
   }
   // Drop legacy connection_id column and its index (now project-level)
-  if (dbCols.some((c) => c.name === "connection_id")) {
+  if (dbCols.has("connection_id")) {
     await db.execute("DROP INDEX IF EXISTS idx_dashboards_connection");
     await db.execute("ALTER TABLE dashboards DROP COLUMN connection_id");
   }
 
   // Rename active_canvas_tab_id → active_workflow_tab_id
-  const psCols = await db.query<{ name: string }>("PRAGMA table_info(project_state)");
-  if (
-    psCols.some((c) => c.name === "active_canvas_tab_id") &&
-    !psCols.some((c) => c.name === "active_workflow_tab_id")
-  ) {
+  const psCols = columnsByTable.get("project_state")!;
+  if (psCols.has("active_canvas_tab_id") && !psCols.has("active_workflow_tab_id")) {
     await db.execute(
       "ALTER TABLE project_state RENAME COLUMN active_canvas_tab_id TO active_workflow_tab_id",
     );
@@ -491,9 +493,7 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
   );
 
   // === DDL statements (creates new tables/indexes, safe to run repeatedly) ===
-  for (const sql of DDL_STATEMENTS) {
-    await db.execute(sql);
-  }
+  await db.transaction(DDL_STATEMENTS.map((sql) => ({ sql })));
 }
 
 export { SCHEMA_VERSION };
