@@ -153,6 +153,9 @@
 	function handleFilterChange(filters: DataFilter[], logic: "AND" | "OR") {
 		if (!tab) return;
 		db.dataTabs.setFilters(tabId, filters, logic);
+		if (filters.length === 0) {
+			showFilters = false;
+		}
 	}
 
 	function handleRefresh() {
@@ -303,11 +306,11 @@
 <div class="flex flex-col h-full overflow-hidden">
 	{#if tab}
 		<!-- Toolbar -->
-		<div class="flex items-center justify-between px-4 py-2 border-b shrink-0">
-			<div class="flex items-center gap-3">
-				<h3 class="text-sm font-semibold">
+		<div class="flex items-center justify-between ps-4 pe-2 py-2 border-b shrink-0">
+			<div class="flex items-center gap-3 text-xs">
+				<span class="font-semibold">
 					{tab.schemaName}.{tab.tableName}
-				</h3>
+				</span>
 				{#if tab.totalRows != null}
 					<span class="text-xs text-muted-foreground">
 						{tab.totalRows.toLocaleString()} rows
@@ -317,8 +320,23 @@
 			<div class="flex items-center gap-1">
 				<Button
 					size="sm"
+					class="h-7"
 					variant={showFilters ? "secondary" : "ghost"}
-					onclick={() => (showFilters = !showFilters)}
+					onclick={() => {
+						if (!showFilters && tab.filters.length === 0) {
+							// Auto-add the first filter when opening with no filters
+							const firstCol = tableColumns[0]?.name ?? "";
+							const newFilter: DataFilter = {
+								id: crypto.randomUUID(),
+								column: firstCol,
+								operator: "=",
+								value: "",
+								enabled: true,
+							};
+							db.dataTabs.setFilters(tabId, [newFilter], tab.filterLogic);
+						}
+						showFilters = !showFilters;
+					}}
 				>
 					<FilterIcon class="size-3 me-1" />
 					{m.data_viewer_filters()}
@@ -330,6 +348,7 @@
 				</Button>
 				<Button
 					size="sm"
+					class="h-7"
 					variant="ghost"
 					onclick={handleRefresh}
 					disabled={tab.isLoading}
