@@ -117,10 +117,15 @@
 
 	const handleAutoConnect = async () => {
 		isConnecting = true;
+		// Capture tab identity before any await — the component may unmount
+		// during reconnect() when the active pane tab switches,
+		// which can invalidate the reactive $props() reference.
+		const tabId = tab.id;
+		const tabConnectionId = tab.connectionId;
 		try {
 			const connectionData = getConnectionData(formData as ConnectionFormData);
-			if (tab.connectionId) {
-				await db.connections.reconnect(tab.connectionId, connectionData);
+			if (tabConnectionId) {
+				await db.connections.reconnect(tabConnectionId, connectionData);
 			}
 			// Mark onboarding as complete
 			onboardingStore.completeWizard();
@@ -131,7 +136,7 @@
 				toast.success(m.wizard_connect_success());
 			}
 			// Close the connection tab on success
-			db.connectionTabs.remove(tab.id);
+			db.connectionTabs.remove(tabId);
 		} catch (error) {
 			// Auto-connect failed, show the error and let the user edit
 			isConnecting = false;
@@ -179,15 +184,21 @@
 		if (!validate()) return;
 
 		isConnecting = true;
+		// Capture tab identity before any await — the component may unmount
+		// during add()/reconnect() when the active pane tab switches,
+		// which can invalidate the reactive $props() reference.
+		const tabId = tab.id;
+		const tabMode = tab.mode;
+		const tabConnectionId = tab.connectionId;
 		try {
 			const connectionData = getConnectionData(formData as ConnectionFormData);
 
-			if (tab.mode === "edit" && tab.connectionId) {
+			if (tabMode === "edit" && tabConnectionId) {
 				// Edit mode - just update settings without reconnecting
-				await db.connections.update(tab.connectionId, connectionData);
+				await db.connections.update(tabConnectionId, connectionData);
 				toast.success(m.wizard_edit_success());
-			} else if (tab.connectionId) {
-				await db.connections.reconnect(tab.connectionId, connectionData);
+			} else if (tabConnectionId) {
+				await db.connections.reconnect(tabConnectionId, connectionData);
 				// Mark onboarding as complete
 				onboardingStore.completeWizard();
 				// Show toast
@@ -209,7 +220,7 @@
 			}
 
 			// Close the connection tab on success
-			db.connectionTabs.remove(tab.id);
+			db.connectionTabs.remove(tabId);
 		} catch (error) {
 			connectionError = extractErrorMessage(error);
 		} finally {
