@@ -305,7 +305,10 @@ async fn check_for_update_command(
             info!("Update available: version={}", u.version);
             let info = UpdateInfo {
                 version: u.version.clone(),
-                date: u.date.map(|d| d.to_string()),
+                date: u.date.map(|d| {
+                    d.format(&time::format_description::well_known::Rfc3339)
+                        .unwrap_or_else(|_| d.to_string())
+                }),
                 size: None,
             };
 
@@ -572,6 +575,7 @@ async fn check_for_update(app: tauri::AppHandle) -> tauri_plugin_updater::Result
         let mut downloaded = 0;
         let mut total_size: Option<u64> = None;
 
+        info!("Downloading update v{}", update.version);
         let bytes = update
             .download(
                 |chunk_length, content_length| {
@@ -579,7 +583,6 @@ async fn check_for_update(app: tauri::AppHandle) -> tauri_plugin_updater::Result
                     if total_size.is_none() {
                         total_size = content_length;
                     }
-                    debug!("Update download: {downloaded}/{content_length:?}");
                 },
                 || {
                     info!("Update download complete");
@@ -589,7 +592,10 @@ async fn check_for_update(app: tauri::AppHandle) -> tauri_plugin_updater::Result
 
         let info = UpdateInfo {
             version: update.version.clone(),
-            date: update.date.map(|d| d.to_string()),
+            date: update.date.map(|d| {
+                d.format(&time::format_description::well_known::Rfc3339)
+                    .unwrap_or_else(|_| d.to_string())
+            }),
             size: total_size,
         };
 
