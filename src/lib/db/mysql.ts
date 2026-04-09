@@ -1,6 +1,13 @@
 import type { DatabaseAdapter, ExplainNode } from "./index";
 import { validateIdentifier } from "./index";
 import { generateAlterTableSql, generateCreateTableDdl, generateAddColumnDdl } from "./alter-table";
+import type { SqlWithBindings, CastLookup } from "./crud-helpers";
+import {
+  buildParamUpdate,
+  buildParamSetDefault,
+  buildParamInsert,
+  buildParamDelete,
+} from "./crud-helpers";
 import type {
   SchemaTable,
   SchemaColumn,
@@ -395,5 +402,68 @@ export class MysqlAdapter implements DatabaseAdapter {
 
   getSchemasQuery(): string {
     return `SELECT SCHEMA_NAME as schema_name FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY SCHEMA_NAME;`;
+  }
+
+  // === CRUD SQL GENERATION ===
+
+  private qi(id: string): string {
+    return `"${id.replace(/"/g, '""')}"`;
+  }
+
+  quoteIdentifier(id: string): string {
+    return this.qi(id);
+  }
+
+  paginateQuery(baseQuery: string, limit: number, offset: number): string {
+    return `${baseQuery} LIMIT ${limit} OFFSET ${offset}`;
+  }
+
+  buildUpdateSql(
+    schema: string,
+    table: string,
+    column: string,
+    newValue: unknown,
+    primaryKeys: string[],
+    row: Record<string, unknown>,
+    castLookup?: CastLookup,
+  ): SqlWithBindings {
+    return buildParamUpdate(
+      schema,
+      table,
+      column,
+      newValue,
+      primaryKeys,
+      row,
+      (id) => this.qi(id),
+      castLookup,
+    );
+  }
+
+  buildSetDefaultSql(
+    schema: string,
+    table: string,
+    column: string,
+    primaryKeys: string[],
+    row: Record<string, unknown>,
+  ): SqlWithBindings {
+    return buildParamSetDefault(schema, table, column, primaryKeys, row, (id) => this.qi(id));
+  }
+
+  buildInsertSql(
+    schema: string,
+    table: string,
+    values: Record<string, unknown>,
+    castLookup?: CastLookup,
+  ): SqlWithBindings {
+    return buildParamInsert(schema, table, values, (id) => this.qi(id), castLookup);
+  }
+
+  buildDeleteSql(
+    schema: string,
+    table: string,
+    primaryKeys: string[],
+    row: Record<string, unknown>,
+  ): SqlWithBindings {
+    return buildParamDelete(schema, table, primaryKeys, row, (id) => this.qi(id));
   }
 }

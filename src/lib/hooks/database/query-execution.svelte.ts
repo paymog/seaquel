@@ -13,21 +13,25 @@ import { extractErrorMessage } from "$lib/errors";
 import { log } from "$lib/utils/logger";
 import { resolveQuery } from "./resolve-query.js";
 import type { PendingChangesManager } from "./pending-changes.svelte.js";
-import type { PendingChangeOrigin, PendingChangeTarget } from "$lib/types";
-import { describePendingChange } from "$lib/db/pending-change-description";
+import type { PendingChangeOrigin } from "$lib/types";
+import { getAdapter } from "$lib/db";
+import { QueryCrudManager } from "./query-crud.svelte.js";
 
 /**
  * Manages query execution, pagination, and CRUD operations.
  */
 export class QueryExecutionManager {
   private readonly DEFAULT_PAGE_SIZE = 100;
+  readonly crud: QueryCrudManager;
 
   constructor(
     private state: DatabaseState,
     private queryHistory: QueryHistoryManager,
     private providers: ProviderRegistry,
     private pendingChanges: PendingChangesManager,
-  ) {}
+  ) {
+    this.crud = new QueryCrudManager(state, providers, pendingChanges);
+  }
 
   /**
    * Update a query tab's state with proper Svelte 5 reactivity.
@@ -101,87 +105,6 @@ export class QueryExecutionManager {
   }
 
   /**
-   * Get a SQL placeholder with an explicit CAST if the column type requires it.
-   * sqlx binds JS strings as PostgreSQL TEXT, which won't auto-cast to
-   * timestamp, date, boolean, etc. This adds CAST($N AS <type>) when needed.
-   */
-  private getCastPlaceholder(
-    paramIndex: number,
-    schema: string,
-    tableName: string,
-    column: string,
-  ): string {
-    const placeholder = `$${paramIndex}`;
-    const connectionId = this.state.activeConnectionId;
-    if (!connectionId) return placeholder;
-
-    const tables = this.state.schemas[connectionId] ?? [];
-    const table = tables.find((t) => t.name === tableName && t.schema === schema);
-    if (!table) return placeholder;
-
-    const col = table.columns.find((c) => c.name === column);
-    if (!col) return placeholder;
-
-    const colType = col.type.toLowerCase();
-    // Text types don't need casting — the bind value is already TEXT
-    const textTypes = ["text", "character varying", "character"];
-    // Types we can't reliably cast to (enums, arrays, composite)
-    const skipTypes = ["user-defined", "array"];
-
-    if (textTypes.includes(colType) || skipTypes.includes(colType)) {
-      return placeholder;
-    }
-
-    return `CAST(${placeholder} AS ${col.type})`;
-  }
-
-  /**
-   * Build a WHERE clause for MSSQL using bracket-quoted identifiers and escaped values.
-   */
-  private buildMssqlWhereClause(primaryKeys: string[], row: Record<string, unknown>): string {
-    return this.buildInlineWhereClause(primaryKeys, row, true);
-  }
-
-  private buildInlineWhereClause(
-    primaryKeys: string[],
-    row: Record<string, unknown>,
-    useBrackets: boolean,
-  ): string {
-    return primaryKeys
-      .map((pk) => {
-        const val = row[pk];
-        const escapedVal = this.formatLiteralValue(val);
-        const quotedPk = useBrackets ? this.quoteBracket(pk) : this.quoteDouble(pk);
-        return `${quotedPk} = ${escapedVal}`;
-      })
-      .join(" AND ");
-  }
-
-  /** Quote an identifier with double quotes, escaping embedded double quotes. */
-  private quoteDouble(id: string): string {
-    return `"${id.replace(/"/g, '""')}"`;
-  }
-
-  /** Quote an identifier with brackets, escaping embedded `]`. */
-  private quoteBracket(id: string): string {
-    return `[${id.replace(/\]/g, "]]")}]`;
-  }
-
-  private formatLiteralValue(v: unknown): string {
-    if (v === null || v === undefined) return "NULL";
-    if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
-    if (typeof v === "number" || typeof v === "bigint") {
-      const s = String(v);
-      // Ensure it's actually a numeric literal to prevent injection via crafted toString
-      if (/^-?\d+(\.\d+)?$/.test(s)) return s;
-      return `'${s.replace(/'/g, "''")}'`;
-    }
-    if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
-    // Objects/arrays: serialize as JSON string to avoid [object Object]
-    return `'${JSON.stringify(v).replace(/'/g, "''")}'`;
-  }
-
-  /**
    * Execute a single SQL statement and return the result.
    * @param sql The SQL statement to execute (may contain $1, $2, etc. placeholders)
    * @param page Page number for pagination
@@ -205,7 +128,7 @@ export class QueryExecutionManager {
       throw new Error("No connection established");
     }
     const provider = cachedProvider ?? (await this.providers.getForType(connection.type));
-    const isMssql = connection.type === "mssql";
+    const adapter = getAdapter(connection.type);
 
     // Handle utility/DDL statements (SET, PRAGMA, CREATE, ALTER, DROP, etc.)
     // These are not SELECT and not write queries — execute them without pagination.
@@ -261,6 +184,7 @@ export class QueryExecutionManager {
     const hasLimit = /\bLIMIT\b/i.test(baseQuery);
     const hasOffset = /\bOFFSET\b/i.test(baseQuery);
     const hasTop = /\bTOP\b/i.test(baseQuery);
+    const isMssql = connection.type === "mssql";
     const hasPagination = hasLimit || (isMssql && (hasOffset || hasTop));
 
     let totalRows = 0;
@@ -282,15 +206,7 @@ export class QueryExecutionManager {
       const offset = (page - 1) * pageSize;
       const probeLimit = pageSize + 1;
 
-      if (isMssql) {
-        if (!/\bORDER\s+BY\b/i.test(baseQuery)) {
-          paginatedQuery = `${baseQuery} ORDER BY (SELECT NULL) OFFSET ${offset} ROWS FETCH NEXT ${probeLimit} ROWS ONLY`;
-        } else {
-          paginatedQuery = `${baseQuery} OFFSET ${offset} ROWS FETCH NEXT ${probeLimit} ROWS ONLY`;
-        }
-      } else {
-        paginatedQuery = `${baseQuery} LIMIT ${probeLimit} OFFSET ${offset}`;
-      }
+      paginatedQuery = adapter.paginateQuery(baseQuery, probeLimit, offset);
 
       dbResult = await provider.select<Record<string, unknown>>(
         providerConnectionId,
@@ -729,7 +645,8 @@ export class QueryExecutionManager {
   }
 
   /**
-   * Update a cell value in the database.
+   * Update a cell value in the database (query tab version).
+   * Resolves the row from tab results, then delegates to crud.updateCellDirect.
    */
   async updateCell(
     tabId: string,
@@ -739,103 +656,18 @@ export class QueryExecutionManager {
     newValue: unknown,
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
   ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
-    const tabs = this.state.queryTabsByProject[this.state.activeProjectId!] ?? [];
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab?.results || resultIndex >= tab.results.length) {
-      return { success: false, error: "No results" };
-    }
-
-    const result = tab.results[resultIndex];
-    const row = result.rows[rowIndex];
+    const row = this.getRowFromTab(tabId, resultIndex, rowIndex);
     if (!row) return { success: false, error: "Row not found" };
 
-    if (sourceTable.primaryKeys.length === 0) {
-      return { success: false, error: "No primary key found" };
-    }
-
-    const connection = this.state.activeConnection;
-    if (!connection?.providerConnectionId) {
-      return { success: false, error: "No connection established" };
-    }
-
-    void log.debug(`Cell update on ${connection?.id}`);
-    try {
-      const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql" || connection.type === "duckdb") {
-        const useBrackets = connection.type === "mssql";
-        const whereClause = this.buildInlineWhereClause(sourceTable.primaryKeys, row, useBrackets);
-        const escapedNewValue = this.formatLiteralValue(newValue);
-        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
-        const query = `UPDATE ${qi(sourceTable.schema)}.${qi(sourceTable.name)} SET ${qi(column)} = ${escapedNewValue} WHERE ${whereClause}`;
-
-        if (this.pendingChanges.isEnabled()) {
-          const pkValues = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
-          const target: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            column,
-            primaryKeyValues: pkValues,
-            newValue,
-          };
-          this.pendingChanges.add(
-            connection.id,
-            query,
-            "update",
-            "inline-edit",
-            tabId,
-            undefined,
-            target,
-          );
-          row[column] = newValue;
-          return { success: true, queued: true };
-        }
-
-        await provider.execute(connection.providerConnectionId, query);
-      } else {
-        const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 2}`);
-        const valuePlaceholder = this.getCastPlaceholder(
-          1,
-          sourceTable.schema,
-          sourceTable.name,
-          column,
-        );
-        const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = ${valuePlaceholder} WHERE ${whereConditions.join(" AND ")}`;
-        const bindValues = [newValue, ...sourceTable.primaryKeys.map((pk) => row[pk])];
-
-        if (this.pendingChanges.isEnabled()) {
-          const pkValues = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
-          const target: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            column,
-            primaryKeyValues: pkValues,
-            newValue,
-          };
-          this.pendingChanges.add(
-            connection.id,
-            query,
-            "update",
-            "inline-edit",
-            tabId,
-            bindValues,
-            target,
-          );
-          row[column] = newValue;
-          return { success: true, queued: true };
-        }
-
-        await provider.execute(connection.providerConnectionId, query, bindValues);
-      }
-      // Update the local row data
-      row[column] = newValue;
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: extractErrorMessage(error) };
-    }
+    void log.debug(`Cell update on ${this.state.activeConnection?.id}`);
+    const result = await this.crud.updateCellDirect(sourceTable, row, column, newValue);
+    if (result.success) row[column] = newValue;
+    return result;
   }
 
   /**
-   * Set a cell value to its column DEFAULT.
+   * Set a cell value to its column DEFAULT (query tab version).
+   * Resolves the row from tab results, then delegates to crud.setCellDefaultDirect.
    */
   async setCellDefault(
     tabId: string,
@@ -844,526 +676,69 @@ export class QueryExecutionManager {
     column: string,
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
   ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
-    const tabs = this.state.queryTabsByProject[this.state.activeProjectId!] ?? [];
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab?.results || resultIndex >= tab.results.length) {
-      return { success: false, error: "No results" };
-    }
-
-    const result = tab.results[resultIndex];
-    const row = result.rows[rowIndex];
+    const row = this.getRowFromTab(tabId, resultIndex, rowIndex);
     if (!row) return { success: false, error: "Row not found" };
 
-    if (sourceTable.primaryKeys.length === 0) {
-      return { success: false, error: "No primary key found" };
-    }
-
-    const connection = this.state.activeConnection;
-    if (!connection?.providerConnectionId) {
-      return { success: false, error: "No connection established" };
-    }
-
-    void log.debug(`Cell set default on ${connection?.id}`);
-    try {
-      const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql" || connection.type === "duckdb") {
-        const useBrackets = connection.type === "mssql";
-        const whereClause = this.buildInlineWhereClause(sourceTable.primaryKeys, row, useBrackets);
-        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
-        const query = `UPDATE ${qi(sourceTable.schema)}.${qi(sourceTable.name)} SET ${qi(column)} = DEFAULT WHERE ${whereClause}`;
-
-        if (this.pendingChanges.isEnabled()) {
-          const pkVals = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
-          const tgt: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            column,
-            primaryKeyValues: pkVals,
-          };
-          this.pendingChanges.add(
-            connection.id,
-            query,
-            "update",
-            "set-default",
-            tabId,
-            undefined,
-            tgt,
-          );
-          return { success: true, queued: true };
-        }
-
-        await provider.execute(connection.providerConnectionId, query);
-      } else {
-        const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 1}`);
-        const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = DEFAULT WHERE ${whereConditions.join(" AND ")}`;
-        const bindValues = sourceTable.primaryKeys.map((pk) => row[pk]);
-
-        if (this.pendingChanges.isEnabled()) {
-          const pkVals2 = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
-          const tgt2: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            column,
-            primaryKeyValues: pkVals2,
-          };
-          this.pendingChanges.add(
-            connection.id,
-            query,
-            "update",
-            "set-default",
-            tabId,
-            bindValues,
-            tgt2,
-          );
-          return { success: true, queued: true };
-        }
-
-        await provider.execute(connection.providerConnectionId, query, bindValues);
-      }
+    void log.debug(`Cell set default on ${this.state.activeConnection?.id}`);
+    const result = await this.crud.setCellDefaultDirect(sourceTable, row, column);
+    if (result.success && !result.queued) {
       // Re-fetch the row to get the actual default value
       await this.execute(tabId);
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: extractErrorMessage(error) };
     }
+    return result;
   }
 
-  /**
-   * Insert a new row into the database.
-   */
-  async insertRow(
-    sourceTable: { schema: string; name: string },
-    values: Record<string, unknown>,
-  ): Promise<{ success: boolean; error?: string; lastInsertId?: number; queued?: boolean }> {
-    const columns = Object.keys(values);
-    if (columns.length === 0) {
-      return { success: false, error: "No values provided" };
-    }
+  // --- Delegated CRUD methods (preserve public API) ---
 
-    const connection = this.state.activeConnection;
-    if (!connection?.providerConnectionId) {
-      return { success: false, error: "No connection established" };
-    }
-
-    void log.debug(`Row insert on ${connection?.id}`);
-    try {
-      const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql" || connection.type === "duckdb") {
-        const useBrackets = connection.type === "mssql";
-        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
-        const columnNames = columns.map((c) => qi(c)).join(", ");
-        const valuesList = Object.values(values)
-          .map((v) => this.formatLiteralValue(v))
-          .join(", ");
-        const query = `INSERT INTO ${qi(sourceTable.schema)}.${qi(sourceTable.name)} (${columnNames}) VALUES (${valuesList})`;
-
-        if (this.pendingChanges.isEnabled()) {
-          const target: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            insertValues: values,
-          };
-          this.pendingChanges.add(
-            connection.id,
-            query,
-            "insert",
-            "insert-row",
-            undefined,
-            undefined,
-            target,
-          );
-          return { success: true, queued: true };
-        }
-
-        await provider.execute(connection.providerConnectionId, query);
-        return { success: true };
-      } else {
-        const columnNames = columns.map((c) => `"${c}"`).join(", ");
-        const placeholders = columns
-          .map((col, i) =>
-            this.getCastPlaceholder(i + 1, sourceTable.schema, sourceTable.name, col),
-          )
-          .join(", ");
-        const query = `INSERT INTO "${sourceTable.schema}"."${sourceTable.name}" (${columnNames}) VALUES (${placeholders})`;
-
-        if (this.pendingChanges.isEnabled()) {
-          const target: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            insertValues: values,
-          };
-          this.pendingChanges.add(
-            connection.id,
-            query,
-            "insert",
-            "insert-row",
-            undefined,
-            Object.values(values),
-            target,
-          );
-          return { success: true, queued: true };
-        }
-
-        const result = await provider.execute(
-          connection.providerConnectionId,
-          query,
-          Object.values(values),
-        );
-        return { success: true, lastInsertId: result?.lastInsertId };
-      }
-    } catch (error) {
-      return { success: false, error: extractErrorMessage(error) };
-    }
+  insertRow(sourceTable: { schema: string; name: string }, values: Record<string, unknown>) {
+    return this.crud.insertRow(sourceTable, values);
   }
 
-  /**
-   * Execute a raw query and return results directly.
-   * Used by statistics dashboard and other features that need raw query results.
-   */
-  async executeRaw(query: string): Promise<Record<string, unknown>[]> {
-    const connection = this.state.activeConnection;
-    const isConnected = !!connection?.providerConnectionId;
-    if (!connection || !isConnected) {
-      throw new Error("Not connected to database");
-    }
-
-    const provider = await this.providers.getForType(connection.type);
-    return await provider.select<Record<string, unknown>>(connection.providerConnectionId!, query);
+  deleteRow(
+    sourceTable: { schema: string; name: string; primaryKeys: string[] },
+    row: Record<string, unknown>,
+  ) {
+    return this.crud.deleteRow(sourceTable, row);
   }
 
-  /**
-   * Execute a raw DDL/write statement on the active connection.
-   * Used for CREATE TABLE, DROP TABLE, ALTER TABLE, TRUNCATE, etc.
-   */
-  /**
-   * Update a single cell value directly, without requiring a query tab.
-   * Used by the data viewer for inline cell editing.
-   */
-  async updateCellDirect(
+  updateCellDirect(
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
     row: Record<string, unknown>,
     column: string,
     newValue: unknown,
-  ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
-    if (sourceTable.primaryKeys.length === 0) {
-      return { success: false, error: "No primary key found" };
-    }
-
-    const connection = this.state.activeConnection;
-    if (!connection?.providerConnectionId) {
-      return { success: false, error: "No connection established" };
-    }
-
-    try {
-      const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql" || connection.type === "duckdb") {
-        const useBrackets = connection.type === "mssql";
-        const whereClause = this.buildInlineWhereClause(sourceTable.primaryKeys, row, useBrackets);
-        const escapedNewValue = this.formatLiteralValue(newValue);
-        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
-        const query = `UPDATE ${qi(sourceTable.schema)}.${qi(sourceTable.name)} SET ${qi(column)} = ${escapedNewValue} WHERE ${whereClause}`;
-
-        if (this.pendingChanges.isEnabled()) {
-          const pkValues = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
-          const target: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            column,
-            primaryKeyValues: pkValues,
-            newValue,
-          };
-          const existingChange = this.pendingChanges.findForCell(
-            connection.id,
-            sourceTable.schema,
-            sourceTable.name,
-            column,
-            pkValues,
-          );
-          if (existingChange) {
-            this.pendingChanges.update(connection.id, existingChange.id, {
-              sql: query,
-              target,
-              description: describePendingChange(query, "inline-edit"),
-            });
-          } else {
-            this.pendingChanges.add(
-              connection.id,
-              query,
-              "update",
-              "inline-edit",
-              undefined,
-              undefined,
-              target,
-            );
-          }
-          return { success: true, queued: true };
-        }
-
-        await provider.execute(connection.providerConnectionId, query);
-      } else {
-        const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 2}`);
-        const valuePlaceholder = this.getCastPlaceholder(
-          1,
-          sourceTable.schema,
-          sourceTable.name,
-          column,
-        );
-        const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = ${valuePlaceholder} WHERE ${whereConditions.join(" AND ")}`;
-        const bindValues = [newValue, ...sourceTable.primaryKeys.map((pk) => row[pk])];
-
-        if (this.pendingChanges.isEnabled()) {
-          const pkValues2 = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
-          const target2: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            column,
-            primaryKeyValues: pkValues2,
-            newValue,
-          };
-          const existingChange2 = this.pendingChanges.findForCell(
-            connection.id,
-            sourceTable.schema,
-            sourceTable.name,
-            column,
-            pkValues2,
-          );
-          if (existingChange2) {
-            this.pendingChanges.update(connection.id, existingChange2.id, {
-              sql: query,
-              bindValues,
-              target: target2,
-              description: describePendingChange(query, "inline-edit"),
-            });
-          } else {
-            this.pendingChanges.add(
-              connection.id,
-              query,
-              "update",
-              "inline-edit",
-              undefined,
-              bindValues,
-              target2,
-            );
-          }
-          return { success: true, queued: true };
-        }
-
-        await provider.execute(connection.providerConnectionId, query, bindValues);
-      }
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: extractErrorMessage(error) };
-    }
+  ) {
+    return this.crud.updateCellDirect(sourceTable, row, column, newValue, {
+      deduplicatePending: true,
+    });
   }
 
-  /**
-   * Set a cell to its column DEFAULT directly, without requiring a query tab.
-   * Used by the data viewer for inline "set default" action.
-   */
-  async setCellDefaultDirect(
+  setCellDefaultDirect(
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
     row: Record<string, unknown>,
     column: string,
-  ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
-    if (sourceTable.primaryKeys.length === 0) {
-      return { success: false, error: "No primary key found" };
-    }
-
-    const connection = this.state.activeConnection;
-    if (!connection?.providerConnectionId) {
-      return { success: false, error: "No connection established" };
-    }
-
-    try {
-      const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql" || connection.type === "duckdb") {
-        const useBrackets = connection.type === "mssql";
-        const whereClause = this.buildInlineWhereClause(sourceTable.primaryKeys, row, useBrackets);
-        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
-        const query = `UPDATE ${qi(sourceTable.schema)}.${qi(sourceTable.name)} SET ${qi(column)} = DEFAULT WHERE ${whereClause}`;
-
-        if (this.pendingChanges.isEnabled()) {
-          const pkV = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
-          const t: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            column,
-            primaryKeyValues: pkV,
-          };
-          const existingChange = this.pendingChanges.findForCell(
-            connection.id,
-            sourceTable.schema,
-            sourceTable.name,
-            column,
-            pkV,
-          );
-          if (existingChange) {
-            this.pendingChanges.update(connection.id, existingChange.id, {
-              sql: query,
-              target: t,
-              description: describePendingChange(query, "set-default"),
-            });
-          } else {
-            this.pendingChanges.add(
-              connection.id,
-              query,
-              "update",
-              "set-default",
-              undefined,
-              undefined,
-              t,
-            );
-          }
-          return { success: true, queued: true };
-        }
-
-        await provider.execute(connection.providerConnectionId, query);
-      } else {
-        const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 1}`);
-        const query = `UPDATE "${sourceTable.schema}"."${sourceTable.name}" SET "${column}" = DEFAULT WHERE ${whereConditions.join(" AND ")}`;
-        const bindValues = sourceTable.primaryKeys.map((pk) => row[pk]);
-
-        if (this.pendingChanges.isEnabled()) {
-          const pkV2 = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
-          const t2: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            column,
-            primaryKeyValues: pkV2,
-          };
-          const existingChange2 = this.pendingChanges.findForCell(
-            connection.id,
-            sourceTable.schema,
-            sourceTable.name,
-            column,
-            pkV2,
-          );
-          if (existingChange2) {
-            this.pendingChanges.update(connection.id, existingChange2.id, {
-              sql: query,
-              bindValues,
-              target: t2,
-              description: describePendingChange(query, "set-default"),
-            });
-          } else {
-            this.pendingChanges.add(
-              connection.id,
-              query,
-              "update",
-              "set-default",
-              undefined,
-              bindValues,
-              t2,
-            );
-          }
-          return { success: true, queued: true };
-        }
-
-        await provider.execute(connection.providerConnectionId, query, bindValues);
-      }
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: extractErrorMessage(error) };
-    }
+  ) {
+    return this.crud.setCellDefaultDirect(sourceTable, row, column, { deduplicatePending: true });
   }
 
-  async executeRawDdl(query: string): Promise<{ queued?: boolean }> {
-    const connection = this.state.activeConnection;
-    if (!connection?.providerConnectionId) {
-      throw new Error("Not connected to database");
-    }
+  executeRaw(query: string) {
+    return this.crud.executeRaw(query);
+  }
 
-    if (this.pendingChanges.isEnabled()) {
-      const upper = query.trimStart().toUpperCase();
-      let origin: PendingChangeOrigin;
-      if (upper.startsWith("TRUNCATE")) origin = "truncate-table";
-      else if (upper.startsWith("ALTER TABLE")) origin = "alter-table";
-      else if (upper.startsWith("CREATE TABLE")) origin = "create-table";
-      else if (upper.startsWith("DROP TABLE")) origin = "drop-table";
-      else origin = "query-editor";
-      this.pendingChanges.add(connection.id, query, "other", origin);
-      return { queued: true };
-    }
-
-    const provider = await this.providers.getForType(connection.type);
-    await provider.execute(connection.providerConnectionId, query);
-    return {};
+  executeRawDdl(query: string) {
+    return this.crud.executeRawDdl(query);
   }
 
   /**
-   * Delete a row from the database.
+   * Resolve a row from a query tab's results.
    */
-  async deleteRow(
-    sourceTable: { schema: string; name: string; primaryKeys: string[] },
-    row: Record<string, unknown>,
-  ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
-    if (sourceTable.primaryKeys.length === 0) {
-      return { success: false, error: "No primary key found" };
-    }
-
-    const connection = this.state.activeConnection;
-    if (!connection?.providerConnectionId) {
-      return { success: false, error: "No connection established" };
-    }
-
-    void log.debug(`Row delete on ${connection?.id}`);
-    try {
-      const provider = await this.providers.getForType(connection.type);
-      if (connection.type === "mssql" || connection.type === "duckdb") {
-        const useBrackets = connection.type === "mssql";
-        const whereClause = this.buildInlineWhereClause(sourceTable.primaryKeys, row, useBrackets);
-        const qi = (id: string) => (useBrackets ? this.quoteBracket(id) : this.quoteDouble(id));
-        const query = `DELETE FROM ${qi(sourceTable.schema)}.${qi(sourceTable.name)} WHERE ${whereClause}`;
-
-        if (this.pendingChanges.isEnabled()) {
-          const delPk = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
-          const delTgt: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            primaryKeyValues: delPk,
-          };
-          this.pendingChanges.add(
-            connection.id,
-            query,
-            "delete",
-            "delete-row",
-            undefined,
-            undefined,
-            delTgt,
-          );
-          return { success: true, queued: true };
-        }
-
-        await provider.execute(connection.providerConnectionId, query);
-      } else {
-        const whereConditions = sourceTable.primaryKeys.map((pk, i) => `"${pk}" = $${i + 1}`);
-        const query = `DELETE FROM "${sourceTable.schema}"."${sourceTable.name}" WHERE ${whereConditions.join(" AND ")}`;
-        const bindValues = sourceTable.primaryKeys.map((pk) => row[pk]);
-
-        if (this.pendingChanges.isEnabled()) {
-          const delPk2 = Object.fromEntries(sourceTable.primaryKeys.map((pk) => [pk, row[pk]]));
-          const delTgt2: PendingChangeTarget = {
-            schema: sourceTable.schema,
-            table: sourceTable.name,
-            primaryKeyValues: delPk2,
-          };
-          this.pendingChanges.add(
-            connection.id,
-            query,
-            "delete",
-            "delete-row",
-            undefined,
-            bindValues,
-            delTgt2,
-          );
-          return { success: true, queued: true };
-        }
-
-        await provider.execute(connection.providerConnectionId, query, bindValues);
-      }
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: extractErrorMessage(error) };
-    }
+  private getRowFromTab(
+    tabId: string,
+    resultIndex: number,
+    rowIndex: number,
+  ): Record<string, unknown> | undefined {
+    const tabs = this.state.queryTabsByProject[this.state.activeProjectId!] ?? [];
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab?.results || resultIndex >= tab.results.length) return undefined;
+    return tab.results[resultIndex].rows[rowIndex];
   }
 }

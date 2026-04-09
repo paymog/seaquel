@@ -13,6 +13,8 @@ import { PostgresAdapter } from "./postgres";
 import { SqliteAdapter } from "./sqlite";
 import { DuckDBAdapter } from "./duckdb";
 
+export type { SqlWithBindings, CastLookup } from "./crud-helpers";
+
 export interface ExplainNode {
   type: string;
   label: string;
@@ -95,6 +97,55 @@ export interface DatabaseAdapter {
     originalDef: import("$lib/types").CreateTableDefinition,
     newDef: import("$lib/types").CreateTableDefinition,
   ): string;
+
+  // === CRUD SQL GENERATION ===
+
+  /** Quote a SQL identifier (table name, column name, schema name) for this engine. */
+  quoteIdentifier(id: string): string;
+
+  /**
+   * Generate a paginated SELECT query.
+   * @param baseQuery - The base SELECT query without LIMIT/OFFSET
+   * @param limit - Number of rows to fetch
+   * @param offset - Number of rows to skip
+   */
+  paginateQuery(baseQuery: string, limit: number, offset: number): string;
+
+  /** Build an UPDATE SET column = value WHERE pk = pk_value statement. */
+  buildUpdateSql(
+    schema: string,
+    table: string,
+    column: string,
+    newValue: unknown,
+    primaryKeys: string[],
+    row: Record<string, unknown>,
+    castLookup?: import("./crud-helpers").CastLookup,
+  ): import("./crud-helpers").SqlWithBindings;
+
+  /** Build an UPDATE SET column = DEFAULT WHERE pk = pk_value statement. */
+  buildSetDefaultSql(
+    schema: string,
+    table: string,
+    column: string,
+    primaryKeys: string[],
+    row: Record<string, unknown>,
+  ): import("./crud-helpers").SqlWithBindings;
+
+  /** Build an INSERT INTO statement. */
+  buildInsertSql(
+    schema: string,
+    table: string,
+    values: Record<string, unknown>,
+    castLookup?: import("./crud-helpers").CastLookup,
+  ): import("./crud-helpers").SqlWithBindings;
+
+  /** Build a DELETE FROM WHERE pk = pk_value statement. */
+  buildDeleteSql(
+    schema: string,
+    table: string,
+    primaryKeys: string[],
+    row: Record<string, unknown>,
+  ): import("./crud-helpers").SqlWithBindings;
 }
 
 /**

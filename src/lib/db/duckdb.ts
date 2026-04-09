@@ -1,6 +1,13 @@
 import type { DatabaseAdapter, ExplainNode } from "./index";
 import { validateIdentifier } from "./index";
 import { generateAlterTableSql, generateCreateTableDdl, generateAddColumnDdl } from "./alter-table";
+import type { SqlWithBindings } from "./crud-helpers";
+import {
+  buildInlineUpdate,
+  buildInlineSetDefault,
+  buildInlineInsert,
+  buildInlineDelete,
+} from "./crud-helpers";
 import type {
   SchemaTable,
   SchemaColumn,
@@ -287,5 +294,55 @@ export class DuckDBAdapter implements DatabaseAdapter {
 
   getSchemasQuery(): string {
     return `SELECT schema_name FROM information_schema.schemata WHERE catalog_name NOT IN ('system', 'temp') ORDER BY schema_name;`;
+  }
+
+  // === CRUD SQL GENERATION ===
+
+  private qi(id: string): string {
+    return `"${id.replace(/"/g, '""')}"`;
+  }
+
+  quoteIdentifier(id: string): string {
+    return this.qi(id);
+  }
+
+  paginateQuery(baseQuery: string, limit: number, offset: number): string {
+    return `${baseQuery} LIMIT ${limit} OFFSET ${offset}`;
+  }
+
+  buildUpdateSql(
+    schema: string,
+    table: string,
+    column: string,
+    newValue: unknown,
+    primaryKeys: string[],
+    row: Record<string, unknown>,
+  ): SqlWithBindings {
+    return buildInlineUpdate(schema, table, column, newValue, primaryKeys, row, (id) =>
+      this.qi(id),
+    );
+  }
+
+  buildSetDefaultSql(
+    schema: string,
+    table: string,
+    column: string,
+    primaryKeys: string[],
+    row: Record<string, unknown>,
+  ): SqlWithBindings {
+    return buildInlineSetDefault(schema, table, column, primaryKeys, row, (id) => this.qi(id));
+  }
+
+  buildInsertSql(schema: string, table: string, values: Record<string, unknown>): SqlWithBindings {
+    return buildInlineInsert(schema, table, values, (id) => this.qi(id));
+  }
+
+  buildDeleteSql(
+    schema: string,
+    table: string,
+    primaryKeys: string[],
+    row: Record<string, unknown>,
+  ): SqlWithBindings {
+    return buildInlineDelete(schema, table, primaryKeys, row, (id) => this.qi(id));
   }
 }
