@@ -233,13 +233,20 @@ export class DuckDBAdapter implements DatabaseAdapter {
       { name: "HUGEINT", category: "Numeric" },
       { name: "SMALLINT", category: "Numeric" },
       { name: "TINYINT", category: "Numeric" },
+      { name: "UINTEGER", category: "Numeric" },
+      { name: "UBIGINT", category: "Numeric" },
+      { name: "UHUGEINT", category: "Numeric" },
+      { name: "USMALLINT", category: "Numeric" },
+      { name: "UTINYINT", category: "Numeric" },
       { name: "DOUBLE", category: "Numeric" },
       { name: "FLOAT", category: "Numeric" },
       { name: "DECIMAL", category: "Numeric", hasPrecision: true },
+      { name: "BIGNUM", category: "Numeric" },
       // Date/Time
       { name: "DATE", category: "Date/Time" },
       { name: "TIME", category: "Date/Time" },
       { name: "TIMESTAMP", category: "Date/Time" },
+      { name: "TIMESTAMP WITH TIME ZONE", category: "Date/Time" },
       { name: "INTERVAL", category: "Date/Time" },
       // Boolean
       { name: "BOOLEAN", category: "Boolean" },
@@ -247,12 +254,15 @@ export class DuckDBAdapter implements DatabaseAdapter {
       { name: "JSON", category: "JSON" },
       // Binary
       { name: "BLOB", category: "Binary" },
+      { name: "BIT", category: "Binary" },
       // UUID
       { name: "UUID", category: "UUID" },
       // Other
+      { name: "ARRAY", category: "Other" },
       { name: "LIST", category: "Other" },
       { name: "MAP", category: "Other" },
       { name: "STRUCT", category: "Other" },
+      { name: "UNION", category: "Other" },
     ];
   }
 
