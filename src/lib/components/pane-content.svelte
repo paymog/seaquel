@@ -17,7 +17,7 @@
     import CreateTableView from "$lib/components/create-table-view.svelte";
     import DataViewer from "$lib/components/data-viewer.svelte";
     import ExtensionsDuckdbTab from "$lib/components/extensions-duckdb-tab.svelte";
-    import SettingsTabView from "$lib/components/settings-tab-view.svelte";
+    import { SettingsTabView } from "$lib/components/settings";
     import ProjectSettingsTabView from "$lib/components/project-settings-tab-view.svelte";
     import { DashboardView } from "$lib/components/dashboard";
     import DragSplitOverlay from "$lib/components/drag-split-overlay.svelte";
