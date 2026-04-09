@@ -1,6 +1,6 @@
 use arboard::Clipboard;
 use image::ImageReader;
-use log::{debug, error, info, trace};
+use log::{debug, error, info};
 use std::fs;
 use std::sync::Mutex;
 use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
@@ -11,6 +11,7 @@ use tauri_plugin_updater::UpdaterExt;
 mod db;
 mod git;
 mod license;
+mod logging;
 mod ssh_tunnel;
 
 use ssh_tunnel::TunnelManager;
@@ -108,7 +109,7 @@ fn read_tableplus_config() -> Result<Option<String>, CommandError> {
 
 #[tauri::command]
 fn copy_image_to_clipboard(path: String) -> Result<(), CommandError> {
-    debug!("Copying image to clipboard");
+    debug!(activity = "app.clipboard"; "Copying image to clipboard");
     let img = ImageReader::open(&path)
         .map_err(|e| CommandError {
             message: format!("Failed to open image: {}", e),
@@ -146,7 +147,7 @@ fn copy_image_to_clipboard(path: String) -> Result<(), CommandError> {
 
 #[tauri::command]
 fn open_path(path: String) -> Result<(), CommandError> {
-    debug!("Opening external path");
+    debug!(activity = "app.open"; "Opening external path");
     opener::open(&path).map_err(|e| CommandError {
         message: format!("Failed to open path: {}", e),
         code: "OPEN_ERROR".to_string(),
@@ -207,6 +208,22 @@ fn read_log_file(app: tauri::AppHandle) -> Result<String, CommandError> {
 }
 
 #[tauri::command]
+fn clear_log_file(app: tauri::AppHandle) -> Result<(), CommandError> {
+    let log_dir = app.path().app_log_dir().map_err(|e| CommandError {
+        message: format!("Failed to get log dir: {}", e),
+        code: "DIR_ERROR".to_string(),
+    })?;
+    let log_path = log_dir.join("seaquel.log");
+
+    std::fs::write(&log_path, "").map_err(|e| CommandError {
+        message: format!("Failed to clear log file: {}", e),
+        code: "WRITE_ERROR".to_string(),
+    })?;
+
+    Ok(())
+}
+
+#[tauri::command]
 fn get_data_dir(app: tauri::AppHandle) -> Result<String, CommandError> {
     if let Ok(custom_dir) = std::env::var("SEAQUEL_DATA_DIR") {
         let path = std::path::PathBuf::from(&custom_dir);
@@ -241,10 +258,9 @@ async fn install_update(
     app: tauri::AppHandle,
     pending: tauri::State<'_, PendingUpdate>,
 ) -> Result<(), CommandError> {
-    info!("Installing update");
+    info!(activity = "app.update"; "Installing update");
     let bytes = pending.bytes.lock().map_err(|e| {
-        error!("Command error: code=LOCK_ERROR");
-        trace!("Failed to lock update state: {}", e);
+        error!(activity = "app.update", error_code = "LOCK_ERROR"; "Failed to lock update state");
         CommandError {
             message: format!("Failed to lock update state: {}", e),
             code: "LOCK_ERROR".to_string(),
@@ -253,29 +269,26 @@ async fn install_update(
     if let Some(bytes) = bytes {
         // Re-check for update to get the Update object needed for install
         if let Some(update) = app.updater().map_err(|e| {
-            error!("Command error: code=UPDATE_ERROR");
-            trace!("Failed to get updater: {}", e);
+            error!(activity = "app.update", error_code = "UPDATE_ERROR"; "Failed to get updater");
             CommandError {
                 message: format!("Failed to get updater: {}", e),
                 code: "UPDATE_ERROR".to_string(),
             }
         })?.check().await.map_err(|e| {
-            error!("Command error: code=UPDATE_ERROR");
-            trace!("Failed to check for update: {}", e);
+            error!(activity = "app.update", error_code = "UPDATE_ERROR"; "Failed to check for update");
             CommandError {
                 message: format!("Failed to check for update: {}", e),
                 code: "UPDATE_ERROR".to_string(),
             }
         })? {
             update.install(&bytes).map_err(|e| {
-                error!("Command error: code=UPDATE_ERROR");
-                trace!("Failed to install update: {}", e);
+                error!(activity = "app.update", error_code = "UPDATE_ERROR"; "Failed to install update");
                 CommandError {
                     message: format!("Failed to install update: {}", e),
                     code: "UPDATE_ERROR".to_string(),
                 }
             })?;
-            info!("Update installed, restarting");
+            info!(activity = "app.update"; "Update installed, restarting");
             app.restart();
         }
     }
@@ -286,7 +299,7 @@ async fn install_update(
 async fn check_for_update_command(
     app: tauri::AppHandle,
 ) -> Result<Option<UpdateInfo>, CommandError> {
-    debug!("Checking for updates");
+    debug!(activity = "app.update"; "Checking for updates");
     let update = app
         .updater()
         .map_err(|e| CommandError {
@@ -302,7 +315,7 @@ async fn check_for_update_command(
 
     match update {
         Some(u) => {
-            info!("Update available: version={}", u.version);
+            info!(activity = "app.update", version = u.version.as_str(); "Update available");
             let info = UpdateInfo {
                 version: u.version.clone(),
                 date: u.date.map(|d| {
@@ -321,7 +334,7 @@ async fn check_for_update_command(
             Ok(Some(info))
         }
         None => {
-            debug!("No update available");
+            debug!(activity = "app.update"; "No update available");
             Ok(None)
         }
     }
@@ -421,18 +434,19 @@ fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    info!("Seaquel starting");
+    info!(activity = "app.startup"; "Seaquel starting");
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
+                .format(logging::make_logfmt_formatter(TimezoneStrategy::UseLocal))
                 .targets([
                     Target::new(TargetKind::Stdout),
                     Target::new(TargetKind::LogDir { file_name: Some("seaquel".into()) }),
-                    Target::new(TargetKind::Webview).filter(|metadata| metadata.level() <= log::Level::Info),
+                    Target::new(TargetKind::Webview)
+                        .filter(|metadata| metadata.level() <= log::Level::Info),
                 ])
                 .level(log::LevelFilter::Info)
                 .level_for("seaquel_lib", log::LevelFilter::Trace)
-                .timezone_strategy(TimezoneStrategy::UseLocal)
                 .max_file_size(5_000_000)
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
                 .build(),
@@ -455,6 +469,7 @@ pub fn run() {
             open_path,
             get_data_dir,
             read_log_file,
+            clear_log_file,
             get_username,
             install_update,
             check_for_update_command,
@@ -563,7 +578,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let _ = check_for_update(handle).await;
             });
-            info!("App setup complete");
+            info!(activity = "app.startup"; "App setup complete");
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -575,7 +590,7 @@ async fn check_for_update(app: tauri::AppHandle) -> tauri_plugin_updater::Result
         let mut downloaded = 0;
         let mut total_size: Option<u64> = None;
 
-        info!("Downloading update v{}", update.version);
+        info!(activity = "app.update", version = update.version.as_str(); "Downloading update");
         let bytes = update
             .download(
                 |chunk_length, content_length| {
@@ -585,7 +600,7 @@ async fn check_for_update(app: tauri::AppHandle) -> tauri_plugin_updater::Result
                     }
                 },
                 || {
-                    info!("Update download complete");
+                    info!(activity = "app.update"; "Update download complete");
                 },
             )
             .await?;
@@ -599,7 +614,7 @@ async fn check_for_update(app: tauri::AppHandle) -> tauri_plugin_updater::Result
             size: total_size,
         };
 
-        info!("Update downloaded, notifying frontend");
+        info!(activity = "app.update"; "Update downloaded, notifying frontend");
 
         // Store the bytes for later installation
         let pending = app.state::<PendingUpdate>();

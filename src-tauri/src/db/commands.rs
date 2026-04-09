@@ -7,6 +7,10 @@ use super::{
     Driver, DriverType, ExecuteResult, QueryResult,
 };
 
+fn sql_keyword(sql: &str) -> &str {
+    sql.trim_start().split_whitespace().next().unwrap_or("?")
+}
+
 async fn connect_driver(config: &ConnectConfig) -> Result<Box<dyn Driver>, DbError> {
     let driver: Box<dyn Driver> = match config.driver {
         DriverType::Postgres => Box::new(PostgresDriver::connect(config).await?),
@@ -24,7 +28,7 @@ pub async fn db_connect(
     manager: State<'_, ConnectionManager>,
 ) -> Result<ConnectResult, DbError> {
     let driver_name = format!("{:?}", config.driver);
-    info!("db_connect: driver={}", driver_name);
+    info!(activity = "db.connect", driver = driver_name.as_str(); "Connecting");
 
     let connection_id = format!(
         "{}-{}",
@@ -40,7 +44,7 @@ pub async fn db_connect(
         .await
         .insert(connection_id.clone(), driver);
 
-    info!("db_connect: connected as {}", connection_id);
+    info!(activity = "db.connect", driver = driver_name.as_str(), connection_id = connection_id.as_str(); "Connected");
     Ok(ConnectResult { connection_id })
 }
 
@@ -51,7 +55,8 @@ pub async fn db_query(
     values: Vec<serde_json::Value>,
     manager: State<'_, ConnectionManager>,
 ) -> Result<QueryResult, DbError> {
-    debug!("db_query on {}", connection_id);
+    let keyword = sql_keyword(&sql).to_uppercase();
+    debug!(activity = "db.query", connection_id = connection_id.as_str(), keyword = keyword.as_str(), sql_len = sql.len(), params = values.len(); "Query");
     let connections = manager.connections.read().await;
     let driver = connections
         .get(&connection_id)
@@ -66,7 +71,8 @@ pub async fn db_execute(
     values: Vec<serde_json::Value>,
     manager: State<'_, ConnectionManager>,
 ) -> Result<ExecuteResult, DbError> {
-    debug!("db_execute on {}", connection_id);
+    let keyword = sql_keyword(&sql).to_uppercase();
+    debug!(activity = "db.execute", connection_id = connection_id.as_str(), keyword = keyword.as_str(), sql_len = sql.len(), params = values.len(); "Execute");
     let connections = manager.connections.read().await;
     let driver = connections
         .get(&connection_id)
@@ -80,7 +86,7 @@ pub async fn db_transaction(
     statements: Vec<BatchStatement>,
     manager: State<'_, ConnectionManager>,
 ) -> Result<(), DbError> {
-    debug!("db_transaction on {} ({} stmts)", connection_id, statements.len());
+    debug!(activity = "db.transaction", connection_id = connection_id.as_str(), statements = statements.len(); "Executing transaction");
     let connections = manager.connections.read().await;
     let driver = connections
         .get(&connection_id)
@@ -93,7 +99,7 @@ pub async fn db_disconnect(
     connection_id: String,
     manager: State<'_, ConnectionManager>,
 ) -> Result<(), DbError> {
-    info!("db_disconnect: {}", connection_id);
+    info!(activity = "db.disconnect", connection_id = connection_id.as_str(); "Disconnecting");
     let mut connections = manager.connections.write().await;
     if let Some(driver) = connections.remove(&connection_id) {
         driver.close().await?;
@@ -103,7 +109,7 @@ pub async fn db_disconnect(
 
 #[command]
 pub async fn db_test(config: ConnectConfig) -> Result<(), DbError> {
-    debug!("db_test: driver={:?}", config.driver);
+    debug!(activity = "db.test", driver = format!("{:?}", config.driver).as_str(); "Testing connection");
     let driver = connect_driver(&config).await?;
     driver.close().await
 }

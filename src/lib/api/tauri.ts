@@ -28,6 +28,10 @@ export async function readLogFile(): Promise<string> {
   return invoke<string>("read_log_file");
 }
 
+export async function clearLogFile(): Promise<void> {
+  return invoke<void>("clear_log_file");
+}
+
 export interface UpdateInfo {
   version: string;
   date: string | null;

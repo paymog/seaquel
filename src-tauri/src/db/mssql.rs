@@ -1,6 +1,6 @@
 use async_native_tls::TlsStream;
 use async_trait::async_trait;
-use log::{error, info, trace};
+use log::{error, info};
 use tiberius::{AuthMethod, Client, Config, Query, Row};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -53,7 +53,7 @@ impl MssqlDriver {
         let password = config.password.as_deref().unwrap_or("");
         let encrypt = config.encrypt.unwrap_or(true);
 
-        info!("MSSQL connecting (encrypt={})", encrypt);
+        info!(activity = "db.connect", driver = "mssql", encrypt = encrypt; "Connecting");
 
         let mut tiberius_config = Config::new();
         tiberius_config.host(host);
@@ -168,8 +168,7 @@ impl Driver for MssqlDriver {
         let mut client = self.client.lock().await;
 
         let rows = client.query_rows(sql).await.map_err(|e| {
-            error!("MSSQL query error");
-            trace!("MSSQL query error: {}", e);
+            error!(activity = "db.query", driver = "mssql", error_code = "QUERY_ERROR"; "Query failed");
             DbError::query_error(e)
         })?;
 
@@ -203,8 +202,7 @@ impl Driver for MssqlDriver {
         let mut client = self.client.lock().await;
 
         let result = client.execute_sql(sql).await.map_err(|e| {
-            error!("MSSQL execute error");
-            trace!("MSSQL execute error: {}", e);
+            error!(activity = "db.execute", driver = "mssql", error_code = "EXECUTE_ERROR"; "Execute failed");
             DbError::execute_error(e)
         })?;
 

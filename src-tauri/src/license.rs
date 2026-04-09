@@ -1,4 +1,4 @@
-use log::{error, info, trace, warn};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -40,7 +40,7 @@ pub async fn activate_license(
     key: String,
     instance_name: String,
 ) -> Result<LicenseResponse, LicenseError> {
-    info!("License activate requested");
+    info!(activity = "license.activate"; "License activation requested");
     let client = reqwest::Client::new();
     let url = format!("{}/api/licenses/activate", base_url());
 
@@ -53,8 +53,7 @@ pub async fn activate_license(
         .send()
         .await
         .map_err(|e| {
-            error!("License error: code=NETWORK_ERROR");
-            trace!("License network error: {}", e);
+            error!(activity = "license.activate", error_code = "NETWORK_ERROR"; "Failed to connect to license server");
             LicenseError {
                 message: format!("Failed to connect to license server: {}", e),
                 code: "NETWORK_ERROR".to_string(),
@@ -64,17 +63,16 @@ pub async fn activate_license(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        warn!("License API returned status {}", status);
+        warn!(activity = "license.activate", status = status.as_u16(), error_code = "ACTIVATION_ERROR"; "License API returned error");
         return Err(LicenseError {
             message: format!("License activation failed ({}): {}", status, body),
             code: "ACTIVATION_ERROR".to_string(),
         });
     }
 
-    info!("License activate successful");
+    info!(activity = "license.activate"; "License activation successful");
     response.json::<LicenseResponse>().await.map_err(|e| {
-        error!("License error: code=PARSE_ERROR");
-        trace!("License parse error: {}", e);
+        error!(activity = "license.activate", error_code = "PARSE_ERROR"; "Invalid response from license server");
         LicenseError {
             message: format!("Invalid response from license server: {}", e),
             code: "PARSE_ERROR".to_string(),
@@ -87,7 +85,7 @@ pub async fn validate_license(
     key: String,
     instance_id: String,
 ) -> Result<LicenseResponse, LicenseError> {
-    info!("License validate requested");
+    info!(activity = "license.validate"; "License validation requested");
     let client = reqwest::Client::new();
     let url = format!("{}/api/licenses/validate", base_url());
 
@@ -100,8 +98,7 @@ pub async fn validate_license(
         .send()
         .await
         .map_err(|e| {
-            error!("License error: code=NETWORK_ERROR");
-            trace!("License network error: {}", e);
+            error!(activity = "license.validate", error_code = "NETWORK_ERROR"; "Failed to connect to license server");
             LicenseError {
                 message: format!("Failed to connect to license server: {}", e),
                 code: "NETWORK_ERROR".to_string(),
@@ -111,17 +108,16 @@ pub async fn validate_license(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        warn!("License API returned status {}", status);
+        warn!(activity = "license.validate", status = status.as_u16(), error_code = "VALIDATION_ERROR"; "License API returned error");
         return Err(LicenseError {
             message: format!("License validation failed ({}): {}", status, body),
             code: "VALIDATION_ERROR".to_string(),
         });
     }
 
-    info!("License validate successful");
+    info!(activity = "license.validate"; "License validation successful");
     response.json::<LicenseResponse>().await.map_err(|e| {
-        error!("License error: code=PARSE_ERROR");
-        trace!("License parse error: {}", e);
+        error!(activity = "license.validate", error_code = "PARSE_ERROR"; "Invalid response from license server");
         LicenseError {
             message: format!("Invalid response from license server: {}", e),
             code: "PARSE_ERROR".to_string(),
@@ -134,7 +130,7 @@ pub async fn deactivate_license(
     key: String,
     instance_id: String,
 ) -> Result<LicenseResponse, LicenseError> {
-    info!("License deactivate requested");
+    info!(activity = "license.deactivate"; "License deactivation requested");
     let client = reqwest::Client::new();
     let url = format!("{}/api/licenses/deactivate", base_url());
 
@@ -147,8 +143,7 @@ pub async fn deactivate_license(
         .send()
         .await
         .map_err(|e| {
-            error!("License error: code=NETWORK_ERROR");
-            trace!("License network error: {}", e);
+            error!(activity = "license.deactivate", error_code = "NETWORK_ERROR"; "Failed to connect to license server");
             LicenseError {
                 message: format!("Failed to connect to license server: {}", e),
                 code: "NETWORK_ERROR".to_string(),
@@ -158,17 +153,16 @@ pub async fn deactivate_license(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        warn!("License API returned status {}", status);
+        warn!(activity = "license.deactivate", status = status.as_u16(), error_code = "DEACTIVATION_ERROR"; "License API returned error");
         return Err(LicenseError {
             message: format!("License deactivation failed ({}): {}", status, body),
             code: "DEACTIVATION_ERROR".to_string(),
         });
     }
 
-    info!("License deactivate successful");
+    info!(activity = "license.deactivate"; "License deactivation successful");
     response.json::<LicenseResponse>().await.map_err(|e| {
-        error!("License error: code=PARSE_ERROR");
-        trace!("License parse error: {}", e);
+        error!(activity = "license.deactivate", error_code = "PARSE_ERROR"; "Invalid response from license server");
         LicenseError {
             message: format!("Invalid response from license server: {}", e),
             code: "PARSE_ERROR".to_string(),

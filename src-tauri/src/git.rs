@@ -2,7 +2,7 @@ use git2::{
     build::RepoBuilder, Cred, CredentialType, FetchOptions, PushOptions,
     RemoteCallbacks, Repository, Signature, StatusOptions,
 };
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -109,7 +109,7 @@ pub fn git_clone_repo(
     path: String,
     credentials: Option<GitCredentials>,
 ) -> Result<(), GitError> {
-    info!("Cloning git repo");
+    info!(activity = "git.clone"; "Cloning repository");
     let callbacks = create_callbacks(credentials);
 
     let mut fetch_opts = FetchOptions::new();
@@ -119,37 +119,35 @@ pub fn git_clone_repo(
         .fetch_options(fetch_opts)
         .clone(&url, Path::new(&path))
         .map_err(|e| {
-            error!("Git error: code=CLONE_ERROR");
-            trace!("Git clone error: {}", e);
+            error!(activity = "git.clone", error_code = "CLONE_ERROR"; "Clone failed");
             GitError {
                 message: format!("Failed to clone repository: {}", e),
                 code: "CLONE_ERROR".to_string(),
             }
         })?;
 
-    info!("Git clone complete");
+    info!(activity = "git.clone"; "Clone complete");
     Ok(())
 }
 
 #[tauri::command]
 pub fn git_init_repo(path: String) -> Result<(), GitError> {
-    info!("Initializing git repo");
+    info!(activity = "git.init"; "Initializing repository");
     Repository::init(Path::new(&path))
         .map_err(|e| {
-            error!("Git error: code=INIT_ERROR");
-            trace!("Git init error: {}", e);
+            error!(activity = "git.init", error_code = "INIT_ERROR"; "Init failed");
             GitError {
                 message: format!("Failed to initialize repository: {}", e),
                 code: "INIT_ERROR".to_string(),
             }
         })?;
-    info!("Git repo initialized");
+    info!(activity = "git.init"; "Repository initialized");
     Ok(())
 }
 
 #[tauri::command]
 pub fn git_pull_repo(path: String, credentials: Option<GitCredentials>) -> Result<SyncResult, GitError> {
-    debug!("Git pull");
+    debug!(activity = "git.pull"; "Pulling changes");
     let repo = Repository::open(Path::new(&path))
         .map_err(|e| GitError {
             message: format!("Failed to open repository: {}", e),
@@ -160,7 +158,7 @@ pub fn git_pull_repo(path: String, credentials: Option<GitCredentials>) -> Resul
     let head = match repo.head() {
         Ok(head) => head,
         Err(e) if e.code() == git2::ErrorCode::UnbornBranch => {
-            warn!("Git pull on unborn branch");
+            warn!(activity = "git.pull"; "Pull on unborn branch");
             return Ok(SyncResult {
                 success: true,
                 message: "Repository has no commits yet. Create a commit first.".to_string(),
@@ -240,7 +238,7 @@ pub fn git_pull_repo(path: String, credentials: Option<GitCredentials>) -> Resul
         })?;
 
     if analysis.is_up_to_date() {
-        info!("Git pull: up-to-date");
+        info!(activity = "git.pull", result = "up-to-date"; "Already up to date");
         return Ok(SyncResult {
             success: true,
             message: "Already up to date".to_string(),
@@ -278,7 +276,7 @@ pub fn git_pull_repo(path: String, credentials: Option<GitCredentials>) -> Resul
                 code: "PULL_ERROR".to_string(),
             })?;
 
-        info!("Git pull: fast-forward");
+        info!(activity = "git.pull", result = "fast-forward"; "Fast-forward merge");
         return Ok(SyncResult {
             success: true,
             message: "Fast-forward merge successful".to_string(),
@@ -319,7 +317,7 @@ pub fn git_pull_repo(path: String, credentials: Option<GitCredentials>) -> Resul
                 .filter_map(|c| c.our.map(|entry| String::from_utf8_lossy(&entry.path).to_string()))
                 .collect();
 
-            info!("Git pull: conflicts");
+            info!(activity = "git.pull", result = "conflicts"; "Merge conflicts detected");
             return Ok(SyncResult {
                 success: false,
                 message: "Merge conflicts detected".to_string(),
@@ -375,7 +373,7 @@ pub fn git_pull_repo(path: String, credentials: Option<GitCredentials>) -> Resul
                 code: "REPO_ERROR".to_string(),
             })?;
 
-        info!("Git pull: merge");
+        info!(activity = "git.pull", result = "merge"; "Merge successful");
         return Ok(SyncResult {
             success: true,
             message: "Merge successful".to_string(),
@@ -384,7 +382,7 @@ pub fn git_pull_repo(path: String, credentials: Option<GitCredentials>) -> Resul
         });
     }
 
-    error!("Git error: code=MERGE_ERROR");
+    error!(activity = "git.pull", error_code = "MERGE_ERROR"; "Unable to merge");
     Err(GitError {
         message: "Unable to merge".to_string(),
         code: "MERGE_ERROR".to_string(),
@@ -396,7 +394,7 @@ pub fn git_push_repo(
     path: String,
     credentials: Option<GitCredentials>,
 ) -> Result<SyncResult, GitError> {
-    debug!("Git push");
+    debug!(activity = "git.push"; "Pushing changes");
     let repo = Repository::open(Path::new(&path))
         .map_err(|e| GitError {
             message: format!("Failed to open repository: {}", e),
@@ -407,7 +405,7 @@ pub fn git_push_repo(
     let head = match repo.head() {
         Ok(head) => head,
         Err(e) if e.code() == git2::ErrorCode::UnbornBranch => {
-            warn!("Git push on unborn branch");
+            warn!(activity = "git.push"; "Push on unborn branch");
             return Ok(SyncResult {
                 success: false,
                 message: "Repository has no commits yet. Create a commit first before pushing.".to_string(),
@@ -443,15 +441,14 @@ pub fn git_push_repo(
     remote
         .push(&[&refspec], Some(&mut push_opts))
         .map_err(|e| {
-            error!("Git error: code=PUSH_ERROR");
-            trace!("Git push error: {}", e);
+            error!(activity = "git.push", error_code = "PUSH_ERROR"; "Push failed");
             GitError {
                 message: format!("Failed to push: {}", e),
                 code: "PUSH_ERROR".to_string(),
             }
         })?;
 
-    info!("Git push complete");
+    info!(activity = "git.push"; "Push complete");
     Ok(SyncResult {
         success: true,
         message: "Push successful".to_string(),
@@ -462,7 +459,7 @@ pub fn git_push_repo(
 
 #[tauri::command]
 pub fn git_get_repo_status(path: String) -> Result<RepoStatus, GitError> {
-    debug!("Get git repo status");
+    debug!(activity = "git.status"; "Getting repository status");
     let repo = Repository::open(Path::new(&path))
         .map_err(|e| GitError {
             message: format!("Failed to open repository: {}", e),
@@ -548,7 +545,7 @@ pub fn git_get_repo_status(path: String) -> Result<RepoStatus, GitError> {
 
 #[tauri::command]
 pub fn git_commit_changes(path: String, message: String) -> Result<String, GitError> {
-    debug!("Git commit");
+    debug!(activity = "git.commit"; "Creating commit");
     let repo = Repository::open(Path::new(&path))
         .map_err(|e| GitError {
             message: format!("Failed to open repository: {}", e),
@@ -601,13 +598,13 @@ pub fn git_commit_changes(path: String, message: String) -> Result<String, GitEr
             code: "COMMIT_ERROR".to_string(),
         })?;
 
-    info!("Git commit created");
+    info!(activity = "git.commit"; "Commit created");
     Ok(commit_id.to_string())
 }
 
 #[tauri::command]
 pub fn git_stage_file(path: String, file_path: String) -> Result<(), GitError> {
-    debug!("Git stage");
+    debug!(activity = "git.stage"; "Staging file");
     let repo = Repository::open(Path::new(&path))
         .map_err(|e| GitError {
             message: format!("Failed to open repository: {}", e),
@@ -636,7 +633,7 @@ pub fn git_stage_file(path: String, file_path: String) -> Result<(), GitError> {
 
 #[tauri::command]
 pub fn git_discard_file(path: String, file_path: String) -> Result<(), GitError> {
-    debug!("Git discard");
+    debug!(activity = "git.discard"; "Discarding file changes");
     let repo = Repository::open(Path::new(&path))
         .map_err(|e| GitError {
             message: format!("Failed to open repository: {}", e),
@@ -694,7 +691,7 @@ pub fn git_discard_file(path: String, file_path: String) -> Result<(), GitError>
 
 #[tauri::command]
 pub fn git_resolve_conflict(path: String, file_path: String, resolution: String) -> Result<(), GitError> {
-    debug!("Git resolve conflict");
+    debug!(activity = "git.resolve"; "Resolving conflict");
     let repo = Repository::open(Path::new(&path))
         .map_err(|e| GitError {
             message: format!("Failed to open repository: {}", e),
@@ -815,7 +812,7 @@ pub struct ConflictContent {
 
 #[tauri::command]
 pub fn git_set_remote(path: String, url: String) -> Result<(), GitError> {
-    debug!("Git set remote");
+    debug!(activity = "git.remote"; "Setting remote");
     let repo = Repository::open(Path::new(&path))
         .map_err(|e| GitError {
             message: format!("Failed to open repository: {}", e),

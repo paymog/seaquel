@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, warn};
 use russh::{client, ChannelMsg};
 use russh_keys::ssh_key::PrivateKey;
 use serde::{Deserialize, Serialize};
@@ -105,7 +105,7 @@ async fn establish_tunnel(
     config: &TunnelConfig,
     tunnel_manager: &TunnelManager,
 ) -> Result<TunnelResult, TunnelError> {
-    info!("Creating SSH tunnel via {} auth", config.auth_method);
+    info!(activity = "ssh.tunnel.create", auth_method = config.auth_method.as_str(); "Creating SSH tunnel");
 
     // Create SSH config
     let ssh_config = Arc::new(client::Config::default());
@@ -118,15 +118,14 @@ async fn establish_tunnel(
     )
     .await
     .map_err(|_| {
-        error!("SSH tunnel timeout");
+        error!(activity = "ssh.tunnel.create", error_code = "TIMEOUT"; "SSH tunnel connection timed out");
         TunnelError {
             message: "Connection timed out".to_string(),
             code: "TIMEOUT".to_string(),
         }
     })?
     .map_err(|e| {
-        error!("SSH tunnel error: code=CONNECTION_ERROR");
-        trace!("SSH connection error: {}", e);
+        error!(activity = "ssh.tunnel.create", error_code = "CONNECTION_ERROR"; "SSH tunnel connection failed");
         TunnelError {
             message: format!("Failed to connect to SSH server: {}", e),
             code: "CONNECTION_ERROR".to_string(),
@@ -174,7 +173,7 @@ async fn establish_tunnel(
     };
 
     if !authenticated {
-        error!("SSH auth failed: code=AUTH_FAILED");
+        error!(activity = "ssh.tunnel.create", error_code = "AUTH_FAILED"; "SSH authentication failed");
         return Err(TunnelError {
             message: "Authentication failed".to_string(),
             code: "AUTH_FAILED".to_string(),
@@ -185,8 +184,7 @@ async fn establish_tunnel(
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .map_err(|e| {
-            error!("SSH tunnel bind failed");
-            trace!("Bind error: {}", e);
+            error!(activity = "ssh.tunnel.create", error_code = "BIND_ERROR"; "Failed to bind local port");
             TunnelError {
                 message: format!("Failed to bind local port: {}", e),
                 code: "BIND_ERROR".to_string(),
@@ -241,18 +239,18 @@ async fn establish_tunnel(
                             let remote_host = remote_host.clone();
 
                             tokio::spawn(async move {
-                                if let Err(e) = handle_connection(
+                                if let Err(_e) = handle_connection(
                                     local_stream,
                                     session,
                                     &remote_host,
                                     remote_port,
                                 ).await {
-                                    warn!("SSH tunnel forwarding error: {}", e);
+                                    warn!(activity = "ssh.tunnel.forward"; "SSH tunnel forwarding error");
                                 }
                             });
                         }
-                        Err(e) => {
-                            warn!("SSH tunnel accept error: {}", e);
+                        Err(_e) => {
+                            warn!(activity = "ssh.tunnel.forward"; "SSH tunnel accept error");
                         }
                     }
                 }
@@ -260,7 +258,7 @@ async fn establish_tunnel(
         }
     });
 
-    info!("SSH tunnel established: {}", tunnel_id);
+    info!(activity = "ssh.tunnel.create", tunnel_id = tunnel_id.as_str(), local_port = local_port; "SSH tunnel established");
     Ok(TunnelResult {
         tunnel_id,
         local_port,
@@ -329,7 +327,7 @@ pub async fn close_ssh_tunnel(
     tunnel_id: String,
     tunnel_manager: State<'_, TunnelManager>,
 ) -> Result<(), TunnelError> {
-    info!("Closing SSH tunnel: {}", tunnel_id);
+    info!(activity = "ssh.tunnel.close", tunnel_id = tunnel_id.as_str(); "Closing SSH tunnel");
     let mut tunnels = tunnel_manager.tunnels.lock().await;
 
     if let Some(mut handle) = tunnels.remove(&tunnel_id) {
@@ -338,7 +336,7 @@ pub async fn close_ssh_tunnel(
         }
         Ok(())
     } else {
-        warn!("SSH tunnel not found during close: {}", tunnel_id);
+        warn!(activity = "ssh.tunnel.close", tunnel_id = tunnel_id.as_str(), error_code = "TUNNEL_NOT_FOUND"; "SSH tunnel not found");
         Err(TunnelError {
             message: format!("Tunnel not found: {}", tunnel_id),
             code: "TUNNEL_NOT_FOUND".to_string(),
@@ -351,7 +349,7 @@ pub async fn check_tunnel_status(
     tunnel_id: String,
     tunnel_manager: State<'_, TunnelManager>,
 ) -> Result<bool, TunnelError> {
-    debug!("Checking tunnel status: {}", tunnel_id);
+    debug!(activity = "ssh.tunnel.status", tunnel_id = tunnel_id.as_str(); "Checking tunnel status");
     let tunnels = tunnel_manager.tunnels.lock().await;
     Ok(tunnels.contains_key(&tunnel_id))
 }
@@ -360,7 +358,7 @@ pub async fn check_tunnel_status(
 pub async fn list_active_tunnels(
     tunnel_manager: State<'_, TunnelManager>,
 ) -> Result<Vec<String>, TunnelError> {
-    debug!("Listing active tunnels");
+    debug!(activity = "ssh.tunnel.status"; "Listing active tunnels");
     let tunnels = tunnel_manager.tunnels.lock().await;
     Ok(tunnels.keys().cloned().collect())
 }
