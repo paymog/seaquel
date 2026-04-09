@@ -93,6 +93,7 @@
   "header_add_new_connection": "Neue Verbindung hinzufügen",
   "header_view_erd": "ERD anzeigen",
   "header_toggle_ai": "KI-Assistent umschalten",
+  "header_pending_changes": "Ausstehende Änderungen",
   "header_settings": "Einstellungen",
   "header_change_language": "Sprache ändern",
   "header_delete_dialog_title": "Verbindung löschen",

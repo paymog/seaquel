@@ -93,6 +93,7 @@
   "header_add_new_connection": "إضافة اتصال جديد",
   "header_view_erd": "عرض ERD",
   "header_toggle_ai": "تبديل مساعد الذكاء الاصطناعي",
+  "header_pending_changes": "التغييرات المعلقة",
   "header_settings": "الإعدادات",
   "header_change_language": "تغيير اللغة",
   "header_delete_dialog_title": "حذف الاتصال",

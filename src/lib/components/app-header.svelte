@@ -240,21 +240,30 @@
                 </button>
             {/if}
             {#if !isLearnPage && (db.state.activeConnection?.providerConnectionId)}
-                <Button
-                    size="icon"
-                    variant="ghost"
-                    class="size-6 relative {db.state.activePendingChangesCount > 0 ? 'text-amber-600 dark:text-amber-400' : ''}"
-                    title={db.state.activePendingChangesCount > 0 ? `Pending Changes (${db.state.activePendingChangesCount})` : "Pending Changes"}
-                    aria-label="Pending Changes"
-                    onclick={() => db.pendingChanges.toggleSheet()}
-                >
-                    <ListChecksIcon class="size-3.5" />
-                    {#if db.state.activePendingChangesCount > 0}
-                        <Badge variant="destructive" class="absolute -top-1.5 -right-2 size-4 p-0 text-[10px] flex items-center justify-center bg-amber-500 text-white border-0 animate-pulse">
-                            {db.state.activePendingChangesCount}
-                        </Badge>
-                    {/if}
-                </Button>
+                {#if db.state.activePendingChangesCount > 0}
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        class="h-6 px-2 gap-1.5 text-amber-600 dark:text-amber-400"
+                        title={`${m.header_pending_changes()} (${db.state.activePendingChangesCount})`}
+                        aria-label={m.header_pending_changes()}
+                        onclick={() => db.pendingChanges.toggleSheet()}
+                    >
+                        <ListChecksIcon class="size-3.5" />
+                        <span class="text-xs">{m.header_pending_changes()}&nbsp;({db.state.activePendingChangesCount})</span>
+                    </Button>
+                {:else}
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        class="size-6"
+                        title={m.header_pending_changes()}
+                        aria-label={m.header_pending_changes()}
+                        onclick={() => db.pendingChanges.toggleSheet()}
+                    >
+                        <ListChecksIcon class="size-3.5" />
+                    </Button>
+                {/if}
                 <Button
                     size="icon"
                     variant="ghost"

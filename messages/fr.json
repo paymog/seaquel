@@ -93,6 +93,7 @@
   "header_add_new_connection": "Ajouter une nouvelle connexion",
   "header_view_erd": "Voir l'ERD",
   "header_toggle_ai": "Activer/désactiver l'assistant IA",
+  "header_pending_changes": "Modifications en attente",
   "header_settings": "Paramètres",
   "header_change_language": "Changer de langue",
   "header_delete_dialog_title": "Supprimer la connexion",

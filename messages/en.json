@@ -93,6 +93,7 @@
   "header_add_new_connection": "Add new connection",
   "header_view_erd": "View ERD",
   "header_toggle_ai": "Toggle AI Assistant",
+  "header_pending_changes": "Pending Changes",
   "header_settings": "Settings",
   "header_change_language": "Change language",
   "header_delete_dialog_title": "Delete Connection",
