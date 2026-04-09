@@ -756,10 +756,15 @@
 														{:else}
 															<EyeIcon class="size-4" />
 														{/if}
-														<Tooltip.Root>
-															<Tooltip.Trigger class="flex-1 truncate text-left">{table.name}</Tooltip.Trigger>
-															<Tooltip.Content side="top">{table.name}</Tooltip.Content>
-														</Tooltip.Root>
+														<!-- svelte-ignore a11y_no_static_element_interactions -->
+														<span
+															class="flex-1 truncate text-left"
+															title=""
+															onpointerenter={(e: PointerEvent) => {
+																const el = e.currentTarget as HTMLElement;
+																el.title = el.scrollWidth > el.clientWidth ? table.name : '';
+															}}
+														>{table.name}</span>
 													<DropdownMenu.Root>
 														<DropdownMenu.Trigger>
 															{#snippet child({ props })}
