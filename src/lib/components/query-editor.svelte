@@ -7,35 +7,18 @@
 	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 	import DeleteConfirmDialog from "$lib/components/delete-confirm-dialog.svelte";
 	import DestructiveQueryConfirmDialog from "$lib/components/destructive-query-confirm-dialog.svelte";
-	import { findDestructiveStatements, isDestructiveStatement, type DestructiveStatement } from "$lib/db/query-utils.js";
 	import { PlayIcon, DatabaseIcon, NetworkIcon, ColumnsIcon } from "@lucide/svelte";
-	import { toast } from "svelte-sonner";
-import { errorToast } from "$lib/utils/toast";
 	import SaveQueryDialog from "$lib/components/save-query-dialog.svelte";
 	import ParameterInputDialog from "$lib/components/parameter-input-dialog.svelte";
-import MonacoEditor, { type MonacoEditorRef } from "$lib/components/monaco-editor.svelte";
-	import MonacoDiffEditor from "$lib/components/monaco-diff-editor.svelte";
+	import MonacoEditor, { type MonacoEditorRef } from "$lib/components/monaco-editor.svelte";
 	import * as Resizable from "$lib/components/ui/resizable";
-	import { save } from "@tauri-apps/plugin-dialog";
-	import { writeTextFile } from "@tauri-apps/plugin-fs";
-	import { format as formatSQL } from "sql-formatter";
 	import VirtualResultsTable from "$lib/components/virtual-results-table.svelte";
-	import { formatConfig, getExportContent, type ExportFormat } from "$lib/utils/export-formats.js";
 	import { m } from "$lib/paraglide/messages.js";
-	import { copyCell as clipboardCopyCell, copyRowAsJSON as clipboardCopyRowAsJSON, copyColumn as clipboardCopyColumn } from "$lib/utils/clipboard";
-	import { splitSqlStatements, getStatementAtOffset } from "$lib/db/sql-parser.js";
-	import { hasParameters, extractParameters, createDefaultParameters } from "$lib/db/query-params.js";
-	import type { QueryParameter, ParameterValue, DatabaseType } from "$lib/types";
-	import { generateSQL } from "$lib/services/ai";
 	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
-	import { getDatabase } from "$lib/storage/db";
 	import QueryExampleCard from "$lib/components/empty-states/query-example-card.svelte";
-	import AiModelSwitcher from "$lib/components/ai-model-switcher.svelte";
-	import { sampleQueries } from "$lib/config/sample-queries.js";
 	import PlusIcon from "@lucide/svelte/icons/plus";
 	import { EmptyState } from "$lib/components/ui/empty-state";
 
-	// Import subcomponents
 	import {
 		QueryToolbar,
 		QueryResultTabs,
@@ -44,761 +27,75 @@ import MonacoEditor, { type MonacoEditorRef } from "$lib/components/monaco-edito
 		QueryResultsControlBar,
 		ExplainResultPane,
 		VisualizeResultPane,
-		VisualQueryPanel
+		VisualQueryPanel,
+		AIPromptOverlay,
+		DiffView,
+		createParamDialog,
+		createViewState,
+		createExecution,
+		createExplainVisualize,
+		createSaveFormatExport,
+		createCellEditing,
+		createAIInlinePrompt,
 	} from "$lib/components/query-editor/index.js";
-	import { schemaToQueryBuilder } from "$lib/utils/schema-adapter";
 
-	// Import chart components
-	import { QueryChart, createDefaultChartConfig } from "$lib/components/charts/index.js";
-	import type { ResultViewMode, ChartConfig } from "$lib/types";
-	import { DEFAULT_LAYOUT_OPTIONS, type QueryLayoutOptions } from "$lib/utils/query-visual-layout";
+	import { QueryChart } from "$lib/components/charts/index.js";
 
 	let { tabId: propTabId = undefined }: { tabId?: string } = $props();
 
 	const db = useDatabase();
 	const shortcuts = useShortcuts();
 	const sidebar = useSidebar();
+	let monacoRef = $state<MonacoEditorRef | null>(null);
+	let queryToolbar = $state<ReturnType<typeof QueryToolbar>>();
 
-	// Pane-aware: resolve to a specific tab instead of global active tab
+	// Core derived state
 	const activeTab = $derived(
 		propTabId
 			? db.state.queryTabs.find(t => t.id === propTabId) ?? null
 			: db.state.activeQueryTab
 	);
 	const activeTabId = $derived(propTabId ?? db.state.activeQueryTabId);
-	let showSaveDialog = $state(false);
-	let showSaveAsDialog = $state(false);
-let showParamsDialog = $state(false);
-	let pendingParams = $state<QueryParameter[]>([]);
-	// Track pending action type: 'query' for execute all, 'query-current' for current statement, explain or visualize details
-	let pendingAction = $state<'query' | { type: 'query-current'; cursorOffset: number } | { type: 'explain'; analyze: boolean; cursorOffset: number } | { type: 'visualize'; cursorOffset: number } | null>(null);
-	let deletingRowIndex = $state<number | null>(null);
-	let pendingDeleteRow = $state<{ index: number; row: Record<string, unknown> } | null>(null);
-	let showDeleteConfirm = $state(false);
-	let showDestructiveConfirm = $state(false);
-	let destructiveStatements = $state<DestructiveStatement[]>([]);
-	let pendingDestructiveAction = $state<(() => void) | null>(null);
-	let monacoRef = $state<MonacoEditorRef | null>(null);
-
-	// Version history diff mode state
-	let diffMode = $state<{
-		original: string;
-		modified: string;
-		leftLabel: string;
-		rightLabel: string;
-		restoreLeft?: string;
-		restoreRight?: string;
-	} | null>(null);
-
-	let diffOriginalWidth = $state(0);
-	let queryToolbar = $state<ReturnType<typeof QueryToolbar>>();
-
-	function closeDiff() {
-		diffMode = null;
-		queryToolbar?.clearVersionSelection();
-	}
-
-	// Get resolved versions for the current saved query
-	const savedQueryVersions = $derived(
-		activeTab?.queryId
-			? db.savedQueries.getResolvedVersionsForQuery(activeTab.queryId)
-			: []
-	);
-
-
-	// AI inline prompt state
-	let aiInlinePromptOpen = $state(false);
-	let aiInlinePromptText = $state("");
-	let aiInlinePromptLoading = $state(false);
-	let aiInlinePromptError = $state<{ message: string; action?: { label: string; fn: () => void } } | null>(null);
-
-	// Get the active result (for multi-statement support)
 	const activeResultIndex = $derived(activeTab?.activeResultIndex ?? 0);
 	const activeResult = $derived(activeTab?.results?.[activeResultIndex] ?? null);
-
-	// Get embedded explain/visualize results
-	const explainResult = $derived(activeTab?.explainResult);
-	const visualizeResult = $derived(activeTab?.visualizeResult);
-
-	// Chart view state (per result, keyed by tab-result combination)
-	let viewModeByResult = $state<Record<string, ResultViewMode>>({});
-	let chartConfigByResult = $state<Record<string, ChartConfig>>({});
-
-	// Get current view mode and chart config for active result
 	const resultKey = $derived(
 		activeTabId && activeResultIndex !== undefined
 			? `${activeTabId}-${activeResultIndex}`
 			: null
 	);
-	const currentViewMode = $derived<ResultViewMode>(
-		resultKey ? (viewModeByResult[resultKey] ?? 'table') : 'table'
-	);
-	const currentChartConfig = $derived<ChartConfig | undefined>(
-		resultKey && activeResult
-			? (chartConfigByResult[resultKey] ?? createDefaultChartConfig(activeResult.columns, activeResult.rows))
-			: undefined
-	);
 
-	const handleViewModeChange = (mode: ResultViewMode) => {
-		if (resultKey) {
-			viewModeByResult[resultKey] = mode;
-		}
+	// Context for all modules
+	const ctx = {
+		db,
+		getMonacoRef: () => monacoRef,
+		getActiveTab: () => activeTab,
+		getActiveTabId: () => activeTabId,
+		getActiveResult: () => activeResult,
+		getActiveResultIndex: () => activeResultIndex,
+		getResultKey: () => resultKey,
 	};
 
-	const handleChartConfigChange = (config: ChartConfig) => {
-		if (resultKey) {
-			chartConfigByResult[resultKey] = config;
-		}
-	};
-
-	// Visualize layout options state
-	let visualizeLayoutOptions = $state<QueryLayoutOptions>({ ...DEFAULT_LAYOUT_OPTIONS });
-
-	const allResults = $derived(activeTab?.results ?? []);
-
-	// Visual query builder panel state
-	let visualPanelOpen = $state(false);
-	let visualPanelGetSql: (() => string) | undefined = $state(undefined);
-
-	// Convert database schema to query builder format
-	const queryBuilderSchema = $derived(
-		db.state.activeSchema ? schemaToQueryBuilder(db.state.activeSchema) : []
-	);
-
-	// Sync SQL from visual builder back to query tab when panel closes
-	function syncVisualBuilderSql() {
-		if (visualPanelGetSql && activeTabId) {
-			const sql = visualPanelGetSql();
-			db.queryTabs.updateContent(activeTabId, sql);
-			currentQuery = sql;
-		}
-	}
-
-	// Toggle visual panel and sync SQL when closing
-	function toggleVisualPanel() {
-		if (visualPanelOpen) {
-			// Closing - sync SQL back
-			syncVisualBuilderSql();
-		}
-		visualPanelOpen = !visualPanelOpen;
-	}
-
-	// Track query content for live statement count (overridable derived resets on tab switch)
-	let currentQuery = $derived(activeTab?.query ?? '');
-
-	// Check staleness for explain/visualize results
-	const isExplainStale = $derived(
-		explainResult?.sourceQuery && currentQuery
-			? explainResult.sourceQuery.trim() !== currentQuery.trim()
-			: false
-	);
-	const isVisualizeStale = $derived(
-		visualizeResult?.sourceQuery && currentQuery
-			? visualizeResult.sourceQuery.trim() !== currentQuery.trim()
-			: false
-	);
-
-	// Live statement count from current query text
-	const liveStatementCount = $derived.by(() => {
-		if (!currentQuery?.trim()) return 0;
-		const dbType = db.state.activeConnection?.type ?? "postgres";
-		return splitSqlStatements(currentQuery, dbType).length;
+	// Compose modules
+	const viewState = createViewState(ctx, () => queryToolbar?.clearVersionSelection());
+	const paramDialog = createParamDialog(ctx);
+	const exec = createExecution(ctx, paramDialog, () => {
+		if (viewState.visualPanelOpen) viewState.syncVisualBuilderSql();
 	});
+	const explainViz = createExplainVisualize(ctx, paramDialog, viewState);
+	const saveExport = createSaveFormatExport(ctx);
+	const cellEdit = createCellEditing(ctx);
+	const ai = createAIInlinePrompt(ctx, { onExecute: exec.handleExecute });
 
-	// Check if results are editable (have source table with primary keys)
-	const isEditable = $derived(
-		activeResult?.sourceTable &&
-		activeResult?.sourceTable.primaryKeys.length > 0 &&
-		!activeResult?.isError
-	);
-	
-	$inspect(isEditable)
-	$inspect(activeResult)
-
-	// Pending changes indicators for query results
-	const qePendingChangesForTable = $derived.by(() => {
-		const st = activeResult?.sourceTable;
-		if (!st) return [];
-		return db.state.activePendingChanges.filter(
-			(c) => c.target?.schema === st.schema && c.target?.table === st.name,
-		);
-	});
-
-	const qePendingCellEdits = $derived.by(() => {
-		const st = activeResult?.sourceTable;
-		const rows = activeResult?.rows;
-		if (!st || !rows || st.primaryKeys.length === 0) return undefined;
-		const edits = new Map<string, unknown>();
-		for (const change of qePendingChangesForTable) {
-			if ((change.origin === "inline-edit" || change.origin === "set-default") && change.target?.primaryKeyValues && change.target.column) {
-				const rowIdx = rows.findIndex((row) =>
-					st.primaryKeys.every((pk) => String(row[pk]) === String(change.target!.primaryKeyValues![pk])),
-				);
-				if (rowIdx >= 0) {
-					edits.set(`${rowIdx}:${change.target.column}`, change.target.newValue);
-				}
-			}
-		}
-		return edits.size > 0 ? edits : undefined;
-	});
-
-	const qePendingRowDeletes = $derived.by(() => {
-		const st = activeResult?.sourceTable;
-		const rows = activeResult?.rows;
-		if (!st || !rows || st.primaryKeys.length === 0) return undefined;
-		const deletes = new Set<number>();
-		for (const change of qePendingChangesForTable) {
-			if (change.origin === "delete-row" && change.target?.primaryKeyValues) {
-				const rowIdx = rows.findIndex((row) =>
-					st.primaryKeys.every((pk) => String(row[pk]) === String(change.target!.primaryKeyValues![pk])),
-				);
-				if (rowIdx >= 0) {
-					deletes.add(rowIdx);
-				}
-			}
-		}
-		return deletes.size > 0 ? deletes : undefined;
-	});
-
-	// Get sample queries for the active connection type
-	const activeSampleQueries = $derived(
-		sampleQueries[db.state.activeConnection?.type ?? "postgres"]?.slice(0, 2) ?? []
-	);
-
-	// Handle trying a sample query
-	const handleTrySampleQuery = (query: string) => {
-		if (activeTabId) {
-			db.queryTabs.updateContent(activeTabId, query);
-		} else {
-			db.queryTabs.add(undefined, query);
-		}
-	};
-
-	async function handleCellSave(rowIndex: number, column: string, newValue: string | null) {
-		if (!activeTabId || !activeResult?.sourceTable) return;
-
-		const result = await db.queries.updateCell(
-			activeTabId,
-			activeResultIndex,
-			rowIndex,
-			column,
-			newValue,
-			activeResult.sourceTable
-		);
-
-		if (result.success) {
-			if (result.queued) {
-				toast.info("Change added to pending changes");
-			} else {
-				toast.success(m.query_cell_updated());
-			}
-		} else {
-			errorToast(m.query_cell_update_failed({ error: result.error || '' }));
+	function handleParamExecute(values: import("$lib/types").ParameterValue[]) {
+		const result = exec.handleParamExecute(values);
+		if (result?.switchViewMode) {
+			viewState.handleViewModeChange(result.switchViewMode);
 		}
 	}
 
-	function confirmDeleteRow(rowIndex: number, row: Record<string, unknown>) {
-		pendingDeleteRow = { index: rowIndex, row };
-		showDeleteConfirm = true;
-	}
-
-	async function handleDeleteRow() {
-		if (!pendingDeleteRow || !activeTabId || !activeResult?.sourceTable) return;
-
-		deletingRowIndex = pendingDeleteRow.index;
-		showDeleteConfirm = false;
-
-		const result = await db.queries.deleteRow(
-			activeResult.sourceTable,
-			pendingDeleteRow.row
-		);
-
-		if (result.success) {
-			if (result.queued) {
-				toast.info("Delete added to pending changes");
-			} else {
-				toast.success(m.query_row_deleted());
-				await db.queries.execute(activeTabId);
-			}
-		} else {
-			errorToast(m.query_row_delete_failed({ error: result.error || '' }));
-		}
-
-		deletingRowIndex = null;
-		pendingDeleteRow = null;
-	}
-
-	/**
-	 * Get parameter definitions for the active query.
-	 * Uses linked saved query parameters if available, otherwise creates defaults.
-	 */
-	const getParameterDefinitions = (query: string): QueryParameter[] => {
-		const queryId = activeTab?.queryId;
-		const savedQuery = queryId
-			? db.state.projectQueries.find((q) => q.id === queryId)
-			: null;
-
-		if (savedQuery?.parameters && savedQuery.parameters.length > 0) {
-			return savedQuery.parameters;
-		}
-
-		// Create default parameters from extracted names
-		const paramNames = extractParameters(query);
-		return createDefaultParameters(paramNames);
-	};
-
-	const proceedWithExecute = (query: string, tabId: string) => {
-		if (hasParameters(query)) {
-			pendingParams = getParameterDefinitions(query);
-			pendingAction = 'query';
-			showParamsDialog = true;
-		} else {
-			db.queries.execute(tabId);
-		}
-	};
-
-	const handleExecute = () => {
-		if (!activeTabId || !activeTab) return;
-
-		// Sync SQL from visual builder if open
-		if (visualPanelOpen) syncVisualBuilderSql();
-
-		const query = activeTab.query;
-		const tabId = activeTabId;
-		const dbType = db.state.activeConnection?.type ?? "postgres";
-
-		// Check for destructive statements before executing
-		const statements = splitSqlStatements(query, dbType);
-		const dangerous = findDestructiveStatements(statements);
-
-		if (dangerous.length > 0) {
-			destructiveStatements = dangerous;
-			pendingDestructiveAction = () => proceedWithExecute(query, tabId);
-			showDestructiveConfirm = true;
-			return;
-		}
-
-		proceedWithExecute(query, tabId);
-	};
-
-	const proceedWithExecuteCurrent = (query: string, tabId: string, cursorOffset: number, dbType: DatabaseType) => {
-		const currentStatement = getStatementAtOffset(query, cursorOffset, dbType);
-
-		if (currentStatement && hasParameters(currentStatement.sql)) {
-			pendingParams = getParameterDefinitions(currentStatement.sql);
-			pendingAction = { type: 'query-current', cursorOffset };
-			showParamsDialog = true;
-		} else {
-			db.queries.executeCurrent(tabId, cursorOffset);
-		}
-	};
-
-	const handleExecuteCurrent = () => {
-		if (!activeTabId || !activeTab) return;
-
-		// Sync SQL from visual builder if open
-		if (visualPanelOpen) syncVisualBuilderSql();
-
-		const query = activeTab.query;
-		const tabId = activeTabId;
-		const cursorOffset = monacoRef?.getCursorOffset() ?? 0;
-		const dbType = db.state.activeConnection?.type ?? "postgres";
-
-		// Check if current statement is destructive
-		const currentStatement = getStatementAtOffset(query, cursorOffset, dbType);
-		if (currentStatement) {
-			const reason = isDestructiveStatement(currentStatement.sql);
-			if (reason) {
-				destructiveStatements = [{ sql: currentStatement.sql, index: currentStatement.index, reason }];
-				pendingDestructiveAction = () => proceedWithExecuteCurrent(query, tabId, cursorOffset, dbType);
-				showDestructiveConfirm = true;
-				return;
-			}
-		}
-
-		proceedWithExecuteCurrent(query, tabId, cursorOffset, dbType);
-	};
-
-	const handleDestructiveConfirm = () => {
-		showDestructiveConfirm = false;
-		pendingDestructiveAction?.();
-		pendingDestructiveAction = null;
-		destructiveStatements = [];
-	};
-
-	const handleParamExecute = (values: ParameterValue[]) => {
-		if (!activeTabId) return;
-
-		if (pendingAction === 'query') {
-			db.queries.executeWithParams(activeTabId, values);
-		} else if (pendingAction && typeof pendingAction === 'object' && pendingAction.type === 'query-current') {
-			db.queries.executeCurrentWithParams(
-				activeTabId,
-				pendingAction.cursorOffset,
-				values
-			);
-		} else if (pendingAction && typeof pendingAction === 'object' && pendingAction.type === 'explain') {
-			db.explainTabs.executeEmbeddedWithParams(
-				activeTabId,
-				values,
-				pendingAction.analyze,
-				pendingAction.cursorOffset
-			);
-			// Switch view mode to explain
-			if (resultKey) {
-				viewModeByResult[resultKey] = 'explain';
-			}
-		} else if (pendingAction && typeof pendingAction === 'object' && pendingAction.type === 'visualize') {
-			const success = db.visualizeTabs.visualizeEmbeddedWithParams(
-				activeTabId,
-				values,
-				pendingAction.cursorOffset
-			);
-			// Switch view mode to visualize
-			if (success && resultKey) {
-				viewModeByResult[resultKey] = 'visualize';
-			}
-		}
-		pendingAction = null;
-	};
-
-	const handleParamCancel = () => {
-		pendingAction = null;
-	};
-
-	const handleExplain = (analyze: boolean) => {
-		if (!activeTabId || !activeTab) return;
-
-		// Sync SQL from visual builder if open
-		if (visualPanelOpen) syncVisualBuilderSql();
-
-		const query = activeTab.query;
-		const cursorOffset = monacoRef?.getCursorOffset() ?? 0;
-
-		// Check if query has parameters
-		if (hasParameters(query)) {
-			pendingParams = getParameterDefinitions(query);
-			pendingAction = { type: 'explain', analyze, cursorOffset };
-			showParamsDialog = true;
-		} else {
-			// No parameters, execute embedded explain
-			db.explainTabs.executeEmbedded(activeTabId, analyze, cursorOffset);
-			// Switch view mode to explain
-			if (resultKey) {
-				viewModeByResult[resultKey] = 'explain';
-			}
-		}
-	};
-
-	const handleVisualize = () => {
-		if (!activeTabId || !activeTab) return;
-
-		// Sync SQL from visual builder if open
-		if (visualPanelOpen) syncVisualBuilderSql();
-
-		const query = activeTab.query;
-		const cursorOffset = monacoRef?.getCursorOffset() ?? 0;
-		const dbType = db.state.activeConnection?.type ?? "postgres";
-
-		// Get the current statement to check for parameters
-		const currentStatement = getStatementAtOffset(query, cursorOffset, dbType);
-		const queryToCheck = currentStatement?.sql ?? query;
-
-		// Check if query has parameters
-		if (hasParameters(queryToCheck)) {
-			pendingParams = getParameterDefinitions(queryToCheck);
-			pendingAction = { type: 'visualize', cursorOffset };
-			showParamsDialog = true;
-		} else {
-			// No parameters, visualize directly
-			const success = db.visualizeTabs.visualizeEmbedded(activeTabId, cursorOffset);
-			// Switch view mode to visualize
-			if (success && resultKey) {
-				viewModeByResult[resultKey] = 'visualize';
-			}
-		}
-	};
-
-	const handleRefreshExplain = (analyze: boolean) => {
-		if (!activeTabId || !activeTab) return;
-
-		const query = activeTab.query;
-		const cursorOffset = monacoRef?.getCursorOffset() ?? 0;
-		const dbType = db.state.activeConnection?.type ?? "postgres";
-
-		// Get the current statement to check for parameters
-		const currentStatement = getStatementAtOffset(query, cursorOffset, dbType);
-		const queryToCheck = currentStatement?.sql ?? query;
-
-		// Check if query has parameters
-		if (hasParameters(queryToCheck)) {
-			pendingParams = getParameterDefinitions(queryToCheck);
-			pendingAction = { type: 'explain', analyze, cursorOffset };
-			showParamsDialog = true;
-		} else {
-			// No parameters, execute directly
-			db.explainTabs.executeEmbedded(activeTabId, analyze, cursorOffset);
-		}
-	};
-
-	const handleRefreshVisualize = () => {
-		if (!activeTabId || !activeTab) return;
-
-		const query = activeTab.query;
-		const cursorOffset = monacoRef?.getCursorOffset() ?? 0;
-		const dbType = db.state.activeConnection?.type ?? "postgres";
-
-		// Get the current statement to check for parameters
-		const currentStatement = getStatementAtOffset(query, cursorOffset, dbType);
-		const queryToCheck = currentStatement?.sql ?? query;
-
-		// Check if query has parameters
-		if (hasParameters(queryToCheck)) {
-			pendingParams = getParameterDefinitions(queryToCheck);
-			pendingAction = { type: 'visualize', cursorOffset };
-			showParamsDialog = true;
-		} else {
-			// No parameters, visualize directly
-			db.visualizeTabs.visualizeEmbedded(activeTabId, cursorOffset);
-		}
-	};
-
-	const handleCloseExplain = () => {
-		if (!activeTabId) return;
-		db.queryTabs.clearExplainResult(activeTabId);
-		// Switch back to table view
-		if (resultKey) {
-			viewModeByResult[resultKey] = 'table';
-		}
-	};
-
-	const handleCloseVisualize = () => {
-		if (!activeTabId) return;
-		db.queryTabs.clearVisualizeResult(activeTabId);
-		// Switch back to table view
-		if (resultKey) {
-			viewModeByResult[resultKey] = 'table';
-		}
-	};
-
-	const handleSave = () => {
-		if (!activeTab?.query.trim()) return;
-		if (activeTab.queryId) {
-			// Overwrite existing query
-			const savedQuery = db.state.projectQueries.find((q) => q.id === activeTab.queryId);
-			if (savedQuery) {
-				db.savedQueries.saveQuery(savedQuery.name, activeTab.query, activeTab.id, savedQuery.parameters);
-				toast.success(m.save_query_success());
-				return;
-			}
-		}
-		showSaveDialog = true;
-	};
-
-	const handleSaveAs = () => {
-		if (!activeTab?.query.trim()) return;
-		showSaveAsDialog = true;
-	};
-
-	const handleFormat = () => {
-		if (!activeTab?.query.trim()) return;
-		try {
-			const formatted = formatSQL(activeTab.query, {
-				language: "postgresql",
-				tabWidth: 2,
-				keywordCase: "upper"
-			});
-			db.queryTabs.updateContent(activeTabId!, formatted);
-		} catch {
-			errorToast(m.query_format_failed());
-		}
-	};
-
-	const getContent = (format: ExportFormat): string => {
-		if (!activeResult) return format === "json" ? "[]" : "";
-		return getExportContent(format, activeResult.columns, activeResult.rows);
-	};
-
-	const handleExport = async (format: ExportFormat) => {
-		if (!activeResult) return;
-
-		const config = formatConfig[format];
-		const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
-		const defaultName = `query_results_${timestamp}.${config.extension}`;
-		const filters = [{ name: config.name, extensions: [config.extension] }];
-
-		const filePath = await save({
-			defaultPath: defaultName,
-			filters
-		});
-
-		if (!filePath) return;
-
-		const content = getContent(format);
-		await writeTextFile(filePath, content);
-	};
-
-	const handleCopy = async (format: ExportFormat) => {
-		if (!activeResult) return;
-
-		const content = getContent(format);
-		const formatNames: Record<ExportFormat, string> = {
-			csv: "CSV",
-			json: "JSON",
-			sql: "SQL INSERT",
-			markdown: "Markdown"
-		};
-
-		try {
-			await navigator.clipboard.writeText(content);
-			toast.success(m.query_copied_to_clipboard({ format: formatNames[format] }));
-		} catch {
-			errorToast(m.query_copy_failed());
-		}
-	};
-
-	// Context menu for copying cells
-	let contextCell = $state<{ value: unknown; column: string; row: Record<string, unknown>; rowIndex: number } | null>(null);
-
-	const handleCellRightClick = (value: unknown, column: string, row: Record<string, unknown>, rowIndex: number) => {
-		contextCell = { value, column, row, rowIndex };
-	};
-
-	const copyCell = async () => {
-		if (!contextCell) return;
-		await clipboardCopyCell(contextCell.value);
-	};
-
-	const copyRowAsJSON = async () => {
-		if (!contextCell) return;
-		await clipboardCopyRowAsJSON(contextCell.row);
-	};
-
-	const copyColumn = async () => {
-		if (!contextCell || !activeResult) return;
-		await clipboardCopyColumn(contextCell.column, activeResult.rows);
-	};
-
-	const setNull = async () => {
-		if (!contextCell) return;
-		await handleCellSave(contextCell.rowIndex, contextCell.column, null);
-	};
-
-	const setDefault = async () => {
-		if (!contextCell || !activeTabId || !activeResult?.sourceTable) return;
-
-		const result = await db.queries.setCellDefault(
-			activeTabId,
-			activeResultIndex,
-			contextCell.rowIndex,
-			contextCell.column,
-			activeResult.sourceTable
-		);
-
-		if (result.success) {
-			if (result.queued) {
-				toast.info("Change added to pending changes");
-			} else {
-				toast.success(m.query_cell_updated());
-			}
-		} else {
-			errorToast(m.query_cell_update_failed({ error: result.error || '' }));
-		}
-	};
-
-	// AI inline prompt handlers
-	function handleAIInlinePrompt(_pos: { lineNumber: number; column: number }) {
-		aiInlinePromptText = "";
-		aiInlinePromptError = null;
-		aiInlinePromptOpen = true;
-	}
-
-	async function submitAIInlinePrompt() {
-		if (!aiInlinePromptText.trim() || aiInlinePromptLoading) return;
-		aiInlinePromptLoading = true;
-		try {
-			const activeConn = db.state.activeConnection;
-			const shareSchema = activeConn?.aiShareSchema !== undefined
-				? activeConn.aiShareSchema
-				: aiSettingsStore.settings.shareSchemaGlobally;
-			const activeProviderId = activeConn?.activeAIProviderId ?? null;
-			const activeModel = activeConn?.activeAIModel ?? null;
-
-			if (!activeProviderId || !activeModel) {
-				if (aiSettingsStore.settings.providers.length === 0) {
-					aiInlinePromptError = {
-						message: "No AI provider configured.",
-						action: {
-							label: "Configure",
-							fn: () => { db.settingsTabs.open("app", "ai-provider"); closeAIInlinePrompt(); },
-						},
-					};
-				} else {
-					aiInlinePromptError = {
-						message: "No model selected. Pick one from the model switcher to the right.",
-					};
-				}
-				aiInlinePromptLoading = false;
-				return;
-			}
-
-			const sql = await generateSQL({
-				request: aiInlinePromptText,
-				existingQuery: activeTab?.query ?? "",
-				schema: db.state.activeSchema ?? [],
-				shareSchema,
-				providerId: activeProviderId,
-				model: activeModel,
-				databaseType: db.state.activeConnection?.type,
-			});
-			monacoRef?.insertText(sql);
-			aiInlinePromptOpen = false;
-			aiInlinePromptText = "";
-			handleExecute();
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			if (msg === "no_provider") {
-				aiInlinePromptError = {
-					message: "No AI provider configured.",
-					action: {
-						label: "Configure",
-						fn: () => { db.settingsTabs.open("app", "ai-provider"); closeAIInlinePrompt(); },
-					},
-				};
-			} else if (msg === "no_api_key") {
-				aiInlinePromptError = {
-					message: "No API key configured.",
-					action: {
-						label: "Settings → AI",
-						fn: () => { db.settingsTabs.open("app", "ai-provider"); closeAIInlinePrompt(); },
-					},
-				};
-			} else if (msg === "rate_limit") {
-				aiInlinePromptError = { message: "Rate limit reached. Please wait and try again." };
-			} else {
-				aiInlinePromptError = { message: "Something went wrong. Please try again." };
-				toast.error(msg);
-			}
-		} finally {
-			aiInlinePromptLoading = false;
-		}
-	}
-
-	function closeAIInlinePrompt() {
-		aiInlinePromptOpen = false;
-		aiInlinePromptText = "";
-		aiInlinePromptLoading = false;
-		aiInlinePromptError = null;
-	}
-
-	const focusOnMount = () => (el: HTMLInputElement) => {
-		el.focus();
-	};
-
-	// Register keyboard shortcuts
 	onMount(() => {
-		shortcuts.registerHandler('saveQuery', handleSave);
-		shortcuts.registerHandler('formatSql', handleFormat);
+		shortcuts.registerHandler('saveQuery', saveExport.handleSave);
+		shortcuts.registerHandler('formatSql', saveExport.handleFormat);
 	});
 
 	onDestroy(() => {
@@ -807,51 +104,135 @@ let showParamsDialog = $state(false);
 	});
 </script>
 
+<!-- Reusable snippets -->
+
+{#snippet explainEmptyState()}
+	<EmptyState
+		icon={DatabaseIcon}
+		title="No Explain Results"
+		description="Analyze your query's execution plan to understand how the database processes it."
+	>
+		{#snippet actions()}
+			<div class="flex gap-2 justify-center">
+				<Button size="sm" variant="outline" onclick={() => explainViz.handleExplain(false)}>Explain</Button>
+				<Button size="sm" onclick={() => explainViz.handleExplain(true)}>Explain Analyze</Button>
+			</div>
+		{/snippet}
+	</EmptyState>
+{/snippet}
+
+{#snippet visualizeEmptyState()}
+	<EmptyState
+		icon={NetworkIcon}
+		title="No Visual Results"
+		description="See a visual representation of your query structure."
+	>
+		{#snippet actions()}
+			<Button size="sm" onclick={explainViz.handleVisualize}>Visualize Query</Button>
+		{/snippet}
+	</EmptyState>
+{/snippet}
+
+{#snippet resultControlBar(opts: { withChartAndExport?: boolean })}
+	<QueryResultsControlBar
+		currentViewMode={viewState.currentViewMode}
+		onViewModeChange={viewState.handleViewModeChange}
+		explainResult={viewState.explainResult}
+		visualizeResult={viewState.visualizeResult}
+		isExplainStale={viewState.isExplainStale}
+		isVisualizeStale={viewState.isVisualizeStale}
+		currentChartConfig={opts.withChartAndExport ? viewState.currentChartConfig : undefined}
+		activeResult={opts.withChartAndExport ? activeResult : undefined}
+		onChartConfigChange={opts.withChartAndExport ? viewState.handleChartConfigChange : undefined}
+		onExport={opts.withChartAndExport ? saveExport.handleExport : undefined}
+		onCopy={opts.withChartAndExport ? saveExport.handleCopy : undefined}
+		onRefreshExplain={explainViz.handleRefreshExplain}
+		onCloseExplain={explainViz.handleCloseExplain}
+		visualizeLayoutOptions={viewState.visualizeLayoutOptions}
+		onVisualizeLayoutChange={(opts) => viewState.visualizeLayoutOptions = opts}
+		onRefreshVisualize={explainViz.handleRefreshVisualize}
+		onCloseVisualize={explainViz.handleCloseVisualize}
+	/>
+{/snippet}
+
+{#snippet resultContentByViewMode()}
+	{#if viewState.currentViewMode === 'explain'}
+		{#if viewState.explainResult}
+			<ExplainResultPane explainResult={viewState.explainResult} />
+		{:else}
+			{@render explainEmptyState()}
+		{/if}
+	{:else if viewState.currentViewMode === 'visualize'}
+		{#if viewState.visualizeResult}
+			<VisualizeResultPane visualizeResult={viewState.visualizeResult} layoutOptions={viewState.visualizeLayoutOptions} />
+		{:else}
+			{@render visualizeEmptyState()}
+		{/if}
+	{/if}
+{/snippet}
+
+{#snippet noResultsEmptyState()}
+	<div class="flex-1 overflow-auto p-6">
+		<div class="w-full max-w-md space-y-6 mx-auto my-auto min-h-full flex flex-col justify-center">
+			<div class="text-center">
+				<PlayIcon class="size-10 mx-auto mb-2 opacity-20" />
+				<p class="font-medium">{m.query_no_results()}</p>
+				<p class="text-xs text-muted-foreground mt-1">{m.query_run_hint({ shortcut: "\u2318+Enter" })}</p>
+			</div>
+
+			{#if viewState.activeSampleQueries.length > 0 && !viewState.currentQuery?.trim()}
+				<div class="space-y-3">
+					<p class="text-xs text-muted-foreground text-center">{m.empty_query_sample_title()}</p>
+					{#each viewState.activeSampleQueries as sampleQuery (sampleQuery.id)}
+						<QueryExampleCard query={sampleQuery} onTry={viewState.handleTrySampleQuery} />
+					{/each}
+				</div>
+			{/if}
+		</div>
+	</div>
+{/snippet}
+
+{#snippet noTabEmptyState()}
+	<div class="flex-1 flex items-center justify-center p-6">
+		<div class="w-full max-w-md space-y-6">
+			<div class="text-center">
+				<PlayIcon class="size-10 mx-auto mb-2 opacity-20" />
+				<p class="font-medium">{m.query_create_tab()}</p>
+			</div>
+			<Button class="w-full" onclick={() => db.queryTabs.add()}>
+				<PlusIcon class="size-4 me-2" />
+				{m.empty_query_new()}
+			</Button>
+		</div>
+	</div>
+{/snippet}
+
+<!-- Main layout -->
+
 <div class="flex flex-col h-full overflow-hidden">
 	{#if activeTab}
+		<!-- Toolbar -->
 		<div class="flex items-center justify-between border-b bg-muted/30 shrink-0">
 			<div class="flex-1">
 				<QueryToolbar bind:this={queryToolbar}
 					isExecuting={activeTab.isExecuting}
 					hasQuery={!!activeTab.query.trim()}
 					{activeResult}
-					{liveStatementCount}
-					onExecute={handleExecute}
-					onExecuteCurrent={handleExecuteCurrent}
-					onExplain={handleExplain}
-					onVisualize={handleVisualize}
-					onFormat={handleFormat}
-					onSave={handleSave}
-					onSaveAs={handleSaveAs}
+					liveStatementCount={viewState.liveStatementCount}
+					onExecute={exec.handleExecute}
+					onExecuteCurrent={exec.handleExecuteCurrent}
+					onExplain={explainViz.handleExplain}
+					onVisualize={explainViz.handleVisualize}
+					onFormat={saveExport.handleFormat}
+					onSave={saveExport.handleSave}
+					onSaveAs={saveExport.handleSaveAs}
 					queryId={activeTab.queryId}
 					tabId={activeTab.id}
-					versions={savedQueryVersions}
-					onDiffVersions={(selected) => {
-						if (selected.length === 0) {
-							diffMode = null;
-						} else if (selected.length === 1) {
-							diffMode = {
-								original: selected[0].query,
-								modified: activeTab!.query,
-								leftLabel: `Version ${selected[0].version}`,
-								rightLabel: "Current",
-								restoreLeft: selected[0].query,
-							};
-						} else if (selected.length === 2) {
-							diffMode = {
-								original: selected[0].query,
-								modified: selected[1].query,
-								leftLabel: `Version ${selected[0].version}`,
-								rightLabel: `Version ${selected[1].version}`,
-								restoreLeft: selected[0].query,
-								restoreRight: selected[1].query,
-							};
-						}
-					}}
+					versions={viewState.savedQueryVersions}
+					onDiffVersions={viewState.handleDiffVersions}
 				/>
 			</div>
-			<!-- Visual Builder Toggle -->
-			{#if queryBuilderSchema.length > 0}
+			{#if viewState.queryBuilderSchema.length > 0}
 				<div class="pe-2 shrink-0">
 					<Tooltip.Root>
 						<Tooltip.Trigger>
@@ -860,8 +241,8 @@ let showParamsDialog = $state(false);
 									{...props}
 									size="sm"
 									variant="outline"
-									class="h-7 px-2 {visualPanelOpen ? 'bg-secondary border-secondary-foreground/30' : ''}"
-									onclick={toggleVisualPanel}
+									class="h-7 px-2 {viewState.visualPanelOpen ? 'bg-secondary border-secondary-foreground/30' : ''}"
+									onclick={viewState.toggleVisualPanel}
 								>
 									<ColumnsIcon class="size-3.5" />
 								</Button>
@@ -874,155 +255,52 @@ let showParamsDialog = $state(false);
 		</div>
 
 		<Resizable.PaneGroup direction="vertical" class="flex-1 min-h-0">
-			<!-- Editor Pane (visual builder or plain SQL editor) -->
+			<!-- Editor Pane -->
 			<Resizable.Pane defaultSize={40} minSize={15}>
-				{#if visualPanelOpen && queryBuilderSchema.length > 0}
-					<!-- Visual Builder (includes canvas, filter panel, and SQL editor) -->
+				{#if viewState.visualPanelOpen && viewState.queryBuilderSchema.length > 0}
 					<div class="h-full">
 						{#key activeTabId}
 							<VisualQueryPanel
-								schema={queryBuilderSchema}
+								schema={viewState.queryBuilderSchema}
 								monacoSchema={db.state.activeSchema ?? undefined}
 								initialSql={activeTab.query}
-								bind:getSql={visualPanelGetSql}
+								bind:getSql={viewState.visualPanelGetSql}
 							/>
 						{/key}
 					</div>
-				{:else if diffMode}
-					<!-- Diff View Mode -->
-					<div class="flex flex-col h-full">
-						<div class="flex items-center bg-muted/50 border-b text-xs shrink-0">
-							<div class="flex items-center gap-2 px-3 py-1.5 border-r border-border shrink-0" style:width="{diffOriginalWidth}px">
-								<span class="text-muted-foreground">{diffMode.leftLabel}</span>
-								{#if diffMode.restoreLeft}
-									<button
-										class="text-xs text-primary hover:underline"
-										onclick={() => {
-											if (diffMode?.restoreLeft && activeTabId) {
-												db.queryTabs.updateContent(activeTabId, diffMode.restoreLeft);
-												activeTab!.query = diffMode.restoreLeft;
-												closeDiff();
-											}
-										}}
-									>
-										Restore
-									</button>
-								{/if}
-							</div>
-							<div class="flex-1 flex items-center px-3 py-1.5">
-								<span class="text-muted-foreground">{diffMode.rightLabel}</span>
-								{#if diffMode.restoreRight}
-									<button
-										class="text-xs text-primary hover:underline ms-2"
-										onclick={() => {
-											if (diffMode?.restoreRight && activeTabId) {
-												db.queryTabs.updateContent(activeTabId, diffMode.restoreRight);
-												activeTab!.query = diffMode.restoreRight;
-												closeDiff();
-											}
-										}}
-									>
-										Restore
-									</button>
-								{/if}
-								<button
-									class="text-xs text-muted-foreground hover:text-foreground ms-auto"
-									onclick={() => { closeDiff(); }}
-								>
-									Close
-								</button>
-							</div>
-						</div>
-						<div class="flex-1 min-h-0">
-							<MonacoDiffEditor original={diffMode.original} modified={diffMode.modified} bind:originalWidth={diffOriginalWidth} />
-						</div>
-					</div>
+				{:else if viewState.diffMode}
+					<DiffView
+						diffMode={viewState.diffMode}
+						bind:originalWidth={viewState.diffOriginalWidth}
+						onRestore={viewState.restoreVersion}
+						onClose={viewState.closeDiff}
+					/>
 				{:else}
-					<!-- Just SQL Editor -->
 					<div class="relative h-full">
 						{#key activeTabId}
 							<MonacoEditor
 								bind:value={activeTab.query}
 								bind:ref={monacoRef}
 								schema={db.state.activeSchema}
-								onExecute={handleExecuteCurrent}
+								onExecute={exec.handleExecuteCurrent}
 								onToggleSidebar={() => sidebar.toggle()}
-								onAIInlinePrompt={aiSettingsStore.settings.enabled ? handleAIInlinePrompt : undefined}
+								onAIInlinePrompt={aiSettingsStore.settings.enabled ? ai.handleOpen : undefined}
 								onChange={(newValue) => {
-									currentQuery = newValue;
 									if (activeTabId) {
 										db.queryTabs.updateContent(activeTabId, newValue);
 									}
 								}}
 							/>
 						{/key}
-						{#if aiInlinePromptOpen}
-							<div
-								class="absolute top-12 left-4 right-4 z-50 flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 shadow-lg"
-								role="dialog"
-								aria-label="AI query prompt"
-							>
-								<svg class="h-4 w-4 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 1 10 10 10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
-								<input
-									type="text"
-									class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-									placeholder="Ask AI to write a query..."
-									bind:value={aiInlinePromptText}
-									disabled={aiInlinePromptLoading}
-									oninput={() => { aiInlinePromptError = null; }}
-									onkeydown={(e) => {
-										if (e.key === "Enter") { e.preventDefault(); submitAIInlinePrompt(); }
-										if (e.key === "Escape") { e.preventDefault(); closeAIInlinePrompt(); }
-									}}
-									{@attach focusOnMount()}
-								/>
-								{#if aiInlinePromptLoading}
-									<span class="text-xs text-muted-foreground">Thinking...</span>
-								{:else if aiInlinePromptError}
-									<span class="text-xs text-destructive">
-										{aiInlinePromptError.message}
-										{#if aiInlinePromptError.action}
-											<button
-												class="underline hover:no-underline"
-												onclick={aiInlinePromptError.action.fn}
-											>{aiInlinePromptError.action.label}</button>
-										{/if}
-									</span>
-									{#if !aiInlinePromptError.action && aiSettingsStore.settings.providers.length > 0}
-										<AiModelSwitcher
-											providerId={db.state.activeConnection?.activeAIProviderId ?? null}
-											model={db.state.activeConnection?.activeAIModel ?? null}
-											onSelect={async (pid, mod) => {
-												const conn = db.state.activeConnection;
-												if (!conn) return;
-												await db.setConnectionAIModel(conn.id, pid, mod);
-												aiInlinePromptError = null;
-												submitAIInlinePrompt();
-											}}
-										/>
-									{/if}
-									<button
-										class="shrink-0 text-xs text-muted-foreground hover:text-foreground"
-										onclick={closeAIInlinePrompt}
-										aria-label="Close"
-									>ESC</button>
-								{:else}
-									<AiModelSwitcher
-										providerId={db.state.activeConnection?.activeAIProviderId ?? null}
-										model={db.state.activeConnection?.activeAIModel ?? null}
-										onSelect={async (pid, mod) => {
-											const conn = db.state.activeConnection;
-											if (!conn) return;
-											await db.setConnectionAIModel(conn.id, pid, mod);
-										}}
-									/>
-									<button
-										class="shrink-0 text-xs text-muted-foreground hover:text-foreground"
-										onclick={closeAIInlinePrompt}
-										aria-label="Close"
-									>ESC</button>
-								{/if}
-							</div>
+						{#if ai.open}
+							<AIPromptOverlay
+								bind:text={ai.text}
+								loading={ai.loading}
+								bind:error={ai.error}
+								onSubmit={ai.submit}
+								onClose={ai.close}
+								focusOnMount={ai.focusOnMount}
+							/>
 						{/if}
 					</div>
 				{/if}
@@ -1033,86 +311,21 @@ let showParamsDialog = $state(false);
 			<!-- Results Pane -->
 			<Resizable.Pane defaultSize={60} minSize={15}>
 				<div class="h-full flex flex-col overflow-hidden">
-					{#if allResults.length > 0}
+					{#if viewState.allResults.length > 0}
 						<QueryResultTabs
-							results={allResults}
+							results={viewState.allResults}
 							activeIndex={activeResultIndex}
 							onSelectResult={(i) => db.queries.setActiveResult(activeTabId!, i)}
 						/>
 
 						{#if activeResult && !activeResult.isError}
-							<QueryResultsControlBar
-								{currentViewMode}
-								onViewModeChange={handleViewModeChange}
-								{explainResult}
-								{visualizeResult}
-								{isExplainStale}
-								{isVisualizeStale}
-								{currentChartConfig}
-								{activeResult}
-								onChartConfigChange={handleChartConfigChange}
-								onExport={handleExport}
-								onCopy={handleCopy}
-								onRefreshExplain={handleRefreshExplain}
-								onCloseExplain={handleCloseExplain}
-								{visualizeLayoutOptions}
-								onVisualizeLayoutChange={(opts) => visualizeLayoutOptions = opts}
-								onRefreshVisualize={handleRefreshVisualize}
-								onCloseVisualize={handleCloseVisualize}
-							/>
-						{:else if (explainResult?.result || explainResult?.isExecuting || visualizeResult?.parsedQuery || visualizeResult?.parseError)}
-							<QueryResultsControlBar
-								{currentViewMode}
-								onViewModeChange={handleViewModeChange}
-								{explainResult}
-								{visualizeResult}
-								{isExplainStale}
-								{isVisualizeStale}
-								onRefreshExplain={handleRefreshExplain}
-								onCloseExplain={handleCloseExplain}
-								{visualizeLayoutOptions}
-								onVisualizeLayoutChange={(opts) => visualizeLayoutOptions = opts}
-								onRefreshVisualize={handleRefreshVisualize}
-								onCloseVisualize={handleCloseVisualize}
-							/>
+							{@render resultControlBar({ withChartAndExport: true })}
+						{:else if viewState.explainResult?.result || viewState.explainResult?.isExecuting || viewState.visualizeResult?.parsedQuery || viewState.visualizeResult?.parseError}
+							{@render resultControlBar({})}
 						{/if}
 
-						{#if currentViewMode === 'explain' && explainResult}
-							<ExplainResultPane {explainResult} />
-						{:else if currentViewMode === 'explain' && !explainResult}
-							<EmptyState
-								icon={DatabaseIcon}
-								title="No Explain Results"
-								description="Analyze your query's execution plan to understand how the database processes it."
-							>
-								{#snippet actions()}
-									<div class="flex gap-2 justify-center">
-										<Button size="sm" variant="outline" onclick={() => handleExplain(false)}>
-											Explain
-										</Button>
-										<Button size="sm" onclick={() => handleExplain(true)}>
-											Explain Analyze
-										</Button>
-									</div>
-								{/snippet}
-							</EmptyState>
-						{:else if currentViewMode === 'visualize' && visualizeResult}
-							<VisualizeResultPane
-								{visualizeResult}
-								layoutOptions={visualizeLayoutOptions}
-							/>
-						{:else if currentViewMode === 'visualize' && !visualizeResult}
-							<EmptyState
-								icon={NetworkIcon}
-								title="No Visual Results"
-								description="See a visual representation of your query structure."
-							>
-								{#snippet actions()}
-									<Button size="sm" onclick={handleVisualize}>
-										Visualize Query
-									</Button>
-								{/snippet}
-							</EmptyState>
+						{#if viewState.currentViewMode === 'explain' || viewState.currentViewMode === 'visualize'}
+							{@render resultContentByViewMode()}
 						{:else if activeResult?.isError}
 							<QueryErrorDisplay
 								statementIndex={activeResultIndex}
@@ -1120,35 +333,35 @@ let showParamsDialog = $state(false);
 								statementSql={activeResult.statementSql}
 							/>
 						{:else if activeResult}
-							{#if currentViewMode === 'chart'}
+							{#if viewState.currentViewMode === 'chart'}
 								<div class="flex-1 min-h-0">
 									<QueryChart
 										columns={activeResult.columns}
 										rows={activeResult.rows}
-										config={currentChartConfig}
-										onConfigChange={handleChartConfigChange}
+										config={viewState.currentChartConfig}
+										onConfigChange={viewState.handleChartConfigChange}
 									/>
 								</div>
 							{:else}
 								<VirtualResultsTable
 									columns={activeResult.columns}
 									rows={activeResult.rows}
-									isEditable={!!isEditable}
-									onCellSave={handleCellSave}
-									onRowDelete={confirmDeleteRow}
-									{deletingRowIndex}
-									onCopyCell={copyCell}
-									onCopyRow={copyRowAsJSON}
-									onCopyColumn={copyColumn}
-									onCellRightClick={handleCellRightClick}
-									onSetNull={setNull}
-									onSetDefault={setDefault}
-									pendingCellEdits={qePendingCellEdits}
-									pendingRowDeletes={qePendingRowDeletes}
+									isEditable={!!viewState.isEditable}
+									onCellSave={cellEdit.handleCellSave}
+									onRowDelete={cellEdit.confirmDeleteRow}
+									deletingRowIndex={cellEdit.deletingRowIndex}
+									onCopyCell={cellEdit.copyCell}
+									onCopyRow={cellEdit.copyRowAsJSON}
+									onCopyColumn={cellEdit.copyColumn}
+									onCellRightClick={cellEdit.handleCellRightClick}
+									onSetNull={cellEdit.setNull}
+									onSetDefault={cellEdit.setDefault}
+									pendingCellEdits={viewState.qePendingCellEdits}
+									pendingRowDeletes={viewState.qePendingRowDeletes}
 								/>
 							{/if}
 
-							{#if (activeResult.totalPages > 1 || activeResult.pageSize === 0) && currentViewMode === 'table'}
+							{#if (activeResult.totalPages > 1 || activeResult.pageSize === 0) && viewState.currentViewMode === 'table'}
 								<QueryPagination
 									page={activeResult.page}
 									pageSize={activeResult.pageSize}
@@ -1161,134 +374,40 @@ let showParamsDialog = $state(false);
 							{/if}
 						{/if}
 					{:else}
-						<!-- Show view toggle and content even without query results -->
-						<QueryResultsControlBar
-							{currentViewMode}
-							onViewModeChange={handleViewModeChange}
-							{explainResult}
-							{visualizeResult}
-							{isExplainStale}
-							{isVisualizeStale}
-							onRefreshExplain={handleRefreshExplain}
-							onCloseExplain={handleCloseExplain}
-							onRefreshVisualize={handleRefreshVisualize}
-							onCloseVisualize={handleCloseVisualize}
-						/>
-						{#if currentViewMode === 'explain' && explainResult}
-							<ExplainResultPane {explainResult} />
-						{:else if currentViewMode === 'explain' && !explainResult}
-							<EmptyState
-								icon={DatabaseIcon}
-								title="No Explain Results"
-								description="Analyze your query's execution plan to understand how the database processes it."
-							>
-								{#snippet actions()}
-									<div class="flex gap-2 justify-center">
-										<Button size="sm" variant="outline" onclick={() => handleExplain(false)}>
-											Explain
-										</Button>
-										<Button size="sm" onclick={() => handleExplain(true)}>
-											Explain Analyze
-										</Button>
-									</div>
-								{/snippet}
-							</EmptyState>
-						{:else if currentViewMode === 'visualize' && visualizeResult}
-							<VisualizeResultPane
-								{visualizeResult}
-								layoutOptions={visualizeLayoutOptions}
-							/>
-						{:else if currentViewMode === 'visualize' && !visualizeResult}
-							<EmptyState
-								icon={NetworkIcon}
-								title="No Visual Results"
-								description="See a visual representation of your query structure."
-							>
-								{#snippet actions()}
-									<Button size="sm" onclick={handleVisualize}>
-										Visualize Query
-									</Button>
-								{/snippet}
-							</EmptyState>
+						{@render resultControlBar({})}
+						{#if viewState.currentViewMode === 'explain' || viewState.currentViewMode === 'visualize'}
+							{@render resultContentByViewMode()}
 						{:else}
-							<div class="flex-1 overflow-auto p-6">
-								<div class="w-full max-w-md space-y-6 mx-auto my-auto min-h-full flex flex-col justify-center">
-									<div class="text-center">
-										<PlayIcon class="size-10 mx-auto mb-2 opacity-20" />
-										<p class="font-medium">{m.query_no_results()}</p>
-										<p class="text-xs text-muted-foreground mt-1">
-											{m.query_run_hint({ shortcut: "⌘+Enter" })}
-										</p>
-									</div>
-
-									{#if activeSampleQueries.length > 0 && !currentQuery?.trim()}
-										<div class="space-y-3">
-											<p class="text-xs text-muted-foreground text-center">
-												{m.empty_query_sample_title()}
-											</p>
-											{#each activeSampleQueries as sampleQuery}
-												<QueryExampleCard query={sampleQuery} onTry={handleTrySampleQuery} />
-											{/each}
-										</div>
-									{/if}
-								</div>
-							</div>
+							{@render noResultsEmptyState()}
 						{/if}
 					{/if}
 				</div>
 			</Resizable.Pane>
 		</Resizable.PaneGroup>
 	{:else}
-		<div class="flex-1 flex items-center justify-center p-6">
-			<div class="w-full max-w-md space-y-6">
-				<div class="text-center">
-					<PlayIcon class="size-10 mx-auto mb-2 opacity-20" />
-					<p class="font-medium">{m.query_create_tab()}</p>
-				</div>
-				<Button class="w-full" onclick={() => db.queryTabs.add()}>
-					<PlusIcon class="size-4 me-2" />
-					{m.empty_query_new()}
-				</Button>
-			</div>
-		</div>
+		{@render noTabEmptyState()}
 	{/if}
 </div>
 
+<!-- Dialogs -->
+
 {#if activeTab}
-	<SaveQueryDialog
-		bind:open={showSaveDialog}
-		query={activeTab.query}
-		tabId={activeTab.id}
-	/>
-
-	<SaveQueryDialog
-		bind:open={showSaveAsDialog}
-		query={activeTab.query}
-		tabId={activeTab.id}
-		saveAsNew
-	/>
-
-	<ParameterInputDialog
-		bind:open={showParamsDialog}
-		parameters={pendingParams}
-		onExecute={handleParamExecute}
-		onCancel={handleParamCancel}
-	/>
+	<SaveQueryDialog bind:open={saveExport.showSaveDialog} query={activeTab.query} tabId={activeTab.id} />
+	<SaveQueryDialog bind:open={saveExport.showSaveAsDialog} query={activeTab.query} tabId={activeTab.id} saveAsNew />
+	<ParameterInputDialog bind:open={paramDialog.show} parameters={paramDialog.params} onExecute={handleParamExecute} onCancel={exec.handleParamCancel} />
 {/if}
 
-<!-- Delete Row Confirmation Dialog -->
 <DeleteConfirmDialog
-	bind:open={showDeleteConfirm}
+	bind:open={cellEdit.showDeleteConfirm}
 	title={m.query_delete_row_title()}
 	description={m.query_delete_row_description()}
 	cancelText={m.query_cancel()}
 	confirmText={m.query_delete()}
-	onconfirm={handleDeleteRow}
+	onconfirm={cellEdit.handleDeleteRow}
 />
 
-<!-- Destructive Query Confirmation Dialog -->
 <DestructiveQueryConfirmDialog
-	bind:open={showDestructiveConfirm}
-	statements={destructiveStatements}
-	onconfirm={handleDestructiveConfirm}
+	bind:open={exec.showDestructiveConfirm}
+	statements={exec.destructiveStatements}
+	onconfirm={exec.handleDestructiveConfirm}
 />
