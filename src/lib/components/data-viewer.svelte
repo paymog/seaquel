@@ -20,6 +20,7 @@
 	import DataFilterBar from "$lib/components/data-filter-bar.svelte";
 	import { inputTypeForColumnType, inputStepForColumnType } from "$lib/utils/cell-type";
 	import { toast } from "svelte-sonner";
+	import { tick } from "svelte";
 
 	let { tabId }: { tabId: string } = $props();
 
@@ -193,6 +194,9 @@
 		try {
 			const success = await db.dataTabs.saveNewRow(tabId, index, insertValues);
 			if (success) {
+				// Wait for reactive updates (pending insert row or refreshed data) to render
+				// before removing the inline editable row, to avoid a visual flash.
+				await tick();
 				setPendingRowValues(pendingRowValues.filter((_, i) => i !== index));
 				toast.success("Row inserted");
 			} else {

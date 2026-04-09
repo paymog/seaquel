@@ -172,9 +172,6 @@ export class PendingChangesManager {
       }
     }
 
-    // All succeeded — clear the queue
-    this.clear(connectionId);
-
     return { executed, failed: 0, hasDdl };
   }
 

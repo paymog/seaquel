@@ -840,15 +840,28 @@ export class ConnectionManager {
 
     const schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
 
+    // Preserve existing column/index metadata for tables that already exist
+    // so that derived values like hasPrimaryKey don't briefly become false
+    // while new metadata loads.
+    const existingSchemas = this.state.schemas[connectionId] ?? [];
+    const mergedSchemas = schemasWithTables.map((newTable) => {
+      const existing = existingSchemas.find(
+        (t) => t.name === newTable.name && t.schema === newTable.schema,
+      );
+      return existing
+        ? { ...newTable, columns: existing.columns, indexes: existing.indexes }
+        : newTable;
+    });
+
     this.state.schemas = {
       ...this.state.schemas,
-      [connectionId]: schemasWithTables,
+      [connectionId]: mergedSchemas,
     };
 
     // Reload column metadata and wait for it to complete
     await this.onSchemaLoaded(
       connectionId,
-      schemasWithTables,
+      mergedSchemas,
       adapter,
       connection.providerConnectionId,
     );

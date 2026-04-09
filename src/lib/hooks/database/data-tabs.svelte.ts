@@ -185,11 +185,9 @@ export class DataTabManager extends BaseTabManager<DataTab> {
   /**
    * Refresh all open data tabs for a given connection.
    */
-  refreshAllForConnection(connectionId: string): void {
+  async refreshAllForConnection(connectionId: string): Promise<void> {
     const tabs = this.getProjectTabs().filter((t) => t.connectionId === connectionId);
-    for (const tab of tabs) {
-      void this.refresh(tab.id);
-    }
+    await Promise.all(tabs.map((tab) => this.refresh(tab.id)));
   }
 
   /**
@@ -277,13 +275,13 @@ export class DataTabManager extends BaseTabManager<DataTab> {
     );
 
     if (result.success) {
+      if (!result.queued) {
+        await this.refresh(tabId);
+      }
       this.updateTab(tabId, (t) => ({
         ...t,
         pendingNewRows: t.pendingNewRows.filter((_, i) => i !== rowIndex),
       }));
-      if (!result.queued) {
-        void this.refresh(tabId);
-      }
       return true;
     }
 

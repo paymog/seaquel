@@ -111,7 +111,6 @@
 		isExecuting = true;
 		try {
 			const result = await db.pendingChanges.executeAll(connectionId);
-			db.pendingChanges.closeSheet();
 			if (result.failed > 0) {
 				errorToast(`Failed at statement ${(result.failedAt ?? 0) + 1}: ${result.error}`);
 				if (result.executed > 0) {
@@ -120,10 +119,14 @@
 			} else {
 				toast.success(`${result.executed} statement${result.executed > 1 ? "s" : ""} executed successfully`);
 			}
-			if (result.hasDdl || result.executed > 0) {
+			if (result.hasDdl) {
 				await db.connections.refreshSchema(connectionId);
-				db.dataTabs.refreshAllForConnection(connectionId);
 			}
+			if (result.hasDdl || result.executed > 0) {
+				await db.dataTabs.refreshAllForConnection(connectionId);
+			}
+			db.pendingChanges.clear(connectionId);
+			db.pendingChanges.closeSheet();
 		} catch (error) {
 			db.pendingChanges.closeSheet();
 			errorToast(error instanceof Error ? error.message : String(error));
