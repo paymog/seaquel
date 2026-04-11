@@ -93,8 +93,8 @@ for (let i = 0; i < NUM_USERS; i += BATCH_SIZE) {
 }
 console.log(`users: ${NUM_USERS} rows`);
 
-// --- Orders (bulk of the 1M rows) ---
-const NUM_ORDERS = 800_000;
+// --- Orders ---
+const NUM_ORDERS = 10_000_000;
 const statuses = ["pending", "processing", "shipped", "delivered", "cancelled"];
 const insertOrder = db.prepare(
   "INSERT INTO orders (user_id, total, status, shipping_address, created_at) VALUES (?, ?, ?, ?, ?)",
