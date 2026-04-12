@@ -19,6 +19,7 @@
 		totalRows: number;
 		isExecuting: boolean;
 		isStreaming?: boolean;
+		allowStreamAll?: boolean;
 		onGoToPage: (page: number) => void;
 		onSetPageSize: (size: number) => void;
 		onCancelStream?: () => void;
@@ -31,6 +32,7 @@
 		totalRows,
 		isExecuting,
 		isStreaming = false,
+		allowStreamAll = true,
 		onGoToPage,
 		onSetPageSize,
 		onCancelStream
@@ -79,7 +81,7 @@
 				<ChevronDownIcon class="size-3" />
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content align="end">
-				{#each [25, 50, 100, 250, 500, 1000] as size}
+				{#each [25, 50, 100, 250, 500, 1000] as size (size)}
 					<DropdownMenu.Item
 						onclick={() => onSetPageSize(size)}
 						class={pageSize === size ? "bg-accent" : ""}
@@ -87,18 +89,20 @@
 						{m.query_rows_count({ count: size })}
 					</DropdownMenu.Item>
 				{/each}
-				<DropdownMenu.Separator />
-				<DropdownMenu.Item
-					onclick={() => onSetPageSize(0)}
-					class={isAllRows ? "bg-accent" : ""}
-				>
-					Stream all
-				</DropdownMenu.Item>
+				{#if allowStreamAll}
+					<DropdownMenu.Separator />
+					<DropdownMenu.Item
+						onclick={() => onSetPageSize(0)}
+						class={isAllRows ? "bg-accent" : ""}
+					>
+						Stream all
+					</DropdownMenu.Item>
+				{/if}
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
 
 		{#if !isStreaming && !isAllRows}
-			<div class="flex items-center gap-1">
+			<div class="flex items-center gap-1 tabular-nums">
 				<Button
 					size="icon"
 					variant="outline"

@@ -3,18 +3,14 @@
 	import { m } from "$lib/paraglide/messages.js";
 	import { Button } from "$lib/components/ui/button";
 	import { Input } from "$lib/components/ui/input";
-	import * as Select from "$lib/components/ui/select/index.js";
 	import {
 		RefreshCwIcon,
 		FilterIcon,
-		ChevronLeftIcon,
-		ChevronRightIcon,
-		ChevronsLeftIcon,
-		ChevronsRightIcon,
 		LoaderIcon,
 		CheckIcon,
 		XIcon,
 	} from "@lucide/svelte";
+	import { QueryPagination } from "$lib/components/query-editor";
 	import type { DataFilter, ForeignKeyRef, SchemaColumn, SchemaTable } from "$lib/types";
 	import VirtualResultsTable from "$lib/components/virtual-results-table.svelte";
 	import DataFilterBar from "$lib/components/data-filter-bar.svelte";
@@ -138,10 +134,6 @@
 	// Pagination derived
 	const totalPages = $derived(
 		tab?.results ? Math.max(1, Math.ceil((tab.totalRows ?? 0) / tab.pageSize)) : 1,
-	);
-	const showingFrom = $derived(tab ? (tab.page - 1) * tab.pageSize + 1 : 0);
-	const showingTo = $derived(
-		tab ? Math.min(tab.page * tab.pageSize, tab.totalRows ?? 0) : 0,
 	);
 
 	// Sort indicator
@@ -300,7 +292,6 @@
 		}
 	}
 
-	const pageSizes = [25, 50, 100, 250, 500, 1000];
 </script>
 
 <div class="flex flex-col h-full overflow-hidden">
@@ -472,73 +463,15 @@
 		</div>
 
 		<!-- Pagination -->
-		<div class="flex items-center justify-between px-4 py-2 border-t shrink-0 text-xs bg-background relative z-10">
-			<div class="flex items-center gap-2">
-				<span class="text-muted-foreground">
-					{#if (tab.totalRows ?? 0) > 0}
-						Showing {showingFrom}-{showingTo} of {(tab.totalRows ?? 0).toLocaleString()}
-					{:else}
-						No rows
-					{/if}
-				</span>
-			</div>
-			<div class="flex items-center gap-2">
-				<Select.Root
-					type="single"
-					value={String(tab.pageSize)}
-					onValueChange={(v) => db.dataTabs.setPageSize(tabId, Number(v))}
-				>
-					<Select.Trigger class="h-7 text-xs w-[100px]">
-						{tab.pageSize} rows
-					</Select.Trigger>
-					<Select.Content>
-						{#each pageSizes as size}
-							<Select.Item value={String(size)}>{size}</Select.Item>
-						{/each}
-					</Select.Content>
-				</Select.Root>
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="icon"
-						variant="ghost"
-						class="size-7"
-						disabled={tab.page <= 1}
-						onclick={() => db.dataTabs.setPage(tabId, 1)}
-					>
-						<ChevronsLeftIcon class="size-3" />
-					</Button>
-					<Button
-						size="icon"
-						variant="ghost"
-						class="size-7"
-						disabled={tab.page <= 1}
-						onclick={() => db.dataTabs.setPage(tabId, tab.page - 1)}
-					>
-						<ChevronLeftIcon class="size-3" />
-					</Button>
-					<span class="px-2 text-muted-foreground">
-						{tab.page} / {totalPages}
-					</span>
-					<Button
-						size="icon"
-						variant="ghost"
-						class="size-7"
-						disabled={tab.page >= totalPages}
-						onclick={() => db.dataTabs.setPage(tabId, tab.page + 1)}
-					>
-						<ChevronRightIcon class="size-3" />
-					</Button>
-					<Button
-						size="icon"
-						variant="ghost"
-						class="size-7"
-						disabled={tab.page >= totalPages}
-						onclick={() => db.dataTabs.setPage(tabId, totalPages)}
-					>
-						<ChevronsRightIcon class="size-3" />
-					</Button>
-				</div>
-			</div>
-		</div>
+		<QueryPagination
+			page={tab.page}
+			pageSize={tab.pageSize}
+			{totalPages}
+			totalRows={tab.totalRows ?? 0}
+			isExecuting={tab.isLoading}
+			allowStreamAll={false}
+			onGoToPage={(page) => db.dataTabs.setPage(tabId, page)}
+			onSetPageSize={(size) => db.dataTabs.setPageSize(tabId, size)}
+		/>
 	{/if}
 </div>
