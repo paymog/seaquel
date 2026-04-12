@@ -98,6 +98,34 @@ export class DuckDBProvider implements DatabaseProvider {
     return result.toArray().map((row: any) => row.toJSON() as T);
   }
 
+  async selectStream<T = Record<string, unknown>>(
+    connectionId: string,
+    sql: string,
+    params: unknown[] | undefined,
+    onBatch: (batch: {
+      columns: string[] | null;
+      rows: T[];
+      isFinal: boolean;
+    }) => boolean | Promise<boolean>,
+    signal?: AbortSignal,
+  ): Promise<{ aborted: boolean; error?: string }> {
+    // DuckDB-WASM doesn't surface a row-by-row iterator through its arrow
+    // result wrapper, so we take the whole result and emit a single terminal
+    // batch. The demo datasets are small enough that this is fine.
+    try {
+      const rows = await this.select<T>(connectionId, sql, params);
+      if (signal?.aborted) return { aborted: true };
+      const columns = rows.length > 0 ? Object.keys(rows[0] as object) : [];
+      await onBatch({ columns, rows, isFinal: true });
+      return { aborted: false };
+    } catch (error) {
+      return {
+        aborted: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   async execute(connectionId: string, sql: string, _params?: unknown[]): Promise<ExecuteResult> {
     const conn = this.connections.get(connectionId);
     if (!conn) {

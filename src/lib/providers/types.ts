@@ -77,6 +77,34 @@ export interface DatabaseProvider {
   ): Promise<T[]>;
 
   /**
+   * Execute a SELECT query and stream rows in batches as they become available.
+   * Use this for unbounded or large result sets where the caller wants to
+   * render rows incrementally instead of waiting for the whole result.
+   *
+   * The `onBatch` callback is invoked for each batch delivered from the
+   * backend. Returning `false` (or aborting `signal`) cancels the stream —
+   * the backend will stop fetching rows and release its database connection.
+   *
+   * @param connectionId Connection ID from connect()
+   * @param sql SQL query to execute
+   * @param params Optional parameterized query values
+   * @param onBatch Called for each batch. Return false to cancel.
+   * @param signal Optional AbortSignal to cancel the stream.
+   * @returns Summary with `aborted` flag and optional terminal error message.
+   */
+  selectStream<T = Record<string, unknown>>(
+    connectionId: string,
+    sql: string,
+    params: unknown[] | undefined,
+    onBatch: (batch: {
+      columns: string[] | null;
+      rows: T[];
+      isFinal: boolean;
+    }) => boolean | Promise<boolean>,
+    signal?: AbortSignal,
+  ): Promise<{ aborted: boolean; error?: string }>;
+
+  /**
    * Execute a write query (INSERT, UPDATE, DELETE).
    * @param connectionId Connection ID from connect()
    * @param sql SQL query to execute

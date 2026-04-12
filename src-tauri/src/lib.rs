@@ -481,6 +481,8 @@ pub fn run() {
             ssh_tunnel::list_active_tunnels,
             db::commands::db_connect,
             db::commands::db_query,
+            db::commands::db_query_stream,
+            db::commands::db_cancel_stream,
             db::commands::db_execute,
             db::commands::db_transaction,
             db::commands::db_disconnect,

@@ -24,6 +24,13 @@ export class QueryExecutionManager {
   private readonly DEFAULT_PAGE_SIZE = 100;
   readonly crud: QueryCrudManager;
 
+  /**
+   * Per-tab AbortControllers for in-flight streaming queries.
+   * Starting a new query or paging on a tab aborts the previous stream,
+   * and explicit user cancellation goes through `cancelStream(tabId)`.
+   */
+  private streamControllers = new Map<string, AbortController>();
+
   constructor(
     private state: DatabaseState,
     private queryHistory: QueryHistoryManager,
@@ -31,6 +38,212 @@ export class QueryExecutionManager {
     private pendingChanges: PendingChangesManager,
   ) {
     this.crud = new QueryCrudManager(state, providers, pendingChanges);
+  }
+
+  /**
+   * Look up a StatementResult *through* the Svelte 5 `$state` proxy so that
+   * mutations on the returned reference are tracked and fire reactivity.
+   * Streaming paths must use this helper — never mutate a raw seed reference,
+   * because Svelte's proxy only tracks writes that go through it.
+   */
+  private getProxiedResult(tabId: string, statementIndex: number): StatementResult | undefined {
+    const projectId = this.state.activeProjectId;
+    if (!projectId) return undefined;
+    const tabs = this.state.queryTabsByProject[projectId];
+    const tab = tabs?.find((t) => t.id === tabId);
+    return tab?.results?.[statementIndex];
+  }
+
+  /** Abort any in-flight stream on the given tab and drop its controller. */
+  private abortTabStream(tabId: string): void {
+    const controller = this.streamControllers.get(tabId);
+    if (controller) {
+      controller.abort();
+      this.streamControllers.delete(tabId);
+    }
+  }
+
+  /** Public cancel — used by the UI's cancel button next to the row counter. */
+  cancelStream(tabId: string): void {
+    this.abortTabStream(tabId);
+    // Also mark any currently-streaming result as no longer streaming so the
+    // UI flips out of the spinner state immediately. Results read through
+    // state are proxied — mutating them fires reactivity automatically.
+    if (!this.state.activeProjectId) return;
+    const tabs = this.state.queryTabsByProject[this.state.activeProjectId];
+    const tab = tabs?.find((t) => t.id === tabId);
+    if (!tab?.results) return;
+    for (const r of tab.results) {
+      if (r.isStreaming) {
+        r.isStreaming = false;
+      }
+    }
+  }
+
+  /**
+   * Check whether a SELECT statement should go through the streaming path.
+   * We stream when the app would otherwise ship an unbounded result in one
+   * shot — either because the user picked "Stream all" (pageSize === 0) or
+   * because the query carries its own LIMIT/OFFSET/TOP so the paginator
+   * would leave it untouched.
+   */
+  private shouldStream(baseQuery: string, connectionType: string, pageSize: number): boolean {
+    if (pageSize === 0) return true;
+    const hasLimit = /\bLIMIT\b/i.test(baseQuery);
+    const hasOffset = /\bOFFSET\b/i.test(baseQuery);
+    const hasTop = /\bTOP\b/i.test(baseQuery);
+    const isMssql = connectionType === "mssql";
+    return hasLimit || (isMssql && (hasOffset || hasTop));
+  }
+
+  /**
+   * Resolve the source table for a SELECT query, if any — used to enable
+   * inline cell editing in the result viewer.
+   */
+  private resolveSourceTable(baseQuery: string): QueryResult["sourceTable"] | undefined {
+    const tableInfo = extractTableFromSelect(baseQuery);
+    if (!tableInfo) return undefined;
+
+    if (tableInfo.schema) {
+      const primaryKeys = this.getPrimaryKeysForTable(tableInfo.schema, tableInfo.table);
+      if (primaryKeys.length > 0) {
+        return {
+          schema: tableInfo.schema,
+          name: tableInfo.table,
+          primaryKeys,
+        };
+      }
+      return undefined;
+    }
+
+    // No schema specified in query — search all cached schemas for the table
+    const tables = this.state.schemas[this.state.activeConnectionId!] ?? [];
+    const match = tables.find((t) => t.name === tableInfo.table);
+    if (!match) return undefined;
+    const primaryKeys = match.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
+    if (primaryKeys.length === 0) return undefined;
+    return {
+      schema: match.schema,
+      name: match.name,
+      primaryKeys,
+    };
+  }
+
+  /**
+   * Run a streaming SELECT and mutate the StatementResult at
+   * `tab.results[statementIndex]` as batches arrive. The seed must already
+   * be installed at that index via `updateQueryTabState` before calling
+   * this method — mutations go through the Svelte 5 `$state` proxy returned
+   * by `getProxiedResult`, not through the caller's raw seed reference.
+   *
+   * Returns a summary of how the stream terminated: `aborted` is true if
+   * the user cancelled, `error` is set if sqlx or the command errored,
+   * and both are false/undefined on a clean run-to-completion.
+   */
+  private async runStreamingStatement(
+    tabId: string,
+    statementIndex: number,
+    sql: string,
+    bindValues: unknown[] | undefined,
+    connection: DatabaseConnection,
+    cachedProvider?: DatabaseProvider,
+  ): Promise<{ aborted: boolean; error?: string }> {
+    const providerConnectionId = connection.providerConnectionId;
+    if (!providerConnectionId) throw new Error("No connection established");
+    const provider = cachedProvider ?? (await this.providers.getForType(connection.type));
+
+    // Abort any previous stream on this tab (e.g. user hit Run again while a
+    // stream was still filling in rows).
+    this.abortTabStream(tabId);
+    const controller = new AbortController();
+    this.streamControllers.set(tabId, controller);
+
+    const start = performance.now();
+
+    const streamResult = await provider.selectStream(
+      providerConnectionId,
+      sql,
+      bindValues,
+      (batch) => {
+        if (controller.signal.aborted) return false;
+        const target = this.getProxiedResult(tabId, statementIndex);
+        if (!target) return false;
+
+        if (batch.columns && target.columns.length === 0) {
+          target.columns = batch.columns;
+        }
+        if (batch.rows.length > 0) {
+          // target is proxied — `.push` on the proxied array goes through
+          // Svelte 5's array trap and fires reactivity. This is O(batch)
+          // per call, unlike a spread-reassignment which would be O(N²)
+          // across the full stream.
+          target.rows.push(...batch.rows);
+          target.rowCount = target.rows.length;
+          target.totalRows = target.rows.length;
+        }
+        // Tick the elapsed-time display on every batch so the result
+        // badge ("N rows, Tms") updates live alongside the row counter.
+        target.executionTime = Math.round((performance.now() - start) * 100) / 100;
+        if (batch.isFinal) {
+          target.isStreaming = false;
+        }
+        return !controller.signal.aborted;
+      },
+      controller.signal,
+    );
+
+    const finalTarget = this.getProxiedResult(tabId, statementIndex);
+    if (finalTarget) {
+      if (streamResult.error) {
+        finalTarget.isError = true;
+        finalTarget.error = streamResult.error;
+      }
+      // Always clear the streaming flag when the stream has terminated,
+      // no matter how (clean finish, abort, error, or silent termination).
+      finalTarget.isStreaming = false;
+      // Safety net: the happy path updates `executionTime` on every batch,
+      // so this only fires when the stream terminated without ever emitting
+      // a batch (e.g. Rust errored immediately, or the shim driver returned
+      // an empty result).
+      if (finalTarget.executionTime === 0) {
+        finalTarget.executionTime = Math.round((performance.now() - start) * 100) / 100;
+      }
+    }
+
+    if (this.streamControllers.get(tabId) === controller) {
+      this.streamControllers.delete(tabId);
+    }
+
+    return { aborted: streamResult.aborted, error: streamResult.error };
+  }
+
+  /**
+   * Build a seeded StatementResult that's ready to be mutated by a streaming
+   * run. The caller installs this in the tab's results array, then passes it
+   * as `target` to `runStreamingStatement`.
+   */
+  private createStreamingSeed(
+    statementIndex: number,
+    statementSql: string,
+    baseQuery: string,
+    pageSize: number,
+  ): StatementResult {
+    return {
+      columns: [],
+      rows: [],
+      rowCount: 0,
+      totalRows: 0,
+      executionTime: 0,
+      queryType: detectQueryType(baseQuery),
+      sourceTable: this.resolveSourceTable(baseQuery),
+      page: 1,
+      pageSize,
+      totalPages: 1,
+      statementIndex,
+      statementSql,
+      isError: false,
+      isStreaming: true,
+    };
   }
 
   /**
@@ -193,7 +406,13 @@ export class QueryExecutionManager {
     let dbResult: Record<string, unknown>[];
 
     if (hasPagination || pageSize === 0) {
-      // Query has its own pagination or caller wants all rows — run as-is
+      // NOTE: under normal flow this branch is unreachable for SELECTs —
+      // `executeCurrent`, `execute`, and `executeStatementAtIndex` all
+      // detect `shouldStream(...)` matches before they call into
+      // `executeStatement` and route them through `runStreamingStatement`
+      // instead. This fallback exists only as a safety net in case a new
+      // caller passes a streamable query straight through, and to keep
+      // the `dbResult` assignment total.
       dbResult = await provider.select<Record<string, unknown>>(
         providerConnectionId,
         baseQuery,
@@ -324,6 +543,9 @@ export class QueryExecutionManager {
       bindValues = substituted.bindValues;
     }
 
+    // Cancel any in-flight stream for this tab before starting a new query.
+    this.abortTabStream(tabId);
+
     // Mark as executing
     this.updateQueryTabState(tabId, { isExecuting: true });
 
@@ -345,6 +567,59 @@ export class QueryExecutionManager {
       this.updateQueryTabState(tabId, { isExecuting: false });
       toast.info("Statement added to pending changes");
       this.pendingChanges.openSheet();
+      return;
+    }
+
+    // Decide whether this SELECT goes through the streaming path.
+    const baseQuery = query.replace(/;$/, "").trim();
+    const isStreamingSelect =
+      isSelectQuery(query) && this.shouldStream(baseQuery, connection.type, effectivePageSize);
+
+    if (isStreamingSelect) {
+      // Seed a streaming result and install it in tab state BEFORE awaiting
+      // the stream, so the UI shows an empty table + "streaming…" indicator
+      // while rows are flowing in.
+      const seed = this.createStreamingSeed(0, originalSql, baseQuery, effectivePageSize);
+      this.updateQueryTabState(tabId, {
+        results: [seed],
+        activeResultIndex: 0,
+      });
+
+      try {
+        const { aborted, error: streamError } = await this.runStreamingStatement(
+          tabId,
+          0,
+          baseQuery,
+          bindValues,
+          connection,
+        );
+        const finalResult = this.getProxiedResult(tabId, 0);
+        if (aborted) {
+          void log.info(
+            `Streaming query cancelled on ${connection.id}: ${finalResult?.rowCount ?? 0} rows before cancel`,
+          );
+        } else if (streamError || finalResult?.isError) {
+          void log.error(`Streaming query failed on ${connection.id}`);
+        } else if (finalResult) {
+          void log.info(
+            `Streaming query on ${connection.id}: ${finalResult.rowCount} rows in ${finalResult.executionTime}ms`,
+          );
+          // Only record successful runs in history — skip cancelled and
+          // errored ones so the "rerun this query" UX doesn't resurrect
+          // partial results as if they were real.
+          if (page === 1) {
+            this.queryHistory.addToHistory(originalSql, finalResult);
+          }
+        }
+      } catch (error) {
+        void log.error(`Streaming query failed on ${connection.id}`);
+        this.updateQueryTabState(tabId, {
+          results: [this.createErrorResult(originalSql, error, 0, effectivePageSize)],
+          activeResultIndex: 0,
+        });
+      } finally {
+        this.updateQueryTabState(tabId, { isExecuting: false });
+      }
       return;
     }
 
@@ -421,6 +696,9 @@ export class QueryExecutionManager {
     const tab = tabs.find((t) => t.id === tabId);
     if (!tab) return;
 
+    // Cancel any in-flight stream for this tab before starting a new batch.
+    this.abortTabStream(tabId);
+
     // Mark as executing with proper reactivity
     this.updateQueryTabState(tabId, { isExecuting: true });
 
@@ -450,6 +728,10 @@ export class QueryExecutionManager {
 
     const allResults: StatementResult[] = [];
     let queuedCount = 0;
+    // Track whether any streaming statement in this batch was aborted or
+    // errored — if so, we skip the history add at the bottom so partial
+    // results don't resurface as "rerun this query" candidates.
+    let anyStreamAbortedOrErrored = false;
     const provider = await this.providers.getForType(connection.type);
 
     // Execute each statement, updating the UI incrementally
@@ -480,20 +762,72 @@ export class QueryExecutionManager {
           continue;
         }
 
-        const result = await this.executeStatement(
-          sql,
-          page,
-          effectivePageSize,
-          connection,
-          bindValues,
-          provider,
-        );
-        allResults.push({
-          ...result,
-          statementIndex: i,
-          statementSql: stmt.sql, // Keep original SQL for display
-          isError: false,
-        });
+        const baseQueryForDetection = sql.replace(/;$/, "").trim();
+        const isStreamingSelect =
+          isSelectQuery(sql) &&
+          this.shouldStream(baseQueryForDetection, connection.type, effectivePageSize);
+
+        if (isStreamingSelect) {
+          // Seed a streaming result, install it so the UI shows progress,
+          // then let runStreamingStatement mutate the proxied copy in
+          // tab state as batches land.
+          const seed = this.createStreamingSeed(
+            i,
+            stmt.sql,
+            baseQueryForDetection,
+            effectivePageSize,
+          );
+          const seedIndex = allResults.length;
+          allResults.push(seed);
+          this.updateQueryTabState(tabId, {
+            results: [...allResults],
+            activeResultIndex: 0,
+          });
+          try {
+            const { aborted, error: streamError } = await this.runStreamingStatement(
+              tabId,
+              seedIndex,
+              baseQueryForDetection,
+              bindValues,
+              connection,
+              provider,
+            );
+            if (aborted || streamError) {
+              anyStreamAbortedOrErrored = true;
+            }
+            // Sync the streamed result back into allResults so the outer
+            // loop's `[...allResults]` reassignment preserves it, and the
+            // end-of-batch `filterAndIndexResults` sees the final rows.
+            const streamed = this.getProxiedResult(tabId, seedIndex);
+            if (streamed) {
+              allResults[seedIndex] = streamed;
+            }
+          } catch (streamError) {
+            // Replace the seed in place with a proper error result so the
+            // outer catch below doesn't push a duplicate.
+            allResults[seedIndex] = this.createErrorResult(
+              stmt.sql,
+              streamError,
+              i,
+              effectivePageSize,
+            );
+          }
+        } else {
+          const result = await this.executeStatement(
+            sql,
+            page,
+            effectivePageSize,
+            connection,
+            bindValues,
+            provider,
+          );
+          allResults.push({
+            ...result,
+            statementIndex: i,
+            statementSql: stmt.sql, // Keep original SQL for display
+            isError: false,
+          });
+        }
       } catch (error) {
         // Continue on error - add error result
         allResults.push(this.createErrorResult(stmt.sql, error, i, effectivePageSize));
@@ -533,8 +867,10 @@ export class QueryExecutionManager {
       isExecuting: false,
     });
 
-    // Add to history (only on first page to avoid duplicates, use first meaningful result)
-    if (page === 1 && indexedResults.length > 0) {
+    // Add to history (only on first page to avoid duplicates, use first meaningful result).
+    // Skip when any streaming statement was aborted or errored — partial
+    // results aren't a meaningful history entry the user would want to rerun.
+    if (page === 1 && indexedResults.length > 0 && !anyStreamAbortedOrErrored) {
       const historyResult = indexedResults.find((r) => !r.isUtility) ?? indexedResults[0];
       this.queryHistory.addToHistory(tab.query, historyResult);
     }
@@ -601,6 +937,40 @@ export class QueryExecutionManager {
     if (!tab?.results || resultIndex >= tab.results.length) return;
 
     const existingResult = tab.results[resultIndex];
+
+    // Cancel any in-flight stream for this tab before re-running.
+    this.abortTabStream(tabId);
+
+    const baseQuery = existingResult.statementSql.replace(/;$/, "").trim();
+    const isStreamingSelect =
+      isSelectQuery(existingResult.statementSql) &&
+      this.shouldStream(baseQuery, connection.type, pageSize);
+
+    if (isStreamingSelect) {
+      const seed = this.createStreamingSeed(
+        resultIndex,
+        existingResult.statementSql,
+        baseQuery,
+        pageSize,
+      );
+      const newResults = [...tab.results];
+      newResults[resultIndex] = seed;
+      this.updateQueryTabState(tabId, { results: newResults });
+
+      try {
+        await this.runStreamingStatement(tabId, resultIndex, baseQuery, undefined, connection);
+      } catch (error) {
+        const errResults = [...(tab.results ?? [])];
+        errResults[resultIndex] = {
+          ...existingResult,
+          error: extractErrorMessage(error),
+          isError: true,
+          isStreaming: false,
+        };
+        this.updateQueryTabState(tabId, { results: errResults });
+      }
+      return;
+    }
 
     try {
       const result = await this.executeStatement(

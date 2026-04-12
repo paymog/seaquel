@@ -53,6 +53,35 @@ export class WebSqliteDatabaseProvider implements DatabaseProvider {
     return db.query<T>(sql, params);
   }
 
+  async selectStream<T = Record<string, unknown>>(
+    connectionId: string,
+    sql: string,
+    params: unknown[] | undefined,
+    onBatch: (batch: {
+      columns: string[] | null;
+      rows: T[];
+      isFinal: boolean;
+    }) => boolean | Promise<boolean>,
+    signal?: AbortSignal,
+  ): Promise<{ aborted: boolean; error?: string }> {
+    // sql.js doesn't expose a row iterator, so we fetch the whole result and
+    // emit a single terminal batch. This preserves the interface on the web
+    // demo without any streaming benefit — acceptable because the demo DB is
+    // tiny.
+    try {
+      const rows = await this.select<T>(connectionId, sql, params);
+      if (signal?.aborted) return { aborted: true };
+      const columns = rows.length > 0 ? Object.keys(rows[0] as object) : [];
+      await onBatch({ columns, rows, isFinal: true });
+      return { aborted: false };
+    } catch (error) {
+      return {
+        aborted: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   async execute(connectionId: string, sql: string, params?: unknown[]): Promise<ExecuteResult> {
     const db = this.connections.get(connectionId);
     if (!db) {

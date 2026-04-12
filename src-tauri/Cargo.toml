@@ -33,6 +33,8 @@ tauri-plugin-fs = "2"
 russh = "0.48"
 russh-keys = "0.48"
 async-trait = "0.1"
+async-stream = "0.3"
+futures = "0.3"
 tokio = { version = "1", features = ["sync", "net", "io-util"] }
 tiberius = { version = "0.12", default-features = false, features = ["tokio", "chrono", "tds73", "native-tls"] }
 async-native-tls = "0.5"

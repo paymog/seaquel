@@ -83,6 +83,13 @@
 	const DEFAULT_COLUMN_WIDTH = $derived(compact ? 100 : 150);
 	const MIN_COLUMN_WIDTH = $derived(onAddRow ? 120 : 50);
 
+	// WebKit clamps rendered element heights at 2^25 = 33,554,432 pixels. At
+	// ROW_HEIGHT=37 that's only 906,876 rows before the spacer div gets silently
+	// truncated and you can't scroll further. We cap the rendered spacer just
+	// under that and use a scale factor below to stretch the scrollable range
+	// across arbitrarily large row counts.
+	const MAX_SAFE_HEIGHT = 33_000_000;
+
 	let scrollTop = $state(0);
 	let containerHeight = $state(0);
 
@@ -111,10 +118,22 @@
 		return Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, width));
 	}
 
-	// Initialize column widths when columns change - auto-size based on content
+	// Initialize column widths when columns change, then re-measure as the
+	// rows array grows (streaming queries fill in rows over time). We use a
+	// geometric backoff so a 10M-row stream only triggers ~log₄(10M) ≈ 12
+	// re-measurements total. Re-measures grow columns only — never shrink —
+	// so the user's manual resizes aren't clobbered.
+	let lastSizedRowCount = $state(0);
 	$effect(() => {
 		if (columns.length !== columnWidths.length) {
 			columnWidths = columns.map((col) => autoSizeColumn(col));
+			lastSizedRowCount = rows.length;
+			return;
+		}
+		if (rows.length >= Math.max(100, lastSizedRowCount * 4)) {
+			const fresh = columns.map((col) => autoSizeColumn(col));
+			columnWidths = columnWidths.map((w, i) => Math.max(w, fresh[i]));
+			lastSizedRowCount = rows.length;
 		}
 	});
 
@@ -126,18 +145,50 @@
 	let resizeStartX = $state(0);
 	let resizeStartWidth = $state(0);
 
-	// Calculate visible range
-	const totalHeight = $derived(rows.length * ROW_HEIGHT);
-	const startIndex = $derived(Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN));
+	// Calculate visible range.
+	//
+	// Two coordinate systems are in play:
+	//   * "virtual" — what the list logically looks like. Any row i sits at
+	//     virtual y = i * ROW_HEIGHT. Can grow to hundreds of millions of px.
+	//   * "display" — what actually lives in the DOM. The spacer div is
+	//     capped at MAX_SAFE_HEIGHT so WebKit won't clamp it.
+	//
+	// When the logical list is small enough to fit under the cap, the two
+	// spaces are identical (scaleFactor = 1) and this behaves exactly like
+	// the previous implementation. When the list exceeds the cap we compress
+	// the display scroll range and multiply incoming scrollTop values up to
+	// recover the virtual position.
+	const actualTotalHeight = $derived(rows.length * ROW_HEIGHT);
+	const totalHeight = $derived(Math.min(actualTotalHeight, MAX_SAFE_HEIGHT));
+	const scaleFactor = $derived.by(() => {
+		if (actualTotalHeight <= MAX_SAFE_HEIGHT) return 1;
+		const displayScrollable = totalHeight - containerHeight;
+		if (displayScrollable <= 0) return 1;
+		const virtualScrollable = actualTotalHeight - containerHeight;
+		return Math.max(1, virtualScrollable / displayScrollable);
+	});
+	const virtualScrollTop = $derived(scrollTop * scaleFactor);
+
+	const startIndex = $derived(
+		Math.max(0, Math.floor(virtualScrollTop / ROW_HEIGHT) - OVERSCAN)
+	);
 	const visibleCount = $derived(Math.ceil(containerHeight / ROW_HEIGHT) + OVERSCAN * 2);
 	const endIndex = $derived(Math.min(rows.length, startIndex + visibleCount));
 
+	// Row positions are computed in track-relative coordinates (the spacer
+	// div's frame). For each visible row we want it rendered at viewport y
+	// `index * ROW_HEIGHT - virtualScrollTop`, which in track coordinates is
+	// `scrollTop + viewport y`. When scaleFactor === 1 this collapses to the
+	// standard `index * ROW_HEIGHT` formula.
 	const visibleRows = $derived(
-		rows.slice(startIndex, endIndex).map((row, i) => ({
-			row,
-			index: startIndex + i,
-			offset: (startIndex + i) * ROW_HEIGHT
-		}))
+		rows.slice(startIndex, endIndex).map((row, i) => {
+			const index = startIndex + i;
+			return {
+				row,
+				index,
+				offset: scrollTop + index * ROW_HEIGHT - virtualScrollTop
+			};
+		})
 	);
 
 	// Grid template for consistent column widths across all rows

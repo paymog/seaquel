@@ -82,6 +82,8 @@ export interface QueryResult {
   totalPages: number;
   /** Whether this is a utility/DDL statement (SET, PRAGMA, CREATE, etc.) */
   isUtility?: boolean;
+  /** True while a streaming query is still delivering rows. Cleared on final batch. */
+  isStreaming?: boolean;
 }
 
 /**

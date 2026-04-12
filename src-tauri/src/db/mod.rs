@@ -9,6 +9,8 @@ pub mod sqlite;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Columnar result format for all drivers
@@ -16,6 +18,17 @@ use tokio::sync::RwLock;
 pub struct QueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<serde_json::Value>>,
+}
+
+/// A batch of rows emitted by a streaming query.
+/// `columns` is Some on the first batch (so the frontend can render headers)
+/// and None on subsequent batches. `is_final` marks the terminal batch, which
+/// may carry zero rows.
+#[derive(Debug, Serialize, Clone)]
+pub struct StreamBatch {
+    pub columns: Option<Vec<String>>,
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub is_final: bool,
 }
 
 /// Result of a write operation
@@ -137,6 +150,25 @@ pub trait Driver: Send + Sync {
         Ok(())
     }
 
+    /// Stream query results in batches. Drivers that can genuinely stream
+    /// (the sqlx-based ones) override this. The default implementation runs
+    /// the blocking `query()` and emits a single terminal batch, so DuckDB
+    /// and MSSQL get a correct-but-non-streaming path for free.
+    fn query_stream<'a>(
+        &'a self,
+        sql: String,
+        params: Vec<serde_json::Value>,
+    ) -> futures::stream::BoxStream<'a, Result<StreamBatch, DbError>> {
+        Box::pin(async_stream::try_stream! {
+            let result = self.query(&sql, params).await?;
+            yield StreamBatch {
+                columns: Some(result.columns),
+                rows: result.rows,
+                is_final: true,
+            };
+        })
+    }
+
     async fn close(&self) -> Result<(), DbError>;
 }
 
@@ -214,6 +246,68 @@ macro_rules! impl_sqlx_driver {
                 })
             }
 
+            fn query_stream<'a>(
+                &'a self,
+                sql: String,
+                params: Vec<serde_json::Value>,
+            ) -> futures::stream::BoxStream<'a, Result<super::StreamBatch, super::DbError>> {
+                Box::pin(async_stream::try_stream! {
+                    use sqlx::{Column, Row};
+                    use futures::StreamExt;
+
+                    const BATCH_SIZE: usize = 500;
+
+                    let sqlx_query = sqlx::query(&sql);
+                    let sqlx_query = bind_params(sqlx_query, &params);
+
+                    let mut stream = sqlx_query.fetch(&self.pool);
+
+                    let mut buffer: Vec<Vec<serde_json::Value>> = Vec::with_capacity(BATCH_SIZE);
+                    let mut captured_columns: Option<Vec<String>> = None;
+                    let mut first_batch = true;
+
+                    while let Some(row_result) = stream.next().await {
+                        let row = row_result.map_err(|e| super::DbError::query_error(e))?;
+
+                        if captured_columns.is_none() {
+                            captured_columns = Some(
+                                row.columns().iter().map(|c| c.name().to_string()).collect(),
+                            );
+                        }
+                        let col_count = row.columns().len();
+                        let mut values = Vec::with_capacity(col_count);
+                        for i in 0..col_count {
+                            let v = row.try_get_raw(i).map_err(|e| super::DbError::query_error(e))?;
+                            values.push($decode_fn(v)?);
+                        }
+                        buffer.push(values);
+
+                        if buffer.len() >= BATCH_SIZE {
+                            let batch_cols = if first_batch { captured_columns.clone() } else { None };
+                            first_batch = false;
+                            yield super::StreamBatch {
+                                columns: batch_cols,
+                                rows: std::mem::take(&mut buffer),
+                                is_final: false,
+                            };
+                        }
+                    }
+
+                    // Terminal batch — empty buffer is fine, but still needs to carry
+                    // the columns if no row ever arrived (empty result set).
+                    let final_cols = if first_batch {
+                        Some(captured_columns.unwrap_or_default())
+                    } else {
+                        None
+                    };
+                    yield super::StreamBatch {
+                        columns: final_cols,
+                        rows: buffer,
+                        is_final: true,
+                    };
+                })
+            }
+
             async fn execute(
                 &self,
                 sql: &str,
@@ -278,12 +372,18 @@ pub(crate) use impl_sqlx_driver;
 /// Single connection manager for all drivers
 pub struct ConnectionManager {
     pub connections: RwLock<HashMap<String, Box<dyn Driver>>>,
+    /// Cancellation flags for in-flight streaming queries, keyed by a client-
+    /// supplied query ID. `db_query_stream` registers a flag on entry and
+    /// removes it on exit; `db_cancel_stream` flips the flag so the running
+    /// stream loop breaks out on its next iteration.
+    pub cancellation_flags: RwLock<HashMap<String, Arc<AtomicBool>>>,
 }
 
 impl ConnectionManager {
     pub fn new() -> Self {
         Self {
             connections: RwLock::new(HashMap::new()),
+            cancellation_flags: RwLock::new(HashMap::new()),
         }
     }
 }

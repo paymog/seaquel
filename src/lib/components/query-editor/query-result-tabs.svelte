@@ -36,7 +36,7 @@
 			{#if result.isError}
 				<span class="opacity-70">{m.query_result_error()}</span>
 			{:else if result.queryType === 'select'}
-				<span class="opacity-70"
+				<span class="opacity-70 tabular-nums"
 					>{m.query_result_rows_time({ rows: result.totalRows, time: result.executionTime })}</span
 				>
 			{:else if result.affectedRows !== undefined}
@@ -47,7 +47,7 @@
 					})}</span
 				>
 			{:else}
-				<span class="opacity-70">{m.query_result_time({ time: result.executionTime })}</span>
+				<span class="opacity-70 tabular-nums">{m.query_result_time({ time: result.executionTime })}</span>
 			{/if}
 		</button>
 	{/each}

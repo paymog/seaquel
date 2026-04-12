@@ -361,15 +361,17 @@
 								/>
 							{/if}
 
-							{#if (activeResult.totalPages > 1 || activeResult.pageSize === 0) && viewState.currentViewMode === 'table'}
+							{#if (activeResult.totalPages > 1 || activeResult.pageSize === 0 || activeResult.isStreaming) && viewState.currentViewMode === 'table'}
 								<QueryPagination
 									page={activeResult.page}
 									pageSize={activeResult.pageSize}
 									totalPages={activeResult.totalPages}
 									totalRows={activeResult.totalRows}
 									isExecuting={activeTab.isExecuting}
+									isStreaming={activeResult.isStreaming ?? false}
 									onGoToPage={(page) => db.queries.goToPage(activeTabId!, page)}
 									onSetPageSize={(size) => db.queries.setPageSize(activeTabId!, size)}
+									onCancelStream={() => db.queries.cancelStream(activeTabId!)}
 								/>
 							{/if}
 						{/if}

@@ -1,11 +1,25 @@
 use log::{debug, info};
-use tauri::{command, State};
+use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tauri::{command, ipc::Channel, State};
 
 use super::{
     duckdb::DuckdbDriver, mssql::MssqlDriver, mysql::MysqlDriver, postgres::PostgresDriver,
     sqlite::SqliteDriver, BatchStatement, ConnectConfig, ConnectResult, ConnectionManager, DbError,
-    Driver, DriverType, ExecuteResult, QueryResult,
+    Driver, DriverType, ExecuteResult, QueryResult, StreamBatch,
 };
+
+/// Events sent back to the frontend through a streaming query's Channel.
+/// Terminal events (`Done`, `Error`) are sent through the channel rather than
+/// as a thrown invoke error so the JS side sees one unified termination path.
+#[derive(Debug, Serialize, Clone)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum StreamEvent {
+    Batch(StreamBatch),
+    Done,
+    Error { message: String, code: String },
+}
 
 fn sql_keyword(sql: &str) -> &str {
     sql.trim_start().split_whitespace().next().unwrap_or("?")
@@ -62,6 +76,90 @@ pub async fn db_query(
         .get(&connection_id)
         .ok_or_else(|| DbError::connection_not_found(&connection_id))?;
     driver.query(&sql, values).await
+}
+
+#[command]
+pub async fn db_query_stream(
+    query_id: String,
+    connection_id: String,
+    sql: String,
+    values: Vec<serde_json::Value>,
+    on_event: Channel<StreamEvent>,
+    manager: State<'_, ConnectionManager>,
+) -> Result<(), DbError> {
+    use futures::StreamExt;
+
+    let keyword = sql_keyword(&sql).to_uppercase();
+    debug!(activity = "db.query_stream", query_id = query_id.as_str(), connection_id = connection_id.as_str(), keyword = keyword.as_str(), sql_len = sql.len(), params = values.len(); "Query stream");
+
+    // Register a cancellation flag keyed by query_id. `db_cancel_stream` flips
+    // this when the user clicks Cancel; the stream loop below checks it on
+    // every iteration and breaks out early, releasing the sqlx connection.
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    manager
+        .cancellation_flags
+        .write()
+        .await
+        .insert(query_id.clone(), cancel_flag.clone());
+
+    // Wrap the main body in an async block so the `?` operator and early
+    // `return` still run the cleanup below. Whatever happens (success,
+    // connection-not-found, stream error, user cancel), we always remove
+    // the flag from the manager on the way out.
+    let outcome: Result<(), DbError> = async {
+        let connections = manager.connections.read().await;
+        let driver = connections
+            .get(&connection_id)
+            .ok_or_else(|| DbError::connection_not_found(&connection_id))?;
+
+        let mut stream = driver.query_stream(sql, values);
+        while let Some(batch_result) = stream.next().await {
+            if cancel_flag.load(Ordering::Relaxed) {
+                // Drop `stream` implicitly on function exit, which cancels
+                // the underlying sqlx fetch and releases the connection.
+                return Ok(());
+            }
+            match batch_result {
+                Ok(batch) => {
+                    // Channel::send returns Err if the JS side has dropped
+                    // the channel. Terminate the loop — same effect as the
+                    // explicit cancel path.
+                    if on_event.send(StreamEvent::Batch(batch)).is_err() {
+                        return Ok(());
+                    }
+                }
+                Err(e) => {
+                    let _ = on_event.send(StreamEvent::Error {
+                        message: e.message.clone(),
+                        code: e.code.clone(),
+                    });
+                    return Ok(());
+                }
+            }
+        }
+        let _ = on_event.send(StreamEvent::Done);
+        Ok(())
+    }
+    .await;
+
+    manager.cancellation_flags.write().await.remove(&query_id);
+
+    outcome
+}
+
+#[command]
+pub async fn db_cancel_stream(
+    query_id: String,
+    manager: State<'_, ConnectionManager>,
+) -> Result<(), DbError> {
+    debug!(activity = "db.cancel_stream", query_id = query_id.as_str(); "Cancel stream");
+    let flags = manager.cancellation_flags.read().await;
+    if let Some(flag) = flags.get(&query_id) {
+        flag.store(true, Ordering::Relaxed);
+    }
+    // If the flag isn't there, the stream either never started or already
+    // finished — nothing to cancel, no error.
+    Ok(())
 }
 
 #[command]
