@@ -383,7 +383,7 @@
 					</div>
 				{:else}
 					<!-- Results table takes remaining space minus pending rows -->
-					<div class={["min-h-0", pendingRowValues.length > 0 ? "flex-1" : "flex-1"]}>
+					<div class="min-h-0 flex-1 flex flex-col">
 						{#snippet pendingRowsContent(gridTemplate: string)}
 						{#each pendingRowValues as rowValues, rowIdx (rowIdx)}
 							<div
