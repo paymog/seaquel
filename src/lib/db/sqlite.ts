@@ -1,5 +1,7 @@
-import type { DatabaseAdapter, ExplainNode } from "./index";
+import type { DatabaseAdapter } from "./index";
 import { validateIdentifier } from "./index";
+import type { ExplainPlanNode, ExplainResult } from "$lib/types";
+import { makeNodeIdFactory } from "./explain-helpers";
 import {
   generateAlterTableSql,
   buildColumnType,
@@ -86,7 +88,7 @@ export class SqliteAdapter implements DatabaseAdapter {
     return `EXPLAIN QUERY PLAN ${baseQuery}`;
   }
 
-  parseExplainResult(rows: unknown[], _analyze: boolean): ExplainNode {
+  parseExplainResult(rows: unknown[], analyze: boolean): ExplainResult {
     // SQLite EXPLAIN QUERY PLAN returns: id, parent, notused, detail
     const result = rows as {
       id: number;
@@ -94,54 +96,235 @@ export class SqliteAdapter implements DatabaseAdapter {
       detail: string;
     }[];
 
+    const nextId = makeNodeIdFactory();
+
     if (result.length === 0) {
-      return { type: "Query Plan", label: "No plan available" };
+      return {
+        plan: { id: nextId(), nodeType: "Query Plan", children: [] },
+        planningTime: 0,
+        executionTime: undefined,
+        isAnalyze: analyze,
+      };
     }
 
-    // Build a map of nodes by id
-    const nodeMap = new Map<number, ExplainNode & { parentId: number }>();
-    for (const row of result) {
-      const nodeType = this.extractSqliteNodeType(row.detail);
-      nodeMap.set(row.id, {
-        type: nodeType,
-        label: row.detail,
-        parentId: row.parent,
-        children: [],
-      });
+    // Build ExplainPlanNodes keyed by SQLite row id, remembering parent ids.
+    interface Entry {
+      node: ExplainPlanNode;
+      sqliteId: number;
+      parentSqliteId: number;
     }
+    const entries: Entry[] = result.map((row) => ({
+      node: this.parseSqliteDetail(row.detail, nextId),
+      sqliteId: row.id,
+      parentSqliteId: row.parent,
+    }));
 
-    // Build tree structure
-    let root: ExplainNode | null = null;
-    for (const [_id, node] of nodeMap) {
-      if (node.parentId === 0 || !nodeMap.has(node.parentId)) {
-        // This is a root node
-        if (!root) {
-          root = node;
-        }
+    const byId = new Map<number, Entry>();
+    for (const e of entries) byId.set(e.sqliteId, e);
+
+    // Wire children in source order (SQLite already emits rows in execution order).
+    const roots: ExplainPlanNode[] = [];
+    for (const e of entries) {
+      if (e.parentSqliteId === 0 || !byId.has(e.parentSqliteId)) {
+        roots.push(e.node);
       } else {
-        const parent = nodeMap.get(node.parentId);
-        if (parent) {
-          if (!parent.children) parent.children = [];
-          parent.children.push(node);
-        }
+        byId.get(e.parentSqliteId)!.node.children.push(e.node);
       }
     }
 
-    return root || { type: "Query Plan", label: "No plan available" };
+    const plan = this.wrapSqliteRoots(roots, nextId);
+
+    return {
+      plan,
+      planningTime: 0,
+      executionTime: undefined,
+      isAnalyze: analyze,
+    };
   }
 
-  private extractSqliteNodeType(detail: string): string {
-    // Extract node type from SQLite EXPLAIN QUERY PLAN detail
-    if (detail.includes("SCAN")) return "Scan";
-    if (detail.includes("SEARCH")) return "Search";
-    if (detail.includes("INDEX")) return "Index Scan";
-    if (detail.includes("USING COVERING INDEX")) return "Covering Index Scan";
-    if (detail.includes("SUBQUERY")) return "Subquery";
-    if (detail.includes("COMPOUND")) return "Compound";
-    if (detail.includes("UNION")) return "Union";
-    if (detail.includes("EXCEPT")) return "Except";
-    if (detail.includes("INTERSECT")) return "Intersect";
-    return "Step";
+  /**
+   * Choose a synthetic root when SQLite emits multiple `parent=0` rows.
+   *
+   * SQLite's EQP output intermixes setup operations (MATERIALIZE, CO-ROUTINE)
+   * with the actual scan-loop at the top level — they all share `parent=0`.
+   * Only consecutive scan-like nodes at the top form a nested-loop join; the
+   * rest are prep steps. We detect the pure-scan-loop case and label it
+   * "Nested Loop"; mixed or non-scan top levels get a neutral "Query Plan"
+   * wrapper so we don't imply a join that isn't there.
+   */
+  private wrapSqliteRoots(roots: ExplainPlanNode[], nextId: () => string): ExplainPlanNode {
+    if (roots.length === 1) return roots[0]!;
+
+    const isScanLike = (n: ExplainPlanNode) =>
+      n.nodeType === "Seq Scan" || n.nodeType === "Index Scan" || n.nodeType === "Index Only Scan";
+
+    const allScans = roots.length >= 2 && roots.every(isScanLike);
+    const nodeType = allScans ? "Nested Loop" : "Query Plan";
+    return { id: nextId(), nodeType, children: roots };
+  }
+
+  /**
+   * Parse a single SQLite EXPLAIN QUERY PLAN `detail` string into structured fields.
+   * SQLite documents the grammar informally — see https://www.sqlite.org/eqp.html.
+   *
+   * All patterns covered below are attested in those docs; order matters because
+   * some patterns are prefixes of others (e.g. SEARCH ... USING INDEX vs SEARCH
+   * ... USING AUTOMATIC COVERING INDEX).
+   */
+  private parseSqliteDetail(detail: string, nextId: () => string): ExplainPlanNode {
+    const base = (): ExplainPlanNode => ({ id: nextId(), nodeType: "Step", children: [] });
+
+    // SCAN <table> [AS <alias>] [USING (COVERING )?INDEX <idx>]
+    const scan = /^SCAN (\w+)(?: AS (\w+))?(?: USING (COVERING )?INDEX (\w+))?$/.exec(detail);
+    if (scan) {
+      const [, table, alias, covering, idx] = scan;
+      const node = base();
+      node.nodeType = idx ? (covering ? "Index Only Scan" : "Index Scan") : "Seq Scan";
+      node.relationName = table;
+      if (alias && alias !== table) node.alias = alias;
+      if (idx) node.indexName = idx;
+      return node;
+    }
+
+    // SEARCH <table> [AS <alias>] USING AUTOMATIC (COVERING )?INDEX [(<cond>)]
+    // Automatic indexes are built at query time and have no name.
+    const searchAuto =
+      /^SEARCH (\w+)(?: AS (\w+))? USING AUTOMATIC (COVERING )?INDEX(?: \((.+)\))?$/.exec(detail);
+    if (searchAuto) {
+      const [, table, alias, covering, cond] = searchAuto;
+      const node = base();
+      node.nodeType = covering ? "Index Only Scan" : "Index Scan";
+      node.relationName = table;
+      if (alias && alias !== table) node.alias = alias;
+      node.indexName = "<automatic>";
+      if (cond) node.indexCond = cond;
+      return node;
+    }
+
+    // SEARCH <table> [AS <alias>] USING (COVERING )?INDEX <index> [(<cond>)]
+    const searchIndex =
+      /^SEARCH (\w+)(?: AS (\w+))? USING (COVERING )?INDEX (\w+)(?: \((.+)\))?$/.exec(detail);
+    if (searchIndex) {
+      const [, table, alias, covering, index, cond] = searchIndex;
+      const node = base();
+      node.nodeType = covering ? "Index Only Scan" : "Index Scan";
+      node.relationName = table;
+      if (alias && alias !== table) node.alias = alias;
+      node.indexName = index;
+      if (cond) node.indexCond = cond;
+      return node;
+    }
+
+    // SEARCH <table> [AS <alias>] USING (INTEGER )?PRIMARY KEY [(<cond>)]
+    const searchPk =
+      /^SEARCH (\w+)(?: AS (\w+))? USING (?:INTEGER )?PRIMARY KEY(?: \((.+)\))?$/.exec(detail);
+    if (searchPk) {
+      const [, table, alias, cond] = searchPk;
+      const node = base();
+      node.nodeType = "Index Scan";
+      node.relationName = table;
+      if (alias && alias !== table) node.alias = alias;
+      node.indexName = "PRIMARY KEY";
+      if (cond) node.indexCond = cond;
+      return node;
+    }
+
+    // USE TEMP B-TREE FOR ORDER BY | GROUP BY | DISTINCT | RIGHT PART OF ORDER BY
+    const tempBtree =
+      /^USE TEMP B-TREE FOR (ORDER BY|GROUP BY|DISTINCT|RIGHT PART OF ORDER BY|LEFT PART OF ORDER BY)$/.exec(
+        detail,
+      );
+    if (tempBtree) {
+      const node = base();
+      const kind = tempBtree[1]!;
+      node.nodeType = kind === "GROUP BY" ? "Group" : kind === "DISTINCT" ? "Distinct" : "Sort";
+      return node;
+    }
+
+    // MATERIALIZE <alias> — subquery materialized into a transient table.
+    // The alias is meaningful because the outer query references it via `SCAN <alias>`.
+    const materialize = /^MATERIALIZE (\w+)$/.exec(detail) ?? /^MATERIALIZE$/.exec(detail);
+    if (materialize) {
+      const node = base();
+      node.nodeType = "Materialize";
+      if (materialize[1]) node.relationName = materialize[1];
+      return node;
+    }
+
+    // CO-ROUTINE <alias> — subquery executed as a co-routine, same alias semantics.
+    const coroutine = /^CO-ROUTINE (\w+)$/.exec(detail) ?? /^CO-ROUTINE$/.exec(detail);
+    if (coroutine) {
+      const node = base();
+      node.nodeType = "Subquery";
+      if (coroutine[1]) node.relationName = coroutine[1];
+      return node;
+    }
+
+    // (CORRELATED )?SCALAR SUBQUERY
+    if (detail === "SCALAR SUBQUERY" || detail === "CORRELATED SCALAR SUBQUERY") {
+      const node = base();
+      node.nodeType = detail.startsWith("CORRELATED") ? "Correlated Subquery" : "Subquery";
+      return node;
+    }
+
+    // MULTI-INDEX OR — an OR'd predicate resolved by scanning multiple indexes and unioning.
+    if (detail === "MULTI-INDEX OR") {
+      const node = base();
+      node.nodeType = "BitmapOr";
+      return node;
+    }
+
+    // MERGE (UNION|INTERSECT|EXCEPT) — compound-select merge without a temp b-tree.
+    const merge = /^MERGE \((UNION( ALL)?|INTERSECT|EXCEPT)\)$/.exec(detail);
+    if (merge) {
+      const node = base();
+      // Fold the operator kind into the nodeType so the chip reads e.g. "Merge (UNION ALL)".
+      node.nodeType = `Merge (${merge[1]!})`;
+      return node;
+    }
+
+    // LEFT / RIGHT — wrappers that appear as children of MERGE.
+    if (detail === "LEFT" || detail === "RIGHT") {
+      const node = base();
+      node.nodeType = detail === "LEFT" ? "Left Input" : "Right Input";
+      return node;
+    }
+
+    // COMPOUND QUERY / LEFT-MOST SUBQUERY — compound-SELECT structure.
+    if (detail.startsWith("COMPOUND QUERY")) {
+      const node = base();
+      node.nodeType = "Compound";
+      return node;
+    }
+    if (detail === "LEFT-MOST SUBQUERY") {
+      const node = base();
+      node.nodeType = "Subquery";
+      return node;
+    }
+
+    // UNION / UNION ALL / EXCEPT / INTERSECT, optionally followed by USING TEMP B-TREE.
+    const compound = /^(UNION ALL|UNION|EXCEPT|INTERSECT)(?: USING TEMP B-TREE)?$/.exec(detail);
+    if (compound) {
+      const kind = compound[1]!;
+      const node = base();
+      node.nodeType =
+        kind === "UNION ALL"
+          ? "Union All"
+          : kind === "UNION"
+            ? "Union"
+            : kind === "EXCEPT"
+              ? "Except"
+              : "Intersect";
+      return node;
+    }
+
+    // Fallback — unknown pattern. We deliberately don't stuff the raw detail
+    // into `filter`/`indexCond`/`sortKey` because those imply structure the
+    // engine hasn't confirmed. Unknown patterns surface as a chip with the
+    // first word as nodeType; if this turns out to matter we add a regex above.
+    const node = base();
+    node.nodeType = detail.split(" ")[0] ?? "Step";
+    return node;
   }
 
   parseSchemaResult(rows: unknown[]): SchemaTable[] {

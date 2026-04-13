@@ -1,5 +1,7 @@
-import type { DatabaseAdapter, ExplainNode } from "./index";
+import type { DatabaseAdapter } from "./index";
 import { validateIdentifier } from "./index";
+import type { ExplainPlanNode, ExplainResult } from "$lib/types";
+import { makeNodeIdFactory } from "./explain-helpers";
 import { generateAlterTableSql, generateCreateTableDdl, generateAddColumnDdl } from "./alter-table";
 import type { SqlWithBindings } from "./crud-helpers";
 import {
@@ -111,24 +113,137 @@ export class MssqlAdapter implements DatabaseAdapter {
 
   getExplainQuery(query: string, analyze: boolean): string {
     const baseQuery = query.replace(/;$/, "");
-    // SQL Server uses SET SHOWPLAN_XML for execution plans
-    // For actual execution statistics, use SET STATISTICS PROFILE
+    // SQL Server emits XML plans via session-level SET statements.
+    // SHOWPLAN_XML = estimated plan; STATISTICS XML = actual plan with runtime counters.
     if (analyze) {
-      // Return the query as-is for now - actual execution plans in SQL Server
-      // require special handling with SET statements
-      return baseQuery;
+      return `SET STATISTICS XML ON;\n${baseQuery};\nSET STATISTICS XML OFF;`;
     }
-    return baseQuery;
+    return `SET SHOWPLAN_XML ON;\n${baseQuery};\nSET SHOWPLAN_XML OFF;`;
   }
 
-  parseExplainResult(_rows: unknown[], _analyze: boolean): ExplainNode {
-    // SQL Server execution plans are complex XML documents
-    // For now, return a placeholder - full implementation would parse XML
-    return {
-      type: "Query Plan",
-      label: "SQL Server execution plans require special handling",
+  parseExplainResult(rows: unknown[], analyze: boolean): ExplainResult {
+    const nextId = makeNodeIdFactory();
+
+    // SQL Server returns the XML plan in a single cell — column name is
+    // "Microsoft SQL Server 2005 XML Showplan" (or similar across versions).
+    const xml = this.extractMssqlXml(rows);
+    if (!xml) {
+      return {
+        plan: {
+          id: nextId(),
+          nodeType: "Query Plan",
+          filter: "No XML plan returned. Check permissions for SHOWPLAN.",
+          children: [],
+        },
+        planningTime: 0,
+        executionTime: undefined,
+        isAnalyze: analyze,
+      };
+    }
+
+    try {
+      const doc = new DOMParser().parseFromString(xml, "application/xml");
+      const parserError = doc.querySelector("parsererror");
+      if (parserError) throw new Error(parserError.textContent ?? "Failed to parse plan XML");
+
+      // The root operator lives under StmtSimple/QueryPlan/RelOp.
+      const rootRelOp =
+        doc.querySelector("StmtSimple > QueryPlan > RelOp") ?? doc.querySelector("RelOp");
+      if (!rootRelOp) {
+        return {
+          plan: { id: nextId(), nodeType: "Query Plan", children: [] },
+          planningTime: 0,
+          executionTime: undefined,
+          isAnalyze: analyze,
+        };
+      }
+
+      return {
+        plan: this.convertMssqlRelOp(rootRelOp, nextId),
+        planningTime: 0,
+        executionTime: undefined,
+        isAnalyze: analyze,
+      };
+    } catch (err) {
+      return {
+        plan: {
+          id: nextId(),
+          nodeType: "Query Plan",
+          filter: err instanceof Error ? err.message : String(err),
+          children: [],
+        },
+        planningTime: 0,
+        executionTime: undefined,
+        isAnalyze: analyze,
+      };
+    }
+  }
+
+  private extractMssqlXml(rows: unknown[]): string | null {
+    for (const row of rows as Record<string, unknown>[]) {
+      for (const value of Object.values(row)) {
+        if (typeof value === "string" && value.includes("<ShowPlanXML")) return value;
+      }
+    }
+    return null;
+  }
+
+  private convertMssqlRelOp(relOp: Element, nextId: () => string): ExplainPlanNode {
+    const node: ExplainPlanNode = {
+      id: nextId(),
+      nodeType: relOp.getAttribute("LogicalOp") || relOp.getAttribute("PhysicalOp") || "RelOp",
       children: [],
     };
+
+    const estTotalCost = relOp.getAttribute("EstimatedTotalSubtreeCost");
+    if (estTotalCost) node.totalCost = Number(estTotalCost);
+    const estRows = relOp.getAttribute("EstimateRows");
+    if (estRows) node.planRows = Number(estRows);
+    const estWidth = relOp.getAttribute("EstimateRowSize") ?? relOp.getAttribute("AvgRowSize");
+    if (estWidth) node.planWidth = Number(estWidth);
+
+    // Relation / index come from the first scan-like child element.
+    const scanObject = relOp.querySelector(":scope > * > Object");
+    if (scanObject) {
+      const table = scanObject.getAttribute("Table");
+      const index = scanObject.getAttribute("Index");
+      if (table) node.relationName = this.stripBrackets(table);
+      if (index) node.indexName = this.stripBrackets(index);
+    }
+
+    // Predicate / filter wording varies by operator type.
+    const predicate = relOp.querySelector(":scope > * > Predicate > ScalarOperator");
+    if (predicate) node.filter = predicate.getAttribute("ScalarString") ?? undefined;
+
+    // Actual runtime counters (STATISTICS XML) — sum across thread entries.
+    const runtimeRows = relOp.querySelectorAll(
+      ":scope > RunTimeInformation > RunTimeCountersPerThread",
+    );
+    if (runtimeRows.length > 0) {
+      let actualRows = 0;
+      let actualMs = 0;
+      let actualExecs = 0;
+      for (const rt of runtimeRows) {
+        actualRows += Number(rt.getAttribute("ActualRows") ?? 0);
+        actualMs = Math.max(actualMs, Number(rt.getAttribute("ActualElapsedms") ?? 0));
+        actualExecs += Number(rt.getAttribute("ActualExecutions") ?? 0);
+      }
+      node.actualRows = actualRows;
+      if (actualMs > 0) node.actualTotalTime = actualMs;
+      if (actualExecs > 0) node.actualLoops = actualExecs;
+    }
+
+    // Child RelOps appear under operator-specific wrapper elements (NestedLoops, Hash, etc.).
+    const childRelOps = relOp.querySelectorAll(":scope > * > RelOp");
+    for (const child of childRelOps) {
+      node.children.push(this.convertMssqlRelOp(child, nextId));
+    }
+
+    return node;
+  }
+
+  private stripBrackets(id: string): string {
+    return id.replace(/^\[|\]$/g, "");
   }
 
   parseSchemaResult(rows: unknown[]): SchemaTable[] {

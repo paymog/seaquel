@@ -579,9 +579,13 @@ export class QueryExecutionManager {
     // Mark as executing
     this.updateQueryTabState(tabId, { isExecuting: true });
 
-    // Get effective page size
-    const effectivePageSize =
-      pageSize ?? baseResolved.tab.results?.[0]?.pageSize ?? this.DEFAULT_PAGE_SIZE;
+    // Get effective page size: use the first SELECT-type result's pageSize from previous execution, or default.
+    // Avoid inheriting pageSize from error or utility results — a previous run that errored stores
+    // a placeholder pageSize=1 in createErrorResult, which would otherwise contaminate re-runs.
+    const previousSelectResult = baseResolved.tab.results?.find(
+      (r) => !r.isError && !r.isUtility && r.queryType === "select",
+    );
+    const effectivePageSize = pageSize ?? previousSelectResult?.pageSize ?? this.DEFAULT_PAGE_SIZE;
 
     // Queue non-SELECT statements when pending changes is enabled
     if (this.pendingChanges.isEnabled() && !isSelectQuery(query)) {
@@ -686,7 +690,7 @@ export class QueryExecutionManager {
     } catch (error) {
       void log.error(`Query execution failed on ${connection.id}`);
       this.updateQueryTabState(tabId, {
-        results: [this.createErrorResult(originalSql, error, 0)],
+        results: [this.createErrorResult(originalSql, error, 0, effectivePageSize)],
         activeResultIndex: 0,
         isExecuting: false,
       });

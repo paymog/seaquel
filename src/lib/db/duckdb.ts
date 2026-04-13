@@ -1,5 +1,7 @@
-import type { DatabaseAdapter, ExplainNode } from "./index";
+import type { DatabaseAdapter } from "./index";
 import { validateIdentifier } from "./index";
+import type { ExplainPlanNode, ExplainResult } from "$lib/types";
+import { makeNodeIdFactory } from "./explain-helpers";
 import { generateAlterTableSql, generateCreateTableDdl, generateAddColumnDdl } from "./alter-table";
 import type { SqlWithBindings } from "./crud-helpers";
 import {
@@ -93,22 +95,194 @@ export class DuckDBAdapter implements DatabaseAdapter {
 
   getExplainQuery(query: string, analyze: boolean): string {
     const baseQuery = query.replace(/;$/, "");
-    // DuckDB supports EXPLAIN and EXPLAIN ANALYZE
-    return analyze ? `EXPLAIN ANALYZE ${baseQuery}` : `EXPLAIN ${baseQuery}`;
+    // DuckDB supports a structured JSON format that preserves the plan tree
+    // (including multi-child joins). Ask for it in both cases so we can parse
+    // the result the same way regardless of whether ANALYZE is requested.
+    return analyze
+      ? `EXPLAIN (ANALYZE, FORMAT JSON) ${baseQuery}`
+      : `EXPLAIN (FORMAT JSON) ${baseQuery}`;
   }
 
-  parseExplainResult(rows: unknown[], _analyze: boolean): ExplainNode {
-    // DuckDB returns explain as text rows
-    const lines = (rows as { explain_value?: string; "QUERY PLAN"?: string }[])
-      .map((r) => r.explain_value || r["QUERY PLAN"] || "")
-      .filter((l) => l.trim());
+  parseExplainResult(rows: unknown[], analyze: boolean): ExplainResult {
+    // DuckDB's EXPLAIN returns a single row with two columns:
+    //   { explain_key: "physical_plan" | "analyzed_plan", explain_value: <json text> }
+    const rec = (rows as Record<string, unknown>[])[0] ?? {};
+    const rawValue =
+      (typeof rec.explain_value === "string" && rec.explain_value) ||
+      // Fallback to whichever column carries the JSON body for future-proofing.
+      (Object.values(rec).find(
+        (v) => typeof v === "string" && v.trim().startsWith(analyze ? "{" : "["),
+      ) as string | undefined) ||
+      "";
 
-    const text = lines.join("\n");
+    const nextId = makeNodeIdFactory();
+    const unknownPlan = (): ExplainPlanNode => ({
+      id: nextId(),
+      nodeType: "Query Plan",
+      filter: rawValue || "No plan available",
+      children: [],
+    });
 
+    let parsed: unknown;
+    try {
+      parsed = rawValue ? JSON.parse(rawValue) : null;
+    } catch {
+      return {
+        plan: unknownPlan(),
+        planningTime: 0,
+        executionTime: undefined,
+        isAnalyze: analyze,
+      };
+    }
+
+    if (analyze) {
+      // Analyzed plan: { latency, children: [ EXPLAIN_ANALYZE wrapper whose child is the real root ] }
+      const root = parsed as Record<string, unknown> | null;
+      const firstChild = (root?.children as Record<string, unknown>[] | undefined)?.[0];
+      // Skip the EXPLAIN_ANALYZE wrapper — it contributes no useful info.
+      const realRoot =
+        (firstChild?.operator_name as string | undefined)?.trim() === "EXPLAIN_ANALYZE"
+          ? (firstChild?.children as Record<string, unknown>[] | undefined)?.[0]
+          : firstChild;
+      if (!realRoot) {
+        return {
+          plan: unknownPlan(),
+          planningTime: 0,
+          executionTime: undefined,
+          isAnalyze: true,
+        };
+      }
+      const plan = this.convertDuckDbAnalyzeNode(realRoot, nextId);
+      const latencySeconds = typeof root?.latency === "number" ? root.latency : undefined;
+      return {
+        plan,
+        planningTime: 0,
+        executionTime: latencySeconds !== undefined ? latencySeconds * 1000 : undefined,
+        isAnalyze: true,
+      };
+    }
+
+    // Plain EXPLAIN: an array with one root node of shape { name, children, extra_info }.
+    const arr = Array.isArray(parsed) ? parsed : [];
+    const rootNode = (arr[0] ?? null) as Record<string, unknown> | null;
+    if (!rootNode) {
+      return {
+        plan: unknownPlan(),
+        planningTime: 0,
+        executionTime: undefined,
+        isAnalyze: false,
+      };
+    }
     return {
-      type: "Query Plan",
-      label: text || "No plan available",
+      plan: this.convertDuckDbPlanNode(rootNode, nextId),
+      planningTime: 0,
+      executionTime: undefined,
+      isAnalyze: false,
     };
+  }
+
+  /**
+   * Convert a DuckDB EXPLAIN (FORMAT JSON) node into an ExplainPlanNode.
+   * Node shape: { name: string, children: Node[], extra_info: object }
+   */
+  private convertDuckDbPlanNode(
+    node: Record<string, unknown>,
+    nextId: () => string,
+  ): ExplainPlanNode {
+    const extra = (node.extra_info as Record<string, unknown> | undefined) ?? {};
+    const out: ExplainPlanNode = {
+      id: nextId(),
+      nodeType: ((node.name as string | undefined) ?? "Operator").trim(),
+      children: ((node.children as Record<string, unknown>[] | undefined) ?? []).map((c) =>
+        this.convertDuckDbPlanNode(c, nextId),
+      ),
+    };
+    this.applyDuckDbExtraInfo(out, extra);
+    return out;
+  }
+
+  /**
+   * Convert a DuckDB EXPLAIN ANALYZE (FORMAT JSON) node into an ExplainPlanNode.
+   * Node shape: { operator_name, operator_type, operator_timing (seconds),
+   *               operator_cardinality, extra_info, children }
+   *
+   * DuckDB reports `operator_timing` as the *exclusive* time spent in that
+   * operator (not including children). Downstream consumers (see
+   * `analyzeExplainPlan`) follow PostgreSQL's convention where
+   * `actualTotalTime` is *cumulative* — the root covers the whole query.
+   * We roll the exclusive values up here so percentages/tiers behave
+   * correctly (otherwise descendants commonly exceed 100% of the root).
+   */
+  private convertDuckDbAnalyzeNode(
+    node: Record<string, unknown>,
+    nextId: () => string,
+  ): ExplainPlanNode {
+    const extra = (node.extra_info as Record<string, unknown> | undefined) ?? {};
+    const exclusiveMs =
+      typeof node.operator_timing === "number" ? node.operator_timing * 1000 : undefined;
+    const cardinality =
+      typeof node.operator_cardinality === "number" ? node.operator_cardinality : undefined;
+    const children = ((node.children as Record<string, unknown>[] | undefined) ?? []).map((c) =>
+      this.convertDuckDbAnalyzeNode(c, nextId),
+    );
+
+    // Cumulative time = self + sum of children's cumulative times.
+    // Undefined if neither self nor any child has timing data.
+    const childrenTotal = children.reduce(
+      (acc, c) => (c.actualTotalTime !== undefined ? acc + c.actualTotalTime : acc),
+      0,
+    );
+    const anyChildHasTiming = children.some((c) => c.actualTotalTime !== undefined);
+    const cumulativeMs =
+      exclusiveMs !== undefined || anyChildHasTiming
+        ? (exclusiveMs ?? 0) + childrenTotal
+        : undefined;
+
+    const out: ExplainPlanNode = {
+      id: nextId(),
+      nodeType: ((node.operator_name as string | undefined) ?? "Operator").trim(),
+      actualTotalTime: cumulativeMs,
+      actualRows: cardinality,
+      children,
+    };
+    this.applyDuckDbExtraInfo(out, extra);
+    return out;
+  }
+
+  /**
+   * Map DuckDB's `extra_info` fields onto the generic ExplainPlanNode shape.
+   * Handles the keys DuckDB emits most commonly (Table, Join Type, Conditions,
+   * Filters, Estimated Cardinality, ...).
+   */
+  private applyDuckDbExtraInfo(node: ExplainPlanNode, extra: Record<string, unknown>): void {
+    const table = extra["Table"];
+    if (typeof table === "string") node.relationName = table;
+
+    const ec = extra["Estimated Cardinality"];
+    if (typeof ec === "number") node.planRows = ec;
+    else if (typeof ec === "string" && /^[\d_]+$/.test(ec)) {
+      node.planRows = Number(ec.replace(/_/g, ""));
+    }
+
+    const joinType = extra["Join Type"];
+    if (typeof joinType === "string") node.joinType = joinType;
+
+    const conditions = extra["Conditions"];
+    if (typeof conditions === "string") {
+      if (node.nodeType.includes("HASH_JOIN") || node.nodeType.includes("HASH JOIN")) {
+        node.hashCond = conditions;
+      } else if (node.nodeType.includes("INDEX")) {
+        node.indexCond = conditions;
+      } else {
+        node.filter = conditions;
+      }
+    }
+
+    const filters = extra["Filters"];
+    if (typeof filters === "string" && !node.filter) node.filter = filters;
+    else if (Array.isArray(filters) && !node.filter) {
+      node.filter = filters.filter((f) => typeof f === "string").join(", ");
+    }
   }
 
   parseSchemaResult(rows: unknown[]): SchemaTable[] {

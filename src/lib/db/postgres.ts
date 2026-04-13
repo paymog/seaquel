@@ -1,5 +1,7 @@
-import type { DatabaseAdapter, ExplainNode } from "./index";
+import type { DatabaseAdapter } from "./index";
 import { validateIdentifier } from "./index";
+import type { ExplainPlanNode, ExplainResult } from "$lib/types";
+import { makeNodeIdFactory } from "./explain-helpers";
 import { generateAlterTableSql, generateCreateTableDdl, generateAddColumnDdl } from "./alter-table";
 import type { SqlWithBindings, CastLookup } from "./crud-helpers";
 import {
@@ -149,48 +151,60 @@ export class PostgresAdapter implements DatabaseAdapter {
       : `EXPLAIN (FORMAT JSON) ${baseQuery}`;
   }
 
-  parseExplainResult(rows: unknown[], analyze: boolean): ExplainNode {
+  parseExplainResult(rows: unknown[], analyze: boolean): ExplainResult {
     // PostgreSQL returns JSON in a column called "QUERY PLAN"
     const result = rows as { "QUERY PLAN"?: unknown; "query plan"?: unknown }[];
     const jsonPlan = result[0]?.["QUERY PLAN"] || result[0]?.["query plan"];
     const parsedPlan = typeof jsonPlan === "string" ? JSON.parse(jsonPlan) : jsonPlan;
-    const plan = (parsedPlan as { Plan: Record<string, unknown> }[])[0]?.Plan;
+    const top = (parsedPlan as Record<string, unknown>[])[0] ?? {};
+    const rootNode = (top["Plan"] ?? {}) as Record<string, unknown>;
 
-    return this.convertPgPlanNode(plan, analyze);
+    const nextId = makeNodeIdFactory();
+    const plan = this.convertPgPlanNode(rootNode, analyze, nextId);
+
+    return {
+      plan,
+      planningTime: (top["Planning Time"] as number | undefined) ?? 0,
+      executionTime: top["Execution Time"] as number | undefined,
+      isAnalyze: analyze,
+    };
   }
 
-  private convertPgPlanNode(node: Record<string, unknown>, analyze: boolean): ExplainNode {
-    const result: ExplainNode = {
+  private convertPgPlanNode(
+    node: Record<string, unknown>,
+    analyze: boolean,
+    nextId: () => string,
+  ): ExplainPlanNode {
+    const plans = (node["Plans"] as Record<string, unknown>[] | undefined) ?? [];
+    const children = plans.map((child) => this.convertPgPlanNode(child, analyze, nextId));
+
+    const out: ExplainPlanNode = {
+      id: nextId(),
       // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-      type: String(node["Node Type"] || "Unknown"),
-      label: this.buildPgNodeLabel(node),
-      cost: node["Total Cost"] as number | undefined,
-      rows: node["Plan Rows"] as number | undefined,
+      nodeType: String(node["Node Type"] ?? "Unknown"),
+      relationName: node["Relation Name"] as string | undefined,
+      alias: node["Alias"] as string | undefined,
+      startupCost: node["Startup Cost"] as number | undefined,
+      totalCost: node["Total Cost"] as number | undefined,
+      planRows: node["Plan Rows"] as number | undefined,
+      planWidth: node["Plan Width"] as number | undefined,
+      filter: node["Filter"] as string | undefined,
+      indexName: node["Index Name"] as string | undefined,
+      indexCond: node["Index Cond"] as string | undefined,
+      joinType: node["Join Type"] as string | undefined,
+      hashCond: node["Hash Cond"] as string | undefined,
+      sortKey: node["Sort Key"] as string[] | undefined,
+      children,
     };
 
     if (analyze) {
-      result.actualTime = node["Actual Total Time"] as number | undefined;
-      result.actualRows = node["Actual Rows"] as number | undefined;
+      out.actualStartupTime = node["Actual Startup Time"] as number | undefined;
+      out.actualTotalTime = node["Actual Total Time"] as number | undefined;
+      out.actualRows = node["Actual Rows"] as number | undefined;
+      out.actualLoops = node["Actual Loops"] as number | undefined;
     }
 
-    const plans = node["Plans"] as Record<string, unknown>[] | undefined;
-    if (plans && plans.length > 0) {
-      result.children = plans.map((child) => this.convertPgPlanNode(child, analyze));
-    }
-
-    return result;
-  }
-
-  private buildPgNodeLabel(node: Record<string, unknown>): string {
-    // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-    const parts: string[] = [String(node["Node Type"] || "")];
-    // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-    if (node["Relation Name"]) parts.push(`on ${String(node["Relation Name"])}`);
-    // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-    if (node["Index Name"]) parts.push(`using ${String(node["Index Name"])}`);
-    // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-    if (node["Join Type"]) parts.push(`(${String(node["Join Type"])})`);
-    return parts.join(" ");
+    return out;
   }
 
   parseSchemaResult(rows: unknown[]): SchemaTable[] {

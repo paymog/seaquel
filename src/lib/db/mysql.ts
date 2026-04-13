@@ -1,5 +1,7 @@
-import type { DatabaseAdapter, ExplainNode } from "./index";
+import type { DatabaseAdapter } from "./index";
 import { validateIdentifier } from "./index";
+import type { ExplainPlanNode, ExplainResult } from "$lib/types";
+import { makeNodeIdFactory } from "./explain-helpers";
 import { generateAlterTableSql, generateCreateTableDdl, generateAddColumnDdl } from "./alter-table";
 import type { SqlWithBindings, CastLookup } from "./crud-helpers";
 import {
@@ -139,62 +141,280 @@ export class MysqlAdapter implements DatabaseAdapter {
     return analyze ? `EXPLAIN ANALYZE ${baseQuery}` : `EXPLAIN FORMAT=JSON ${baseQuery}`;
   }
 
-  parseExplainResult(rows: unknown[], analyze: boolean): ExplainNode {
+  parseExplainResult(rows: unknown[], analyze: boolean): ExplainResult {
+    const nextId = makeNodeIdFactory();
+
     if (analyze) {
-      // EXPLAIN ANALYZE returns text rows in MySQL 8.0.18+
-      const lines = (rows as Record<string, string>[]).map((r) => Object.values(r)[0] || "");
+      // EXPLAIN ANALYZE returns text rows in MySQL 8.0.18+; lines begin with "-> Op"
+      const text = (rows as Record<string, unknown>[])
+        .map((r) => {
+          const first = Object.values(r)[0];
+          return typeof first === "string" ? first : "";
+        })
+        .join("\n");
+      const plan = this.parseMysqlAnalyzeTree(text, nextId);
       return {
-        type: "Query",
-        label: lines.join("\n"),
+        plan,
+        planningTime: 0,
+        executionTime: undefined,
+        isAnalyze: true,
       };
     }
 
-    // EXPLAIN FORMAT=JSON returns a single row with EXPLAIN column
+    // EXPLAIN FORMAT=JSON returns a single row with the JSON plan
     const result = rows as Record<string, unknown>[];
-    const jsonStr = Object.values(result[0] || {})[0];
+    const jsonStr = Object.values(result[0] ?? {})[0];
     const parsed = typeof jsonStr === "string" ? JSON.parse(jsonStr) : jsonStr;
-    const queryBlock = (parsed as { query_block?: Record<string, unknown> })?.query_block;
 
-    if (!queryBlock) {
-      return { type: "Query", label: "Query" };
-    }
-
-    return this.convertMysqlPlanNode(queryBlock);
-  }
-
-  private convertMysqlPlanNode(node: Record<string, unknown>): ExplainNode {
-    const table = node["table"] as Record<string, unknown> | undefined;
-    const nestedLoop = node["nested_loop"] as Record<string, unknown>[] | undefined;
-
-    if (table) {
+    // Schema v2.0 (MySQL 9.x+): root holds a `query_plan` operation tree.
+    const queryPlan = (parsed as { query_plan?: Record<string, unknown> })?.query_plan;
+    if (queryPlan) {
       return {
-        type: (table["access_type"] as string) || "ALL",
-        // oxlint-disable-next-line
-        label: `${table["table_name"] || "unknown"} (${table["access_type"] || "ALL"})`,
-        rows: table["rows_examined_per_scan"] as number | undefined,
-        cost: table["read_cost"]
-          ? Number(table["read_cost"])
-          : table["eval_cost"]
-            ? Number(table["eval_cost"])
-            : undefined,
+        plan: this.convertMysqlV2PlanNode(queryPlan, nextId),
+        planningTime: 0,
+        executionTime: undefined,
+        isAnalyze: false,
       };
     }
 
-    if (nestedLoop) {
+    // Schema v1 (MySQL 8.x): root holds a `query_block`.
+    const queryBlock = (parsed as { query_block?: Record<string, unknown> })?.query_block;
+    if (!queryBlock) {
       return {
-        type: "Nested Loop",
-        label: "Nested Loop",
-        children: nestedLoop.map((item) => this.convertMysqlPlanNode(item)),
+        plan: { id: nextId(), nodeType: "Query", children: [] },
+        planningTime: 0,
+        executionTime: undefined,
+        isAnalyze: false,
       };
     }
 
     return {
-      type: "Query Block",
-      label: "Query Block",
-      cost: node["cost_info"]
-        ? Number((node["cost_info"] as Record<string, unknown>)["query_cost"])
-        : undefined,
+      plan: this.convertMysqlPlanNode(queryBlock, nextId),
+      planningTime: 0,
+      executionTime: undefined,
+      isAnalyze: false,
     };
+  }
+
+  /**
+   * Convert a MySQL EXPLAIN FORMAT=JSON schema v2.0 operation node.
+   * v2.0 (introduced with `json_schema_version: "2.0"`) replaces the nested
+   * `table`/`nested_loop` shape with a uniform tree: every node has an
+   * `operation` string, optional `inputs[]` for children, and access metadata.
+   */
+  private convertMysqlV2PlanNode(
+    node: Record<string, unknown>,
+    nextId: () => string,
+  ): ExplainPlanNode {
+    const operation = (node["operation"] as string) ?? "Operator";
+    const inputs = (node["inputs"] as Record<string, unknown>[] | undefined) ?? [];
+    const estimatedRows = node["estimated_rows"];
+    const estimatedCost = node["estimated_total_cost"];
+
+    // Strip " on <alias>" and trailing parenthesized detail to get a clean
+    // operator name (matches the EXPLAIN ANALYZE tree parser's convention).
+    const nodeType = operation.split(/\s+on\s+|\s*\(/)[0]?.trim() || operation;
+
+    return {
+      id: nextId(),
+      nodeType,
+      relationName: node["table_name"] as string | undefined,
+      alias: node["alias"] as string | undefined,
+      indexName: node["index_name"] as string | undefined,
+      joinType: node["join_type"] as string | undefined,
+      indexCond: node["lookup_condition"] as string | undefined,
+      filter: node["condition"] as string | undefined,
+      planRows: typeof estimatedRows === "number" ? Math.round(estimatedRows) : undefined,
+      totalCost: typeof estimatedCost === "number" ? estimatedCost : undefined,
+      children: inputs.map((child) => this.convertMysqlV2PlanNode(child, nextId)),
+    };
+  }
+
+  private static readonly ACCESS_TYPE_LABELS: Record<string, string> = {
+    ALL: "Table Scan",
+    const: "Const",
+    eq_ref: "Index Scan",
+    fulltext: "Fulltext Scan",
+    index: "Index Scan",
+    index_merge: "Index Merge",
+    index_subquery: "Index Subquery",
+    range: "Range Scan",
+    ref: "Index Scan",
+    ref_or_null: "Index Scan",
+    system: "Const",
+    unique_subquery: "Unique Subquery",
+  };
+
+  private convertMysqlPlanNode(
+    node: Record<string, unknown>,
+    nextId: () => string,
+  ): ExplainPlanNode {
+    const table = node["table"] as Record<string, unknown> | undefined;
+    const nestedLoop = node["nested_loop"] as Record<string, unknown>[] | undefined;
+    const grouping = node["grouping_operation"] as Record<string, unknown> | undefined;
+    const ordering = node["ordering_operation"] as Record<string, unknown> | undefined;
+    const duplicates = node["duplicates_removal"] as Record<string, unknown> | undefined;
+    const attachedSubqueries = node["attached_subqueries"] as Record<string, unknown>[] | undefined;
+    const unionResult = node["union_result"] as Record<string, unknown> | undefined;
+
+    const queryCost = node["cost_info"]
+      ? Number((node["cost_info"] as Record<string, unknown>)["query_cost"])
+      : undefined;
+
+    if (table) {
+      const accessType = (table["access_type"] as string) || "ALL";
+      const readCost = Number(
+        (table["cost_info"] as Record<string, unknown> | undefined)?.["read_cost"] ?? 0,
+      );
+      const evalCost = Number(
+        (table["cost_info"] as Record<string, unknown> | undefined)?.["eval_cost"] ?? 0,
+      );
+      const totalCost = readCost || evalCost ? readCost + evalCost : undefined;
+
+      const node: ExplainPlanNode = {
+        id: nextId(),
+        nodeType: MysqlAdapter.ACCESS_TYPE_LABELS[accessType] ?? accessType,
+        relationName: table["table_name"] as string | undefined,
+        indexName: table["key"] as string | undefined,
+        filter: table["attached_condition"] as string | undefined,
+        planRows: table["rows_examined_per_scan"] as number | undefined,
+        totalCost,
+        children: [],
+      };
+      // Some MySQL plans nest a materialized subquery inside the table node.
+      const materialized = table["materialized_from_subquery"] as
+        | Record<string, unknown>
+        | undefined;
+      if (materialized?.["query_block"]) {
+        node.children.push(
+          this.convertMysqlPlanNode(materialized["query_block"] as Record<string, unknown>, nextId),
+        );
+      }
+      return node;
+    }
+
+    if (nestedLoop) {
+      return {
+        id: nextId(),
+        nodeType: "Nested Loop",
+        totalCost: queryCost,
+        children: nestedLoop.map((item) => this.convertMysqlPlanNode(item, nextId)),
+      };
+    }
+
+    if (grouping) {
+      return {
+        id: nextId(),
+        nodeType: "Group",
+        totalCost: queryCost,
+        children: [this.convertMysqlPlanNode(grouping, nextId)],
+      };
+    }
+
+    if (ordering) {
+      return {
+        id: nextId(),
+        nodeType: "Sort",
+        totalCost: queryCost,
+        children: [this.convertMysqlPlanNode(ordering, nextId)],
+      };
+    }
+
+    if (duplicates) {
+      return {
+        id: nextId(),
+        nodeType: "Distinct",
+        totalCost: queryCost,
+        children: [this.convertMysqlPlanNode(duplicates, nextId)],
+      };
+    }
+
+    if (unionResult) {
+      const specs = (unionResult["query_specifications"] as Record<string, unknown>[]) ?? [];
+      return {
+        id: nextId(),
+        nodeType: "Union",
+        children: specs.map((spec) => {
+          const qb = spec["query_block"] as Record<string, unknown> | undefined;
+          return qb
+            ? this.convertMysqlPlanNode(qb, nextId)
+            : { id: nextId(), nodeType: "Query Block", children: [] };
+        }),
+      };
+    }
+
+    // Plain query_block
+    const children: ExplainPlanNode[] = [];
+    if (attachedSubqueries) {
+      for (const sub of attachedSubqueries) {
+        const qb = sub["query_block"] as Record<string, unknown> | undefined;
+        if (qb) children.push(this.convertMysqlPlanNode(qb, nextId));
+      }
+    }
+    return {
+      id: nextId(),
+      nodeType: "Query Block",
+      totalCost: queryCost,
+      children,
+    };
+  }
+
+  /**
+   * Parse MySQL 8.0.18+ `EXPLAIN ANALYZE` text output into a tree.
+   * Each line begins with "-> Operator  (cost=X rows=Y) (actual time=a..b rows=r loops=l)";
+   * child operators are indented by 4 spaces per level relative to their parent.
+   */
+  private parseMysqlAnalyzeTree(text: string, nextId: () => string): ExplainPlanNode {
+    const lines = text.split("\n").filter((l) => l.trim().length > 0);
+    const root: ExplainPlanNode = { id: nextId(), nodeType: "Query", children: [] };
+    const stack: { indent: number; node: ExplainPlanNode }[] = [{ indent: -1, node: root }];
+
+    for (const raw of lines) {
+      const indent = raw.search(/->/);
+      if (indent < 0) continue;
+      const body = raw.slice(indent + 2).trim();
+
+      const node: ExplainPlanNode = { id: nextId(), nodeType: "Operator", children: [] };
+
+      // Pull off trailing parenthesized metadata blocks left-to-right.
+      let head = body;
+      const estMatch = /\(cost=([\d.]+)\s+rows=(\d+)\)/.exec(body);
+      if (estMatch) {
+        node.totalCost = Number(estMatch[1]);
+        node.planRows = Number(estMatch[2]);
+        head = head.replace(estMatch[0], "");
+      }
+      const actualMatch = /\(actual time=([\d.]+)\.\.([\d.]+)\s+rows=(\d+)\s+loops=(\d+)\)/.exec(
+        body,
+      );
+      if (actualMatch) {
+        node.actualStartupTime = Number(actualMatch[1]);
+        node.actualTotalTime = Number(actualMatch[2]);
+        node.actualRows = Number(actualMatch[3]);
+        node.actualLoops = Number(actualMatch[4]);
+        head = head.replace(actualMatch[0], "");
+      }
+
+      // The remaining head is "OperatorName [on table] [using index]..."
+      const headTrim = head.trim();
+      const onMatch = /\bon\s+(\w+)(?:\s+using\s+(\w+))?/.exec(headTrim);
+      if (onMatch) {
+        node.relationName = onMatch[1];
+        if (onMatch[2]) node.indexName = onMatch[2];
+      }
+      const nodeTypeText = headTrim.split(/\s+on\s+|\s*\(/)[0]?.trim() ?? "Operator";
+      node.nodeType = nodeTypeText || "Operator";
+
+      while (stack.length > 1 && stack[stack.length - 1]!.indent >= indent) {
+        stack.pop();
+      }
+      stack[stack.length - 1]!.node.children.push(node);
+      stack.push({ indent, node });
+    }
+
+    // If there's exactly one top-level operator, return it directly instead of the wrapper.
+    if (root.children.length === 1) return root.children[0]!;
+    return root;
   }
 
   parseSchemaResult(rows: unknown[]): SchemaTable[] {

@@ -16,14 +16,14 @@ export interface ExplainPlanNode {
   relationName?: string;
   /** Alias for the relation in the query */
   alias?: string;
-  /** Estimated cost to start returning rows */
-  startupCost: number;
-  /** Estimated total cost to complete the operation */
-  totalCost: number;
-  /** Estimated number of rows to be returned */
-  planRows: number;
-  /** Estimated average width of rows in bytes */
-  planWidth: number;
+  /** Estimated cost to start returning rows (undefined for engines that don't expose cost) */
+  startupCost?: number;
+  /** Estimated total cost to complete the operation (undefined for engines that don't expose cost) */
+  totalCost?: number;
+  /** Estimated number of rows to be returned (undefined when the engine doesn't provide estimates) */
+  planRows?: number;
+  /** Estimated average width of rows in bytes (undefined when the engine doesn't provide it) */
+  planWidth?: number;
 
   // ANALYZE fields (actual execution statistics)
   /** Actual time to start returning rows (ms) */

@@ -22,7 +22,8 @@
   let { data, isConnectable }: Props = $props();
 
   // Calculate color based on cost (relative scale)
-  const getCostColor = (cost: number) => {
+  const getCostColor = (cost: number | undefined) => {
+    if (cost === undefined) return "bg-card border-border";
     if (cost > 10000) return "bg-red-100 border-red-300 dark:bg-red-950 dark:border-red-800";
     if (cost > 1000) return "bg-orange-100 border-orange-300 dark:bg-orange-950 dark:border-orange-800";
     if (cost > 100) return "bg-yellow-100 border-yellow-300 dark:bg-yellow-950 dark:border-yellow-800";
@@ -91,7 +92,7 @@
           </Badge>
         </Tooltip.Trigger>
         <Tooltip.Content side="top" class="max-w-xs">
-          {m.explain_estimation_error_tooltip({ planned: data.planRows.toLocaleString(), actual: (data.actualRows ?? 0).toLocaleString(), ratio: Math.round(data.rowEstimationRatio ?? 1).toString() })}
+          {m.explain_estimation_error_tooltip({ planned: (data.planRows ?? 0).toLocaleString(), actual: (data.actualRows ?? 0).toLocaleString(), ratio: Math.round(data.rowEstimationRatio ?? 1).toString() })}
         </Tooltip.Content>
       </Tooltip.Root>
     </div>
@@ -135,16 +136,22 @@
   {/if}
 
   <!-- Cost & Rows -->
-  <div class="grid grid-cols-2 gap-2 text-xs">
-    <div>
-      <span class="text-muted-foreground">{m.explain_cost()}</span>
-      <span class="font-mono ms-1">{data.totalCost.toFixed(2)}</span>
+  {#if data.totalCost !== undefined || data.planRows !== undefined}
+    <div class="grid grid-cols-2 gap-2 text-xs">
+      {#if data.totalCost !== undefined}
+        <div>
+          <span class="text-muted-foreground">{m.explain_cost()}</span>
+          <span class="font-mono ms-1">{data.totalCost.toFixed(2)}</span>
+        </div>
+      {/if}
+      {#if data.planRows !== undefined}
+        <div>
+          <span class="text-muted-foreground">{m.explain_rows()}</span>
+          <span class="font-mono ms-1">{data.planRows.toLocaleString()}</span>
+        </div>
+      {/if}
     </div>
-    <div>
-      <span class="text-muted-foreground">{m.explain_rows()}</span>
-      <span class="font-mono ms-1">{data.planRows.toLocaleString()}</span>
-    </div>
-  </div>
+  {/if}
 
   <!-- Actual metrics (ANALYZE only) -->
   {#if data.actualTotalTime !== undefined}
@@ -171,7 +178,7 @@
   {/if}
 
   <!-- Filter/Conditions -->
-  {#if data.filter || data.indexCond || data.hashCond}
+  {#if data.filter || data.indexCond || data.hashCond || (data.sortKey && data.sortKey.length > 0)}
     <div class="border-t mt-2 pt-2 text-xs space-y-1">
       {#if data.filter}
         <div class="text-muted-foreground truncate" title={data.filter}>
@@ -186,6 +193,11 @@
       {#if data.hashCond}
         <div class="text-muted-foreground truncate" title={data.hashCond}>
           {m.explain_hash_cond()} <span class="font-mono">{data.hashCond}</span>
+        </div>
+      {/if}
+      {#if data.sortKey && data.sortKey.length > 0}
+        <div class="text-muted-foreground truncate" title={data.sortKey.join(", ")}>
+          <span class="font-mono">{data.sortKey.join(", ")}</span>
         </div>
       {/if}
     </div>

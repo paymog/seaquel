@@ -6,6 +6,7 @@ import type {
   TableSizeInfo,
   IndexUsageInfo,
   DatabaseOverview,
+  ExplainResult,
 } from "$lib/types";
 import { MssqlAdapter } from "./mssql";
 import { MysqlAdapter } from "./mysql";
@@ -14,16 +15,6 @@ import { SqliteAdapter } from "./sqlite";
 import { DuckDBAdapter } from "./duckdb";
 
 export type { SqlWithBindings, CastLookup } from "./crud-helpers";
-
-export interface ExplainNode {
-  type: string;
-  label: string;
-  cost?: number;
-  rows?: number;
-  actualTime?: number;
-  actualRows?: number;
-  children?: ExplainNode[];
-}
 
 export interface DatabaseAdapter {
   /** SQL query to list all tables in the database */
@@ -41,8 +32,8 @@ export interface DatabaseAdapter {
   /** Build the EXPLAIN query for this database type */
   getExplainQuery(query: string, analyze: boolean): string;
 
-  /** Parse EXPLAIN results into a common format */
-  parseExplainResult(rows: unknown[], analyze: boolean): ExplainNode;
+  /** Parse EXPLAIN results into the renderer-ready ExplainResult */
+  parseExplainResult(rows: unknown[], analyze: boolean): ExplainResult;
 
   /** Transform raw schema query results to SchemaTable[] */
   parseSchemaResult(rows: unknown[]): SchemaTable[];

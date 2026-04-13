@@ -88,20 +88,24 @@
               {/if}
             </h2>
             <div class="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-              <span class="flex items-center gap-1">
-                <ClockIcon class="size-3" />
-                {m.explain_planning()} {activeExplainTab.result.planningTime.toFixed(2)}ms
-              </span>
+              {#if activeExplainTab.result.planningTime > 0}
+                <span class="flex items-center gap-1">
+                  <ClockIcon class="size-3" />
+                  {m.explain_planning()} {activeExplainTab.result.planningTime.toFixed(2)}ms
+                </span>
+              {/if}
               {#if activeExplainTab.result.executionTime !== undefined}
                 <span class="flex items-center gap-1">
                   <ClockIcon class="size-3" />
                   {m.explain_execution()} {activeExplainTab.result.executionTime.toFixed(2)}ms
                 </span>
               {/if}
-              <span class="flex items-center gap-1">
-                <RowsIcon class="size-3" />
-                {m.explain_estimated_rows()} {activeExplainTab.result.plan.planRows.toLocaleString()}
-              </span>
+              {#if activeExplainTab.result.plan.planRows !== undefined}
+                <span class="flex items-center gap-1">
+                  <RowsIcon class="size-3" />
+                  {m.explain_estimated_rows()} {activeExplainTab.result.plan.planRows.toLocaleString()}
+                </span>
+              {/if}
             </div>
           </div>
           <Button size="sm" variant="outline" onclick={handleViewQuery}>
@@ -152,9 +156,10 @@
           fitView
           minZoom={0.1}
           maxZoom={2}
-          nodesDraggable={true}
+          nodesDraggable={false}
           nodesConnectable={false}
-          elementsSelectable={true}
+          elementsSelectable={false}
+          deleteKey={null}
           proOptions={{ hideAttribution: true }}
         >
           <Background />

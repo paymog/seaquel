@@ -1,10 +1,10 @@
 import type { ActiveViewType } from "$lib/types/persisted";
 import { withErrorHandling } from "$lib/errors";
-import type { ExplainTab, ExplainResult, ExplainPlanNode, ParameterValue } from "$lib/types";
+import type { ExplainTab, ExplainResult, ParameterValue } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
 import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelte.js";
-import { getAdapter, type ExplainNode } from "$lib/db";
+import { getAdapter } from "$lib/db";
 import type { ProviderRegistry } from "$lib/providers";
 import { resolveQuery } from "./resolve-query.js";
 
@@ -101,17 +101,20 @@ export class ExplainTabManager extends BaseTabManager<ExplainTab> {
       explainQuery,
       useBindValues ? bindValues : undefined,
     );
-    const parsedNode = adapter.parseExplainResult(queryResult, analyze);
+    const explainResult = adapter.parseExplainResult(queryResult, analyze);
 
-    if (dbType === "sqlite" && analyze && actualRowCount !== undefined) {
-      parsedNode.actualRows = actualRowCount;
-      parsedNode.rows = actualRowCount;
-      parsedNode.actualTime = executionTime;
-    }
-
-    const explainResult = this.convertExplainNodeToResult(parsedNode, analyze);
-    if (dbType === "sqlite" && analyze && executionTime !== undefined) {
-      explainResult.executionTime = executionTime;
+    // SQLite has no native ANALYZE: populate the root with measured execution stats.
+    // Only the root gets actuals — there is no per-operator breakdown — and we
+    // deliberately leave planRows undefined so the UI doesn't invent an "estimate"
+    // that equals the actual count.
+    if (dbType === "sqlite" && analyze) {
+      if (actualRowCount !== undefined) {
+        explainResult.plan.actualRows = actualRowCount;
+      }
+      if (executionTime !== undefined) {
+        explainResult.plan.actualTotalTime = executionTime;
+        explainResult.executionTime = executionTime;
+      }
     }
     return explainResult;
   }
@@ -164,46 +167,6 @@ export class ExplainTabManager extends BaseTabManager<ExplainTab> {
     } else {
       this.setExplainExecuting(tabId, false, analyze);
     }
-  }
-
-  /**
-   * Convert ExplainNode from adapter to ExplainResult for rendering.
-   */
-  private convertExplainNodeToResult(node: ExplainNode, isAnalyze: boolean): ExplainResult {
-    let nodeCounter = 0;
-
-    const convertNode = (n: ExplainNode): ExplainPlanNode => {
-      const id = `node-${nodeCounter++}`;
-
-      return {
-        id,
-        nodeType: n.type,
-        relationName: undefined,
-        alias: undefined,
-        startupCost: 0,
-        totalCost: n.cost || 0,
-        planRows: n.rows || 0,
-        planWidth: 0,
-        actualStartupTime: undefined,
-        actualTotalTime: n.actualTime,
-        actualRows: n.actualRows,
-        actualLoops: undefined,
-        filter: n.label !== n.type ? n.label : undefined,
-        indexName: undefined,
-        indexCond: undefined,
-        joinType: undefined,
-        hashCond: undefined,
-        sortKey: undefined,
-        children: (n.children || []).map((child) => convertNode(child)),
-      };
-    };
-
-    return {
-      plan: convertNode(node),
-      planningTime: 0,
-      executionTime: undefined,
-      isAnalyze,
-    };
   }
 
   /**

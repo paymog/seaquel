@@ -84,6 +84,22 @@ export function analyzeExplainPlan(result: ExplainResult): HotPathAnalysis {
     };
   }
 
+  // Hot-path analysis is meaningless for a single-node plan (the root is always 100%).
+  // Skip the tier classification entirely so the renderer doesn't tag a solo node.
+  //
+  // It's also meaningless when only the root has timing and no descendant does —
+  // that happens when the engine (SQLite) can only report total query time and
+  // has no per-operator breakdown. Flagging the root as "100% bottleneck" in that
+  // case is a tautology, not a finding.
+  if (countNodes(result.plan) <= 1 || !hasDescendantTiming(result.plan)) {
+    return {
+      totalTime: calculateEffectiveTime(result.plan),
+      nodeAnalysis,
+      bottlenecks,
+      hasAnalyzeData: true,
+    };
+  }
+
   // Calculate total time from root node (includes all child operations)
   const totalTime = calculateEffectiveTime(result.plan);
 
@@ -104,6 +120,22 @@ export function analyzeExplainPlan(result: ExplainResult): HotPathAnalysis {
   };
 }
 
+/** Total number of nodes in the plan tree (including the root). */
+function countNodes(node: ExplainPlanNode): number {
+  let count = 1;
+  for (const child of node.children) count += countNodes(child);
+  return count;
+}
+
+/** True iff any non-root descendant has actual timing data. */
+function hasDescendantTiming(root: ExplainPlanNode): boolean {
+  const visit = (n: ExplainPlanNode): boolean => {
+    if (n.actualTotalTime !== undefined) return true;
+    return n.children.some(visit);
+  };
+  return root.children.some(visit);
+}
+
 /**
  * Calculates the effective execution time for a node.
  * Effective time = actualTotalTime × actualLoops
@@ -122,7 +154,7 @@ function calculateRowEstimationRatio(node: ExplainPlanNode): number {
   const actualRows = node.actualRows;
   const planRows = node.planRows;
 
-  if (actualRows === undefined || planRows === 0) {
+  if (actualRows === undefined || planRows === undefined || planRows === 0) {
     return 1;
   }
 
