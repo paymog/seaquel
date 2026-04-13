@@ -15,6 +15,7 @@
 	import VirtualResultsTable from "$lib/components/virtual-results-table.svelte";
 	import DataFilterBar from "$lib/components/data-filter-bar.svelte";
 	import { inputTypeForColumnType, inputStepForColumnType } from "$lib/utils/cell-type";
+	import { rowToObject } from "$lib/utils/row-access";
 	import { toast } from "svelte-sonner";
 	import { tick } from "svelte";
 
@@ -86,13 +87,24 @@
 		);
 	});
 
+	// Positional index of each PK column, resolved once and reused by both
+	// `findIndex` loops below. `unknown[]` rows don't carry column names, so
+	// we look up values by position via the parent result's `columns` array.
+	const pkColumnIndices = $derived.by(() => {
+		const cols = tab?.results?.columns ?? [];
+		return primaryKeyColumns.map((pk) => cols.indexOf(pk));
+	});
+
 	const pendingCellEdits = $derived.by(() => {
 		if (!tab?.results?.rows) return undefined;
+		const pkIdx = pkColumnIndices;
 		const edits = new Map<string, unknown>();
 		for (const change of pendingChangesForTable) {
 			if ((change.origin === "inline-edit" || change.origin === "set-default") && change.target?.primaryKeyValues && change.target.column) {
 				const rowIdx = tab.results.rows.findIndex((row) =>
-					primaryKeyColumns.every((pk) => String(row[pk]) === String(change.target!.primaryKeyValues![pk])),
+					primaryKeyColumns.every(
+						(pk, i) => pkIdx[i] !== -1 && String(row[pkIdx[i]]) === String(change.target!.primaryKeyValues![pk]),
+					),
 				);
 				if (rowIdx >= 0) {
 					edits.set(`${rowIdx}:${change.target.column}`, change.target.newValue);
@@ -104,11 +116,14 @@
 
 	const pendingRowDeletes = $derived.by(() => {
 		if (!tab?.results?.rows) return undefined;
+		const pkIdx = pkColumnIndices;
 		const deletes = new Set<number>();
 		for (const change of pendingChangesForTable) {
 			if (change.origin === "delete-row" && change.target?.primaryKeyValues) {
 				const rowIdx = tab.results.rows.findIndex((row) =>
-					primaryKeyColumns.every((pk) => String(row[pk]) === String(change.target!.primaryKeyValues![pk])),
+					primaryKeyColumns.every(
+						(pk, i) => pkIdx[i] !== -1 && String(row[pkIdx[i]]) === String(change.target!.primaryKeyValues![pk]),
+					),
 				);
 				if (rowIdx >= 0) {
 					deletes.add(rowIdx);
@@ -217,7 +232,7 @@
 
 		const result = await db.queries.updateCellDirect(
 			tab.results.sourceTable,
-			row,
+			rowToObject(row, tab.results.columns),
 			column,
 			newValue,
 		);
@@ -233,12 +248,15 @@
 		}
 	}
 
-	async function handleRowDelete(rowIndex: number, row: Record<string, unknown>) {
+	async function handleRowDelete(rowIndex: number, row: unknown[]) {
 		if (!tab?.results?.sourceTable) return;
 		deletingRowIndex = rowIndex;
 
 		try {
-			const result = await db.queries.deleteRow(tab.results.sourceTable, row);
+			const result = await db.queries.deleteRow(
+				tab.results.sourceTable,
+				rowToObject(row, tab.results.columns),
+			);
 			if (result.queued) {
 				toast.info("Delete added to pending changes");
 			} else {
@@ -256,7 +274,7 @@
 	function handleCellRightClick(
 		value: unknown,
 		column: string,
-		row: Record<string, unknown>,
+		row: unknown[],
 		rowIndex: number,
 	) {
 		contextRowIndex = rowIndex;
@@ -277,7 +295,7 @@
 
 		const result = await db.queries.setCellDefaultDirect(
 			tab.results.sourceTable,
-			row,
+			rowToObject(row, tab.results.columns),
 			contextColumn,
 		);
 

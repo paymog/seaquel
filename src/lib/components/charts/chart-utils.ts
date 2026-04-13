@@ -17,8 +17,10 @@ function isNumeric(value: unknown): boolean {
  * Analyze column data to determine if it's numeric.
  * Returns true if >80% of non-null values are numeric.
  */
-function isNumericColumn(rows: Record<string, unknown>[], columnName: string): boolean {
-  const values = rows.map((row) => row[columnName]).filter((v) => v != null && v !== "");
+function isNumericColumn(columns: string[], rows: unknown[][], columnName: string): boolean {
+  const idx = columns.indexOf(columnName);
+  if (idx === -1) return false;
+  const values = rows.map((row) => row[idx]).filter((v) => v != null && v !== "");
   if (values.length === 0) return false;
 
   const numericCount = values.filter(isNumeric).length;
@@ -28,10 +30,12 @@ function isNumericColumn(rows: Record<string, unknown>[], columnName: string): b
 /**
  * Check if a column contains sequential/ordered data (dates, timestamps, or sequential numbers).
  */
-function isSequentialColumn(rows: Record<string, unknown>[], columnName: string): boolean {
+function isSequentialColumn(columns: string[], rows: unknown[][], columnName: string): boolean {
   if (rows.length < 2) return false;
 
-  const values = rows.map((row) => row[columnName]);
+  const idx = columns.indexOf(columnName);
+  if (idx === -1) return false;
+  const values = rows.map((row) => row[idx]);
 
   // Check if values are dates
   const isDate = values.every((v) => {
@@ -46,7 +50,7 @@ function isSequentialColumn(rows: Record<string, unknown>[], columnName: string)
   if (isDate) return true;
 
   // Check if values are sequential numbers
-  if (isNumericColumn(rows, columnName)) {
+  if (isNumericColumn(columns, rows, columnName)) {
     const nums = values.map((v) => Number(v));
     let increasing = true;
     let decreasing = true;
@@ -63,13 +67,13 @@ function isSequentialColumn(rows: Record<string, unknown>[], columnName: string)
 /**
  * Auto-detect the most appropriate chart type based on data shape.
  */
-export function detectChartType(columns: string[], rows: Record<string, unknown>[]): ChartType {
+export function detectChartType(columns: string[], rows: unknown[][]): ChartType {
   if (columns.length === 0 || rows.length === 0) {
     return "bar";
   }
 
-  const numericColumns = columns.filter((col) => isNumericColumn(rows, col));
-  const nonNumericColumns = columns.filter((col) => !isNumericColumn(rows, col));
+  const numericColumns = columns.filter((col) => isNumericColumn(columns, rows, col));
+  const nonNumericColumns = columns.filter((col) => !isNumericColumn(columns, rows, col));
 
   // 1. Exactly 1 text + 1 numeric column → Pie chart (good for categories)
   if (nonNumericColumns.length === 1 && numericColumns.length === 1 && rows.length <= 10) {
@@ -82,7 +86,11 @@ export function detectChartType(columns: string[], rows: Record<string, unknown>
   }
 
   // 3. Sequential first column + numeric columns → Line chart
-  if (columns.length >= 2 && isSequentialColumn(rows, columns[0]) && numericColumns.length >= 1) {
+  if (
+    columns.length >= 2 &&
+    isSequentialColumn(columns, rows, columns[0]) &&
+    numericColumns.length >= 1
+  ) {
     return "line";
   }
 
@@ -95,14 +103,14 @@ export function detectChartType(columns: string[], rows: Record<string, unknown>
  */
 export function suggestAxes(
   columns: string[],
-  rows: Record<string, unknown>[],
+  rows: unknown[][],
 ): { xAxis: string | null; yAxis: string[] } {
   if (columns.length === 0) {
     return { xAxis: null, yAxis: [] };
   }
 
-  const numericColumns = columns.filter((col) => isNumericColumn(rows, col));
-  const nonNumericColumns = columns.filter((col) => !isNumericColumn(rows, col));
+  const numericColumns = columns.filter((col) => isNumericColumn(columns, rows, col));
+  const nonNumericColumns = columns.filter((col) => !isNumericColumn(columns, rows, col));
 
   // If there's a non-numeric column, use it as X axis (categories)
   if (nonNumericColumns.length > 0) {
@@ -130,10 +138,7 @@ export function suggestAxes(
 /**
  * Create a default chart configuration based on data.
  */
-export function createDefaultChartConfig(
-  columns: string[],
-  rows: Record<string, unknown>[],
-): ChartConfig {
+export function createDefaultChartConfig(columns: string[], rows: unknown[][]): ChartConfig {
   const chartType = detectChartType(columns, rows);
   const { xAxis, yAxis } = suggestAxes(columns, rows);
 
@@ -151,7 +156,7 @@ export function createDefaultChartConfig(
 export function transformDataForChart(
   config: ChartConfig,
   columns: string[],
-  rows: Record<string, unknown>[],
+  rows: unknown[][],
 ): { labels: string[]; datasets: { label: string; data: number[] }[] } {
   const labels: string[] = [];
   const datasets: { label: string; data: number[] }[] = config.yAxis.map((col) => ({
@@ -159,17 +164,19 @@ export function transformDataForChart(
     data: [],
   }));
 
+  const xIdx = config.xAxis ? columns.indexOf(config.xAxis) : -1;
+  const yIdx = config.yAxis.map((col) => columns.indexOf(col));
+
   rows.forEach((row, index) => {
     // Get label from X axis column or use row index
     // oxlint-disable-next-line typescript-eslint(no-base-to-string)
-    const label = config.xAxis
-      ? String((row[config.xAxis] as string) ?? `Row ${index + 1}`)
-      : `Row ${index + 1}`;
+    const label =
+      xIdx !== -1 ? String((row[xIdx] as string) ?? `Row ${index + 1}`) : `Row ${index + 1}`;
     labels.push(label);
 
     // Get values for each Y axis column
-    config.yAxis.forEach((col, colIndex) => {
-      const value = row[col];
+    yIdx.forEach((idx, colIndex) => {
+      const value = idx === -1 ? undefined : row[idx];
       const numValue = typeof value === "number" ? value : Number(value) || 0;
       datasets[colIndex].data.push(numValue);
     });

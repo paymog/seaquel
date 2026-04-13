@@ -21,10 +21,21 @@ export async function copyRowAsJSON(row: Record<string, unknown>): Promise<void>
 
 /**
  * Copy all values of a column to clipboard, one per line.
+ * Rows are columnar — we take `columns` to resolve the column position once.
  */
-export async function copyColumn(column: string, rows: Record<string, unknown>[]): Promise<void> {
+export async function copyColumn(
+  column: string,
+  columns: string[],
+  rows: unknown[][],
+): Promise<void> {
+  const colIdx = columns.indexOf(column);
+  if (colIdx === -1) {
+    await navigator.clipboard.writeText("");
+    toast.success(m.query_column_copied());
+    return;
+  }
   const values = rows
-    .map((row) => row[column])
+    .map((row) => row[colIdx])
     // oxlint-disable-next-line typescript-eslint(no-base-to-string)
     .map((v) => (v === null || v === undefined ? "" : String(v)))
     .join("\n");

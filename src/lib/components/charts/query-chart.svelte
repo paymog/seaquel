@@ -8,7 +8,7 @@
 
 	type Props = {
 		columns: string[];
-		rows: Record<string, unknown>[];
+		rows: unknown[][];
 		config?: ChartConfig;
 		onConfigChange?: (config: ChartConfig) => void;
 	};
@@ -18,21 +18,21 @@
 	// Use provided config or create default
 	let chartConfig = $derived(config ?? createDefaultChartConfig(columns, rows));
 
+	// Resolve column-name → position once per config change.
+	const xIdx = $derived(chartConfig.xAxis ? columns.indexOf(chartConfig.xAxis) : -1);
+	const yIdx = $derived(chartConfig.yAxis.map((col) => columns.indexOf(col)));
+
 	// Transform data for the chart
 	let chartData = $derived(
 		rows.map((row, index) => {
 			const item: Record<string, unknown> = { _index: index };
 
 			// Add x-axis value
-			if (chartConfig.xAxis) {
-				item.x = row[chartConfig.xAxis] ?? `Row ${index + 1}`;
-			} else {
-				item.x = `Row ${index + 1}`;
-			}
+			item.x = xIdx !== -1 ? (row[xIdx] ?? `Row ${index + 1}`) : `Row ${index + 1}`;
 
 			// Add y-axis values
-			chartConfig.yAxis.forEach((col) => {
-				const val = row[col];
+			chartConfig.yAxis.forEach((col, i) => {
+				const val = yIdx[i] === -1 ? undefined : row[yIdx[i]];
 				item[col] = typeof val === 'number' ? val : Number(val) || 0;
 			});
 
@@ -52,14 +52,16 @@
 
 	// For pie chart, transform data differently
 	let pieData = $derived(
-		rows.map((row) => ({
-			name: chartConfig.xAxis ? String(row[chartConfig.xAxis] ?? 'Unknown') : 'Unknown',
-			value: chartConfig.yAxis[0]
-				? typeof row[chartConfig.yAxis[0]] === 'number'
-					? row[chartConfig.yAxis[0]] as number
-					: Number(row[chartConfig.yAxis[0]]) || 0
-				: 0
-		}))
+		rows.map((row) => {
+			const name = xIdx !== -1 ? String(row[xIdx] ?? 'Unknown') : 'Unknown';
+			const yValRaw = yIdx[0] !== undefined && yIdx[0] !== -1 ? row[yIdx[0]] : undefined;
+			const value = yValRaw === undefined
+				? 0
+				: typeof yValRaw === 'number'
+					? yValRaw
+					: Number(yValRaw) || 0;
+			return { name, value };
+		})
 	);
 
 	// X-axis label props: rotate labels to avoid overlap

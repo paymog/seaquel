@@ -45,7 +45,8 @@ export interface WorkflowResultNodeData extends Record<string, unknown> {
   type: "result";
   sourceQueryNodeId: string;
   columns: string[];
-  rows: Record<string, unknown>[];
+  /** Columnar rows — `rows[i][j]` is the value in column `columns[j]`. */
+  rows: unknown[][];
   totalRows: number;
   executionTime?: number;
   error?: string;
@@ -56,7 +57,8 @@ export interface WorkflowChartNodeData extends Record<string, unknown> {
   type: "chart";
   sourceNodeId: string;
   columns: string[];
-  rows: Record<string, unknown>[];
+  /** Columnar rows — `rows[i][j]` is the value in column `columns[j]`. */
+  rows: unknown[][];
   chartConfig: ChartConfig;
 }
 

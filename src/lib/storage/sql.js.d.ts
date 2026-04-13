@@ -15,6 +15,10 @@ declare module "sql.js" {
     bind(params?: BindParams): boolean;
     step(): boolean;
     getAsObject(): Record<string, unknown>;
+    /** Positional values for the current row — no collapse on duplicate column names. */
+    get(): unknown[];
+    /** Column names for the current row, in the same order as `get()`. */
+    getColumnNames(): string[];
     free(): boolean;
   }
 

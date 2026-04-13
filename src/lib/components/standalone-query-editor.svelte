@@ -54,6 +54,13 @@
 	const resultColumns = $derived(
 		queryResults && queryResults.length > 0 ? Object.keys(queryResults[0]) : []
 	);
+	// VirtualResultsTable consumes columnar rows. The standalone `executor`
+	// still returns row objects (shared with the tutorial/demo executors),
+	// so convert at the boundary. Standalone queries are small — the
+	// conversion is free.
+	const columnarRows = $derived(
+		queryResults ? queryResults.map((r) => resultColumns.map((c) => r[c])) : []
+	);
 	const canRunQuery = $derived(editorValue.trim().length > 0 && !isExecuting);
 
 	function handleEditorChange(sql: string) {
@@ -226,7 +233,7 @@
 							</div>
 						</div>
 					{:else if queryResults !== null && queryResults.length > 0}
-						<VirtualResultsTable columns={resultColumns} rows={queryResults} compact />
+						<VirtualResultsTable columns={resultColumns} rows={columnarRows} compact />
 					{:else if queryResults !== null}
 						<div class="p-4 text-center text-sm text-muted-foreground">
 							{m.workspace_no_rows()}

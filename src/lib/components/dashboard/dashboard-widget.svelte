@@ -23,6 +23,13 @@
 			? Object.keys(widget.result[0])
 			: []
 	);
+
+	// QueryChart wants columnar rows; widget.result comes from `executeRaw`
+	// which still returns row objects. Convert here — dashboard datasets are
+	// small, so the per-render allocation is inconsequential.
+	const columnarRows = $derived(
+		widget.result ? widget.result.map((r) => columns.map((c) => r[c])) : [],
+	);
 </script>
 
 <ContextMenu.Root>
@@ -68,7 +75,7 @@
 				{:else if widget.result && widget.result.length > 0 && columns.length > 0}
 					<QueryChart
 						columns={columns}
-						rows={widget.result}
+						rows={columnarRows}
 						config={widget.chartConfig}
 					/>
 				{:else if !widget.isLoading}

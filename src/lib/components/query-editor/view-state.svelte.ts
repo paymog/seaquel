@@ -79,9 +79,13 @@ export function createViewState(ctx: QueryEditorContext, onCloseDiff?: () => voi
   });
 
   const qePendingCellEdits = $derived.by(() => {
-    const st = ctx.getActiveResult()?.sourceTable;
-    const rows = ctx.getActiveResult()?.rows;
+    const result = ctx.getActiveResult();
+    const st = result?.sourceTable;
+    const rows = result?.rows;
+    const resultColumns = result?.columns ?? [];
     if (!st || !rows || st.primaryKeys.length === 0) return undefined;
+    // Rows are columnar — resolve each PK column name to its position once.
+    const pkIdx = st.primaryKeys.map((pk) => resultColumns.indexOf(pk));
     const edits = new Map<string, unknown>();
     for (const change of qePendingChangesForTable) {
       if (
@@ -91,7 +95,9 @@ export function createViewState(ctx: QueryEditorContext, onCloseDiff?: () => voi
       ) {
         const rowIdx = rows.findIndex((row) =>
           st.primaryKeys.every(
-            (pk) => String(row[pk]) === String(change.target!.primaryKeyValues![pk]),
+            (pk, i) =>
+              pkIdx[i] !== -1 &&
+              String(row[pkIdx[i]]) === String(change.target!.primaryKeyValues![pk]),
           ),
         );
         if (rowIdx >= 0) {
@@ -103,15 +109,20 @@ export function createViewState(ctx: QueryEditorContext, onCloseDiff?: () => voi
   });
 
   const qePendingRowDeletes = $derived.by(() => {
-    const st = ctx.getActiveResult()?.sourceTable;
-    const rows = ctx.getActiveResult()?.rows;
+    const result = ctx.getActiveResult();
+    const st = result?.sourceTable;
+    const rows = result?.rows;
+    const resultColumns = result?.columns ?? [];
     if (!st || !rows || st.primaryKeys.length === 0) return undefined;
+    const pkIdx = st.primaryKeys.map((pk) => resultColumns.indexOf(pk));
     const deletes = new Set<number>();
     for (const change of qePendingChangesForTable) {
       if (change.origin === "delete-row" && change.target?.primaryKeyValues) {
         const rowIdx = rows.findIndex((row) =>
           st.primaryKeys.every(
-            (pk) => String(row[pk]) === String(change.target!.primaryKeyValues![pk]),
+            (pk, i) =>
+              pkIdx[i] !== -1 &&
+              String(row[pkIdx[i]]) === String(change.target!.primaryKeyValues![pk]),
           ),
         );
         if (rowIdx >= 0) {

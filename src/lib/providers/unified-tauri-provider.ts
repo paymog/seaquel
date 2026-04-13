@@ -6,6 +6,7 @@
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { DatabaseProvider, ConnectionConfig, ExecuteResult } from "./types";
+import { dedupeColumnNames } from "$lib/utils/row-access";
 
 interface DbConnectResult {
   connection_id: string;
@@ -91,12 +92,16 @@ export class UnifiedTauriProvider implements DatabaseProvider {
         sql,
         values: params ?? [],
       });
-      // Convert columnar → row objects for frontend compatibility
+      // Convert columnar → row objects for frontend compatibility. Dedupe
+      // column names first so `SELECT a.id, b.id FROM a JOIN b` preserves
+      // both values (`{ id: ..., id_2: ... }`) instead of the second one
+      // silently overwriting the first via `obj[col] = row[i]`.
+      const columns = dedupeColumnNames(result.columns);
       return result.rows.map((row) => {
         const obj: Record<string, unknown> = {};
-        result.columns.forEach((col, i) => {
-          obj[col] = row[i];
-        });
+        for (let i = 0; i < columns.length; i++) {
+          obj[columns[i]] = row[i];
+        }
         return obj as T;
       });
     } catch (error) {
@@ -104,13 +109,13 @@ export class UnifiedTauriProvider implements DatabaseProvider {
     }
   }
 
-  async selectStream<T = Record<string, unknown>>(
+  async selectStream(
     connectionId: string,
     sql: string,
     params: unknown[] | undefined,
     onBatch: (batch: {
       columns: string[] | null;
-      rows: T[];
+      rows: unknown[][];
       isFinal: boolean;
     }) => boolean | Promise<boolean>,
     signal?: AbortSignal,
@@ -128,9 +133,6 @@ export class UnifiedTauriProvider implements DatabaseProvider {
     // even if several are in flight concurrently across tabs.
     const queryId = crypto.randomUUID();
 
-    // Columns captured from the first batch, reused when later batches carry null
-    // and when converting columnar row arrays into row objects.
-    let capturedColumns: string[] = [];
     let cancelled = false;
 
     // Serialize onBatch invocations so we don't interleave async callbacks when
@@ -155,21 +157,13 @@ export class UnifiedTauriProvider implements DatabaseProvider {
     }) => {
       if (cancelled) return;
 
-      if (event.columns && capturedColumns.length === 0) {
-        capturedColumns = event.columns;
-      }
-      const cols = capturedColumns;
-      const rowObjects: T[] = event.rows.map((row) => {
-        const obj: Record<string, unknown> = {};
-        for (let i = 0; i < cols.length; i++) {
-          obj[cols[i]] = row[i];
-        }
-        return obj as T;
-      });
-
+      // Rows are already columnar on the wire — forward them straight through.
+      // Skipping the per-row `{ [col]: v }` object construction is a large
+      // win at 1M+ row scale (previously ~1M object allocations interleaved
+      // with IPC for a select-all-rows query).
       const keepGoing = await onBatch({
         columns: event.columns,
-        rows: rowObjects,
+        rows: event.rows,
         isFinal: event.is_final,
       });
 

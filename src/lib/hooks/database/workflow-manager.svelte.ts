@@ -128,7 +128,7 @@ export class WorkflowManager {
   addResultNode(
     queryNodeId: string,
     columns: string[],
-    rows: Record<string, unknown>[],
+    rows: unknown[][],
     totalRows: number,
     executionTime?: number,
     position?: XYPosition,
@@ -174,7 +174,7 @@ export class WorkflowManager {
   addChartNode(
     sourceNodeId: string,
     columns: string[],
-    rows: Record<string, unknown>[],
+    rows: unknown[][],
     chartConfig?: ChartConfig,
     position?: XYPosition,
   ): string {
@@ -384,9 +384,12 @@ export class WorkflowManager {
     const startTime = performance.now();
 
     try {
-      const rows = await this.executeQuery(queryData.query);
+      const rowObjects = await this.executeQuery(queryData.query);
       const executionTime = performance.now() - startTime;
-      const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+      const columns = rowObjects.length > 0 ? Object.keys(rowObjects[0]) : [];
+      // Result/chart nodes use the columnar row shape. `executeQuery` still
+      // returns row objects (shared with dashboards), so convert once here.
+      const rows: unknown[][] = rowObjects.map((r) => columns.map((c) => r[c]));
 
       // Update query node
       this.updateNodeData<WorkflowQueryNodeData>(nodeId, {
@@ -462,7 +465,7 @@ export class WorkflowManager {
   private updateDownstreamChartNodes(
     sourceNodeId: string,
     columns: string[],
-    rows: Record<string, unknown>[],
+    rows: unknown[][],
   ): void {
     const chartNodes = this.workflowState.nodes.filter(
       (n) =>

@@ -37,20 +37,18 @@ export function detectCellType(value: unknown): CellType {
   return "text";
 }
 
-export function detectColumnTypes(
-  columns: string[],
-  rows: Record<string, unknown>[],
-): Record<string, CellType> {
+export function detectColumnTypes(columns: string[], rows: unknown[][]): Record<string, CellType> {
   const result: Record<string, CellType> = {};
   const sampleSize = 5;
 
-  for (const column of columns) {
+  for (let colIdx = 0; colIdx < columns.length; colIdx++) {
+    const column = columns[colIdx];
     const typeCounts = new Map<CellType, number>();
     let sampled = 0;
 
     for (const row of rows) {
       if (sampled >= sampleSize) break;
-      const val = row[column];
+      const val = row[colIdx];
       if (val === null || val === undefined) continue;
       const type = detectCellType(val);
       typeCounts.set(type, (typeCounts.get(type) ?? 0) + 1);

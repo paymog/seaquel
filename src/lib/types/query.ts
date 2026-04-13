@@ -53,13 +53,31 @@ export interface SourceTableInfo {
 }
 
 /**
+ * Source table + underlying column for a single output column in a query result.
+ * Used to route inline cell edits to the right table for multi-table queries (JOINs),
+ * where the displayed column name may differ from the underlying column name
+ * (e.g. `SELECT a.id, b.id` emits columns `id` and `id_2` but both map back to `id`
+ * in their respective tables).
+ */
+export interface ColumnSourceInfo {
+  /** Schema name of the column's source table */
+  schema: string;
+  /** Source table name */
+  table: string;
+  /** Primary key column names for the source table, used to build WHERE clauses */
+  primaryKeys: string[];
+  /** The actual column name in the source table (independent of display alias/dedupe) */
+  column: string;
+}
+
+/**
  * Result of a query execution with pagination support.
  */
 export interface QueryResult {
   /** Column names in the result set */
   columns: string[];
-  /** Row data as key-value objects */
-  rows: Record<string, unknown>[];
+  /** Row data as columnar arrays — `rows[i][j]` is the value in column `columns[j]`. */
+  rows: unknown[][];
   /** Number of rows in the current page */
   rowCount: number;
   /** Total number of rows matching the query */
@@ -74,6 +92,18 @@ export interface QueryResult {
   queryType?: QueryType;
   /** Source table info for editable results */
   sourceTable?: SourceTableInfo;
+  /**
+   * Per-column source info for routing inline cell edits to the correct
+   * underlying table. Entries align positionally with `columns` — index `i`
+   * describes column `columns[i]`. `undefined` entries mean the column is a
+   * computed expression, aggregate, subquery, or otherwise not directly tied
+   * to a base-table column, so it can't be edited.
+   *
+   * Populated only when the SELECT list was explicit enough to reason about
+   * (no `*`/`t.*`, and the query AST parsed successfully). When absent,
+   * callers fall back to the single `sourceTable` above.
+   */
+  columnSources?: (ColumnSourceInfo | undefined)[];
   /** Current page number (1-indexed) */
   page: number;
   /** Number of rows per page */

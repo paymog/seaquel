@@ -1,6 +1,7 @@
 import type { SqliteDatabase, SqliteProvider } from "./sqlite-types";
 import type { Database, BindParams } from "sql.js";
 import sqlWasmUrl from "sql.js/dist/sql-wasm-browser.wasm?url";
+import { dedupeColumnNames } from "$lib/utils/row-access";
 
 const LOCALSTORAGE_KEY = "seaquel_db";
 
@@ -18,9 +19,17 @@ class WebSqliteDatabase implements SqliteDatabase {
     if (params) {
       stmt.bind(params as BindParams);
     }
+    // Build objects positionally so duplicate column names (e.g. joins) don't
+    // collapse the way sql.js's `getAsObject()` would via `obj[col] = value`.
+    const columns = dedupeColumnNames(stmt.getColumnNames());
     const results: T[] = [];
     while (stmt.step()) {
-      results.push(stmt.getAsObject() as T);
+      const values = stmt.get();
+      const obj: Record<string, unknown> = {};
+      for (let i = 0; i < columns.length; i++) {
+        obj[columns[i]] = values[i];
+      }
+      results.push(obj as T);
     }
     stmt.free();
     return results;

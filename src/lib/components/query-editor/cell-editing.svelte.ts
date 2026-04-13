@@ -6,12 +6,14 @@ import {
   copyRowAsJSON as clipboardCopyRowAsJSON,
   copyColumn as clipboardCopyColumn,
 } from "$lib/utils/clipboard";
+import { rowToObject } from "$lib/utils/row-access";
 import type { QueryEditorContext } from "./types.js";
 
 interface ContextCell {
   value: unknown;
   column: string;
-  row: Record<string, unknown>;
+  /** The row the user right-clicked on, in columnar form. */
+  row: unknown[];
   rowIndex: number;
 }
 
@@ -19,7 +21,7 @@ export function createCellEditing(ctx: QueryEditorContext) {
   const { db } = ctx;
 
   let deletingRowIndex = $state<number | null>(null);
-  let pendingDeleteRow = $state<{ index: number; row: Record<string, unknown> } | null>(null);
+  let pendingDeleteRow = $state<{ index: number; row: unknown[] } | null>(null);
   let showDeleteConfirm = $state(false);
   let contextCell = $state<ContextCell | null>(null);
 
@@ -49,7 +51,7 @@ export function createCellEditing(ctx: QueryEditorContext) {
     }
   }
 
-  function confirmDeleteRow(rowIndex: number, row: Record<string, unknown>) {
+  function confirmDeleteRow(rowIndex: number, row: unknown[]) {
     pendingDeleteRow = { index: rowIndex, row };
     showDeleteConfirm = true;
   }
@@ -62,7 +64,11 @@ export function createCellEditing(ctx: QueryEditorContext) {
     deletingRowIndex = pendingDeleteRow.index;
     showDeleteConfirm = false;
 
-    const result = await db.queries.deleteRow(activeResult.sourceTable, pendingDeleteRow.row);
+    // CRUD helpers still take Record<string, unknown>; materialize here.
+    const result = await db.queries.deleteRow(
+      activeResult.sourceTable,
+      rowToObject(pendingDeleteRow.row, activeResult.columns),
+    );
 
     if (result.success) {
       if (result.queued) {
@@ -79,12 +85,7 @@ export function createCellEditing(ctx: QueryEditorContext) {
     pendingDeleteRow = null;
   }
 
-  function handleCellRightClick(
-    value: unknown,
-    column: string,
-    row: Record<string, unknown>,
-    rowIndex: number,
-  ) {
+  function handleCellRightClick(value: unknown, column: string, row: unknown[], rowIndex: number) {
     contextCell = { value, column, row, rowIndex };
   }
 
@@ -94,14 +95,16 @@ export function createCellEditing(ctx: QueryEditorContext) {
   }
 
   async function copyRowAsJSON() {
-    if (!contextCell) return;
-    await clipboardCopyRowAsJSON(contextCell.row);
+    const activeResult = ctx.getActiveResult();
+    if (!contextCell || !activeResult) return;
+    // Clipboard wants an object-shaped row — materialize from columnar on demand.
+    await clipboardCopyRowAsJSON(rowToObject(contextCell.row, activeResult.columns));
   }
 
   async function copyColumn() {
     const activeResult = ctx.getActiveResult();
     if (!contextCell || !activeResult) return;
-    await clipboardCopyColumn(contextCell.column, activeResult.rows);
+    await clipboardCopyColumn(contextCell.column, activeResult.columns, activeResult.rows);
   }
 
   async function setNull() {

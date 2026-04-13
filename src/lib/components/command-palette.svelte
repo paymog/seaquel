@@ -41,6 +41,7 @@
 	const keys = getKeySymbols();
 	import { Link } from "@lucide/svelte";
 	import { handleDeepLink } from "$lib/services/deep-link";
+	import { rowsToObjects } from "$lib/utils/row-access";
 	import { toast } from "svelte-sonner";
 	import { onboardingStore } from "$lib/stores/onboarding.svelte";
 	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
@@ -241,10 +242,9 @@
 		if (format === "csv") {
 			const headers = activeResult.columns.join(",");
 			const rows = activeResult.rows
-				.map((row: Record<string, unknown>) =>
-					activeResult.columns
-						.map((col: string) => {
-							const val = row[col];
+				.map((row: unknown[]) =>
+					row
+						.map((val: unknown) => {
 							if (val === null || val === undefined) return "";
 							const str = String(val);
 							return str.includes(",") || str.includes('"') || str.includes("\n")
@@ -257,7 +257,13 @@
 			content = `${headers}\n${rows}`;
 			filename = `query-results-${timestamp}.csv`;
 		} else {
-			content = JSON.stringify(activeResult.rows, null, 2);
+			// JSON export needs `{col: value}` objects — materialize from
+			// columnar storage on demand (user-initiated, so fine).
+			content = JSON.stringify(
+				rowsToObjects(activeResult.rows, activeResult.columns),
+				null,
+				2,
+			);
 			filename = `query-results-${timestamp}.json`;
 		}
 
@@ -275,7 +281,11 @@
 	function copyResults() {
 		if (!activeResult) return;
 
-		const content = JSON.stringify(activeResult.rows, null, 2);
+		const content = JSON.stringify(
+			rowsToObjects(activeResult.rows, activeResult.columns),
+			null,
+			2,
+		);
 		navigator.clipboard.writeText(content);
 		open = false;
 	}

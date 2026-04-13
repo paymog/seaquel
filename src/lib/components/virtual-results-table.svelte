@@ -9,15 +9,16 @@
 
 	interface Props {
 		columns: string[];
-		rows: Record<string, unknown>[];
+		/** Columnar rows — `rows[i][j]` is the value in column `columns[j]`. */
+		rows: unknown[][];
 		isEditable?: boolean;
 		onCellSave?: (rowIndex: number, column: string, newValue: string | null) => Promise<void>;
-		onRowDelete?: (rowIndex: number, row: Record<string, unknown>) => void;
+		onRowDelete?: (rowIndex: number, row: unknown[]) => void;
 		deletingRowIndex?: number | null;
 		onCopyCell?: () => void;
 		onCopyRow?: () => void;
 		onCopyColumn?: () => void;
-		onCellRightClick?: (value: unknown, column: string, row: Record<string, unknown>, rowIndex: number) => void;
+		onCellRightClick?: (value: unknown, column: string, row: unknown[], rowIndex: number) => void;
 		onSetNull?: () => Promise<void>;
 		onSetDefault?: () => Promise<void>;
 		/** Compact mode for canvas nodes - smaller row height */
@@ -102,7 +103,8 @@
 	const MONO_CHAR_WIDTH = $derived(compact ? 7.5 : 8.4);
 	const CELL_PADDING = $derived(compact ? 16 : 32); // px-2*2 or px-4*2
 
-	function autoSizeColumn(col: string): number {
+	function autoSizeColumn(colIdx: number): number {
+		const col = columns[colIdx];
 		const type = columnTypes[col];
 		const isMono = type === 'integer' || type === 'float' || type === 'uuid';
 		const charW = isMono ? MONO_CHAR_WIDTH : CHAR_WIDTH;
@@ -110,7 +112,7 @@
 		let maxLen = col.length;
 		const sampleRows = rows.slice(0, 100);
 		for (const row of sampleRows) {
-			const text = getFormattedCellText(row[col], type);
+			const text = getFormattedCellText(row[colIdx], type);
 			if (text.length > maxLen) maxLen = text.length;
 		}
 
@@ -126,12 +128,12 @@
 	let lastSizedRowCount = $state(0);
 	$effect(() => {
 		if (columns.length !== columnWidths.length) {
-			columnWidths = columns.map((col) => autoSizeColumn(col));
+			columnWidths = columns.map((_col, i) => autoSizeColumn(i));
 			lastSizedRowCount = rows.length;
 			return;
 		}
 		if (rows.length >= Math.max(100, lastSizedRowCount * 4)) {
-			const fresh = columns.map((col) => autoSizeColumn(col));
+			const fresh = columns.map((_col, i) => autoSizeColumn(i));
 			columnWidths = columnWidths.map((w, i) => Math.max(w, fresh[i]));
 			lastSizedRowCount = rows.length;
 		}
@@ -279,7 +281,7 @@
 						<div
 							class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-border transition-colors"
 							onmousedown={(e) => startResize(i, e)}
-							ondblclick={() => { columnWidths[i] = autoSizeColumn(columns[i]); }}
+							ondblclick={() => { columnWidths[i] = autoSizeColumn(i); }}
 							role="separator"
 							aria-orientation="vertical"
 						></div>
@@ -310,12 +312,12 @@
 								/>
 							</div>
 						{/if}
-						{#each columns as column}
+						{#each columns as column, colIdx}
 							{@const cellKey = `${rowIndex}:${column}`}
 							{@const isCellPendingEdit = pendingCellEdits?.has(cellKey) ?? false}
 							{@const pendingNewValue = isCellPendingEdit ? pendingCellEdits?.get(cellKey) : undefined}
 							{@const fkInfo = foreignKeyColumns?.get(column)}
-							{@const cellValue = row[column]}
+							{@const cellValue = row[colIdx]}
 							{@const showFkIcon = fkInfo && cellValue != null && onForeignKeyClick}
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div
@@ -326,10 +328,10 @@
 									compact ? "px-2 py-0.5" : "px-4 py-0.5",
 									isCellPendingEdit && "bg-amber-500/10 border-l-2 border-l-amber-500",
 								]}
-								oncontextmenu={() => onCellRightClick(row[column], column, row, rowIndex)}
+								oncontextmenu={() => onCellRightClick(cellValue, column, row, rowIndex)}
 							>
 								{#if isCellPendingEdit}
-									<span class="w-full -mx-1 truncate text-xs line-through text-amber-700 dark:text-amber-400 bg-amber-500/10 rounded px-1 leading-tight">{row[column] === null ? 'NULL' : row[column] === undefined ? '' : String(row[column])}</span>
+									<span class="w-full -mx-1 truncate text-xs line-through text-amber-700 dark:text-amber-400 bg-amber-500/10 rounded px-1 leading-tight">{cellValue === null ? 'NULL' : cellValue === undefined ? '' : String(cellValue)}</span>
 									<EditableCell
 										value={pendingNewValue}
 										{isEditable}
@@ -340,7 +342,7 @@
 									/>
 								{:else}
 									<EditableCell
-										value={row[column]}
+										value={cellValue}
 										{isEditable}
 										columnType={columnTypes[column]}
 										onSave={(newValue) => onCellSave(rowIndex, column, newValue)}

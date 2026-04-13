@@ -4,6 +4,7 @@ import type { DatabaseConnection, QueryResult, StatementResult, ParameterValue }
 import type { DatabaseState } from "./state.svelte.js";
 import type { QueryHistoryManager } from "./query-history.svelte.js";
 import { detectQueryType, isSelectQuery, extractTableFromSelect } from "$lib/db/query-utils";
+import { resolveColumnSources } from "$lib/db/column-sources";
 import { splitSqlStatements } from "$lib/db/sql-parser";
 import { substituteParameters } from "$lib/db/query-params";
 import { m } from "$lib/paraglide/messages.js";
@@ -16,6 +17,7 @@ import type { PendingChangesManager } from "./pending-changes.svelte.js";
 import type { PendingChangeOrigin } from "$lib/types";
 import { getAdapter } from "$lib/db";
 import { QueryCrudManager } from "./query-crud.svelte.js";
+import { dedupeColumnNames, rowToObject } from "$lib/utils/row-access";
 
 /**
  * Manages query execution, pagination, and CRUD operations.
@@ -130,6 +132,21 @@ export class QueryExecutionManager {
   }
 
   /**
+   * Resolve per-column source info via the SQL AST. Used by inline cell
+   * editing to route each edit to the underlying column's own table even when
+   * the query is a JOIN that renames duplicate columns to `id_2` etc. Returns
+   * undefined when the query isn't an explicit SELECT we can reason about
+   * (bare `*`, subqueries, unparseable SQL) — callers fall back to the single
+   * `sourceTable` in that case.
+   */
+  private resolveColumnSources(baseQuery: string): QueryResult["columnSources"] | undefined {
+    const connection = this.state.activeConnection;
+    if (!connection) return undefined;
+    const schemas = this.state.schemas[this.state.activeConnectionId!] ?? [];
+    return resolveColumnSources(baseQuery, connection.type, schemas);
+  }
+
+  /**
    * Run a streaming SELECT and mutate the StatementResult at
    * `tab.results[statementIndex]` as batches arrive. The seed must already
    * be installed at that index via `updateQueryTabState` before calling
@@ -170,7 +187,11 @@ export class QueryExecutionManager {
         if (!target) return false;
 
         if (batch.columns && target.columns.length === 0) {
-          target.columns = batch.columns;
+          // Duplicate column names (e.g. `SELECT a.id, b.id FROM a JOIN b`)
+          // break every `columns.indexOf(name)` lookup downstream (charts,
+          // column copy, cell-type detection). Disambiguate with `_2`, `_3`
+          // suffixes — positions stay ground truth, only names change.
+          target.columns = dedupeColumnNames(batch.columns);
         }
         if (batch.rows.length > 0) {
           // target is proxied — `.push` on the proxied array goes through
@@ -236,6 +257,7 @@ export class QueryExecutionManager {
       executionTime: 0,
       queryType: detectQueryType(baseQuery),
       sourceTable: this.resolveSourceTable(baseQuery),
+      columnSources: this.resolveColumnSources(baseQuery),
       page: 1,
       pageSize,
       totalPages: 1,
@@ -282,7 +304,7 @@ export class QueryExecutionManager {
   ): StatementResult {
     return {
       columns: ["Error"],
-      rows: [{ Error: extractErrorMessage(error) }],
+      rows: [[extractErrorMessage(error)]],
       rowCount: 1,
       totalRows: 1,
       executionTime: 0,
@@ -379,7 +401,7 @@ export class QueryExecutionManager {
 
       return {
         columns: ["Result"],
-        rows: [{ Result: `${rowsAffected} row(s) affected` }],
+        rows: [[`${rowsAffected} row(s) affected`]],
         rowCount: 1,
         totalRows: 1,
         executionTime: Math.round(totalMs * 100) / 100,
@@ -454,6 +476,13 @@ export class QueryExecutionManager {
     }
 
     const resultColumns = (dbResult?.length ?? 0) > 0 ? Object.keys(dbResult[0]) : [];
+    // Convert the row-object result from `provider.select()` into the columnar
+    // shape that `QueryResult.rows` now uses. This is the non-streaming
+    // fallback path — only runs for small, paginated queries, so the O(n·m)
+    // conversion cost is negligible.
+    const columnarRows: unknown[][] = (dbResult ?? []).map((row) =>
+      resultColumns.map((c) => row[c]),
+    );
     const totalMs = performance.now() - start;
 
     const totalPages =
@@ -493,12 +522,13 @@ export class QueryExecutionManager {
     // Generate results
     return {
       columns: resultColumns,
-      rows: dbResult || [],
-      rowCount: dbResult?.length ?? 0,
+      rows: columnarRows,
+      rowCount: columnarRows.length,
       totalRows,
       executionTime: Math.round(totalMs * 100) / 100,
       queryType,
       sourceTable,
+      columnSources: this.resolveColumnSources(baseQuery),
       page,
       pageSize,
       totalPages,
@@ -1026,12 +1056,39 @@ export class QueryExecutionManager {
     newValue: unknown,
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
   ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
-    const row = this.getRowFromTab(tabId, resultIndex, rowIndex);
-    if (!row) return { success: false, error: "Row not found" };
+    const editTarget = this.resolveEditTarget(tabId, resultIndex, rowIndex, column, sourceTable);
+    if (!editTarget) return { success: false, error: "Row not found" };
+    if (editTarget.error) return { success: false, error: editTarget.error };
 
     void log.debug(`Cell update on ${this.state.activeConnection?.id}`);
-    const result = await this.crud.updateCellDirect(sourceTable, row, column, newValue);
-    if (result.success) row[column] = newValue;
+    const result = await this.crud.updateCellDirect(
+      editTarget.sourceTable,
+      editTarget.row,
+      editTarget.column,
+      newValue,
+    );
+    if (result.success) {
+      // Write the new value back into the columnar store so the UI reflects
+      // the edit. `row` above is a disposable materialized copy — updating
+      // it alone wouldn't propagate. We replace the whole inner row array
+      // rather than mutating by index: streamed rows arrive from the Tauri
+      // Channel as plain arrays and are pushed into the proxied outer array,
+      // so we can't assume the inner array is deeply-tracked. Replacing the
+      // slot fires the outer array's set trap, which reliably re-renders
+      // the affected row.
+      const tabs = this.state.queryTabsByProject[this.state.activeProjectId!] ?? [];
+      const tab = tabs.find((t) => t.id === tabId);
+      const target = tab?.results?.[resultIndex];
+      if (target) {
+        const colIdx = target.columns.indexOf(column);
+        const existing = target.rows[rowIndex];
+        if (colIdx !== -1 && existing) {
+          const next = existing.slice();
+          next[colIdx] = newValue;
+          target.rows[rowIndex] = next;
+        }
+      }
+    }
     return result;
   }
 
@@ -1046,11 +1103,16 @@ export class QueryExecutionManager {
     column: string,
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
   ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
-    const row = this.getRowFromTab(tabId, resultIndex, rowIndex);
-    if (!row) return { success: false, error: "Row not found" };
+    const editTarget = this.resolveEditTarget(tabId, resultIndex, rowIndex, column, sourceTable);
+    if (!editTarget) return { success: false, error: "Row not found" };
+    if (editTarget.error) return { success: false, error: editTarget.error };
 
     void log.debug(`Cell set default on ${this.state.activeConnection?.id}`);
-    const result = await this.crud.setCellDefaultDirect(sourceTable, row, column);
+    const result = await this.crud.setCellDefaultDirect(
+      editTarget.sourceTable,
+      editTarget.row,
+      editTarget.column,
+    );
     if (result.success && !result.queued) {
       // Re-fetch the row to get the actual default value
       await this.execute(tabId);
@@ -1100,6 +1162,11 @@ export class QueryExecutionManager {
 
   /**
    * Resolve a row from a query tab's results.
+   *
+   * Rows are stored columnar (`unknown[][]`); CRUD helpers still expect
+   * `Record<string, unknown>`, so we materialize one here on demand. This
+   * only fires on user-initiated cell edits / deletes, so the conversion
+   * cost is trivial.
    */
   private getRowFromTab(
     tabId: string,
@@ -1109,6 +1176,93 @@ export class QueryExecutionManager {
     const tabs = this.state.queryTabsByProject[this.state.activeProjectId!] ?? [];
     const tab = tabs.find((t) => t.id === tabId);
     if (!tab?.results || resultIndex >= tab.results.length) return undefined;
-    return tab.results[resultIndex].rows[rowIndex];
+    const result = tab.results[resultIndex];
+    const row = result.rows[rowIndex];
+    if (!row) return undefined;
+    return rowToObject(row, result.columns);
+  }
+
+  /**
+   * Resolve the actual UPDATE/SET-DEFAULT target for a cell edit.
+   *
+   * The user edits a cell under its *display* column name, which may have been
+   * dedupe-suffixed (e.g. `id_2` for the second `id` in a JOIN'd result) or
+   * aliased via `SELECT x AS y`. We use the query's `columnSources` to route
+   * the edit to the underlying table+column, and to reshape the row into a
+   * `Record<actualPKName, value>` that the WHERE-clause builder can consume
+   * directly.
+   *
+   * Falls back to the caller-supplied `sourceTable` and literal `column` name
+   * when per-column info is unavailable (unparseable query, `SELECT *`, etc.),
+   * preserving the pre-existing single-table behavior.
+   */
+  private resolveEditTarget(
+    tabId: string,
+    resultIndex: number,
+    rowIndex: number,
+    column: string,
+    fallbackSourceTable: { schema: string; name: string; primaryKeys: string[] },
+  ):
+    | {
+        sourceTable: { schema: string; name: string; primaryKeys: string[] };
+        row: Record<string, unknown>;
+        column: string;
+        error?: string;
+      }
+    | undefined {
+    const tabs = this.state.queryTabsByProject[this.state.activeProjectId!] ?? [];
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab?.results || resultIndex >= tab.results.length) return undefined;
+    const result = tab.results[resultIndex];
+    const rawRow = result.rows[rowIndex];
+    if (!rawRow) return undefined;
+
+    // No per-column info parsed — fall back to single-table routing, keyed by
+    // display names (which is what the WHERE builder has always seen).
+    const colIdx = result.columns.indexOf(column);
+    const sources = result.columnSources;
+    if (!sources || colIdx === -1 || !sources[colIdx]) {
+      return {
+        sourceTable: fallbackSourceTable,
+        row: rowToObject(rawRow, result.columns),
+        column,
+      };
+    }
+
+    const src = sources[colIdx]!;
+    // Pull the target table's PK values out of the row by scanning for any
+    // output columns that map back to one of its PK columns. A query that
+    // doesn't project all of the target table's PKs can't be updated safely —
+    // we'd have no way to identify the specific row in a WHERE clause.
+    const rowObj: Record<string, unknown> = {};
+    const foundPks = new Set<string>();
+    for (let i = 0; i < result.columns.length; i++) {
+      const s = sources[i];
+      if (!s) continue;
+      if (s.schema !== src.schema || s.table !== src.table) continue;
+      if (src.primaryKeys.includes(s.column)) {
+        rowObj[s.column] = rawRow[i];
+        foundPks.add(s.column);
+      }
+    }
+    const missingPks = src.primaryKeys.filter((pk) => !foundPks.has(pk));
+    if (missingPks.length > 0) {
+      return {
+        sourceTable: fallbackSourceTable,
+        row: rowToObject(rawRow, result.columns),
+        column,
+        error: `Cannot edit ${src.table}.${src.column}: primary key ${missingPks.join(", ")} is not in the result`,
+      };
+    }
+
+    return {
+      sourceTable: {
+        schema: src.schema,
+        name: src.table,
+        primaryKeys: src.primaryKeys,
+      },
+      row: rowObj,
+      column: src.column,
+    };
   }
 }

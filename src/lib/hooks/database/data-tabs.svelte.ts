@@ -128,13 +128,20 @@ export class DataTabManager extends BaseTabManager<DataTab> {
       }
 
       // Execute data query
-      const rows = await provider.select(connection.providerConnectionId, sql, params);
+      const rowObjects = await provider.select<Record<string, unknown>>(
+        connection.providerConnectionId,
+        sql,
+        params,
+      );
 
       const columns =
-        rows.length > 0
-          ? Object.keys(rows[0] as Record<string, unknown>)
-          : this.getTableColumnNames(tab);
+        rowObjects.length > 0 ? Object.keys(rowObjects[0]) : this.getTableColumnNames(tab);
       const primaryKeys = this.getTablePrimaryKeys(tab);
+
+      // Convert provider's row-object shape into the columnar `unknown[][]`
+      // that `StatementResult.rows` now stores. Data-tab pages are always
+      // paginated (≤ pageSize rows), so this is cheap.
+      const columnarRows: unknown[][] = rowObjects.map((r) => columns.map((c) => r[c]));
 
       this.updateTab(tabId, (t) => ({
         ...t,
@@ -142,8 +149,8 @@ export class DataTabManager extends BaseTabManager<DataTab> {
         totalRows,
         results: {
           columns,
-          rows: rows as Record<string, unknown>[],
-          rowCount: rows.length,
+          rows: columnarRows,
+          rowCount: columnarRows.length,
           totalRows,
           page: t.page,
           pageSize: t.pageSize,

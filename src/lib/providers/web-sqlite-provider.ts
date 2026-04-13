@@ -53,13 +53,13 @@ export class WebSqliteDatabaseProvider implements DatabaseProvider {
     return db.query<T>(sql, params);
   }
 
-  async selectStream<T = Record<string, unknown>>(
+  async selectStream(
     connectionId: string,
     sql: string,
     params: unknown[] | undefined,
     onBatch: (batch: {
       columns: string[] | null;
-      rows: T[];
+      rows: unknown[][];
       isFinal: boolean;
     }) => boolean | Promise<boolean>,
     signal?: AbortSignal,
@@ -69,9 +69,10 @@ export class WebSqliteDatabaseProvider implements DatabaseProvider {
     // demo without any streaming benefit — acceptable because the demo DB is
     // tiny.
     try {
-      const rows = await this.select<T>(connectionId, sql, params);
+      const rowObjects = await this.select<Record<string, unknown>>(connectionId, sql, params);
       if (signal?.aborted) return { aborted: true };
-      const columns = rows.length > 0 ? Object.keys(rows[0] as object) : [];
+      const columns = rowObjects.length > 0 ? Object.keys(rowObjects[0]) : [];
+      const rows: unknown[][] = rowObjects.map((row) => columns.map((c) => row[c]));
       await onBatch({ columns, rows, isFinal: true });
       return { aborted: false };
     } catch (error) {

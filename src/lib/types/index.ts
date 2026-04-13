@@ -26,6 +26,7 @@ export type {
   QueryParameter,
   ParameterValue,
   SourceTableInfo,
+  ColumnSourceInfo,
   QueryResult,
   StatementResult,
   EmbeddedExplainResult,

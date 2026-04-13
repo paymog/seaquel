@@ -15,6 +15,7 @@
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
 	import MoreHorizontalIcon from "@lucide/svelte/icons/more-horizontal";
 	import { copyCell as clipboardCopyCell, copyRowAsJSON as clipboardCopyRowAsJSON, copyColumn as clipboardCopyColumn } from "$lib/utils/clipboard";
+	import { rowToObject } from "$lib/utils/row-access";
 
 	interface Props {
 		id: string;
@@ -36,9 +37,9 @@
 	);
 
 	// Context menu state for copying
-	let contextCell = $state<{ value: unknown; column: string; row: Record<string, unknown> } | null>(null);
+	let contextCell = $state<{ value: unknown; column: string; row: unknown[] } | null>(null);
 
-	const handleCellRightClick = (value: unknown, column: string, row: Record<string, unknown>) => {
+	const handleCellRightClick = (value: unknown, column: string, row: unknown[]) => {
 		contextCell = { value, column, row };
 	};
 
@@ -49,12 +50,13 @@
 
 	const copyRowAsJSON = async () => {
 		if (!contextCell) return;
-		await clipboardCopyRowAsJSON(contextCell.row);
+		// Materialize from columnar to row-object for the JSON clipboard payload.
+		await clipboardCopyRowAsJSON(rowToObject(contextCell.row, data.columns));
 	};
 
 	const copyColumn = async () => {
 		if (!contextCell) return;
-		await clipboardCopyColumn(contextCell.column, paginatedRows);
+		await clipboardCopyColumn(contextCell.column, data.columns, paginatedRows);
 	};
 
 	function handleViewAsChart() {

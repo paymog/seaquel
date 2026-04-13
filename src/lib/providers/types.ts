@@ -92,13 +92,21 @@ export interface DatabaseProvider {
    * @param signal Optional AbortSignal to cancel the stream.
    * @returns Summary with `aborted` flag and optional terminal error message.
    */
-  selectStream<T = Record<string, unknown>>(
+  selectStream(
     connectionId: string,
     sql: string,
     params: unknown[] | undefined,
+    /**
+     * Invoked once per incoming batch. `columns` is non-null ONLY on the
+     * first batch (and on the terminal batch when the result set is empty);
+     * later batches carry `null` — callers must capture the first
+     * non-null value and reuse it for the rest of the stream.
+     *
+     * `rows` is columnar: `rows[i][j]` is the value in column `columns[j]`.
+     */
     onBatch: (batch: {
       columns: string[] | null;
-      rows: T[];
+      rows: unknown[][];
       isFinal: boolean;
     }) => boolean | Promise<boolean>,
     signal?: AbortSignal,

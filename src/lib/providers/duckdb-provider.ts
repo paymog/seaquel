@@ -4,6 +4,7 @@
  */
 
 import type { DatabaseProvider, ConnectionConfig, ExecuteResult } from "./types";
+import { dedupeColumnNames } from "$lib/utils/row-access";
 
 // DuckDB-WASM types - dynamically imported
 type AsyncDuckDB = import("@duckdb/duckdb-wasm").AsyncDuckDB;
@@ -94,17 +95,41 @@ export class DuckDBProvider implements DatabaseProvider {
     // For parameterized queries, the substituteParameters utility handles MSSQL inline,
     // and for DuckDB we use substituted SQL with positional params already resolved.
     const result = await conn.query(sql);
+    // Detect duplicate column names (e.g. `SELECT a.id, b.id FROM a JOIN b`)
+    // before building row objects. Arrow's `toJSON()` iterates by field name
+    // and silently overwrites when names collide; the positional fallback
+    // below preserves every value under a suffixed name (`id`, `id_2`, …).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return result.toArray().map((row: any) => row.toJSON() as T);
+    const fieldNames: string[] =
+      (result as any).schema?.fields?.map((f: { name: string }) => f.name) ?? [];
+    const hasDupes = fieldNames.length > 0 && new Set(fieldNames).size !== fieldNames.length;
+    if (!hasDupes) {
+      // Fast path — Arrow's JSON serializer handles this correctly and preserves
+      // its own type coercions (BigInt→string, timestamp formatting, etc.).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return result.toArray().map((row: any) => row.toJSON() as T);
+    }
+    const columns = dedupeColumnNames(fieldNames);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const vectors = columns.map((_, i) => (result as any).getChildAt(i));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const numRows = Number((result as any).numRows);
+    return Array.from({ length: numRows }, (_, r) => {
+      const obj: Record<string, unknown> = {};
+      for (let c = 0; c < columns.length; c++) {
+        obj[columns[c]] = vectors[c]?.get(r) ?? null;
+      }
+      return obj as T;
+    });
   }
 
-  async selectStream<T = Record<string, unknown>>(
+  async selectStream(
     connectionId: string,
     sql: string,
     params: unknown[] | undefined,
     onBatch: (batch: {
       columns: string[] | null;
-      rows: T[];
+      rows: unknown[][];
       isFinal: boolean;
     }) => boolean | Promise<boolean>,
     signal?: AbortSignal,
@@ -113,9 +138,10 @@ export class DuckDBProvider implements DatabaseProvider {
     // result wrapper, so we take the whole result and emit a single terminal
     // batch. The demo datasets are small enough that this is fine.
     try {
-      const rows = await this.select<T>(connectionId, sql, params);
+      const rowObjects = await this.select<Record<string, unknown>>(connectionId, sql, params);
       if (signal?.aborted) return { aborted: true };
-      const columns = rows.length > 0 ? Object.keys(rows[0] as object) : [];
+      const columns = rowObjects.length > 0 ? Object.keys(rowObjects[0]) : [];
+      const rows: unknown[][] = rowObjects.map((row) => columns.map((c) => row[c]));
       await onBatch({ columns, rows, isFinal: true });
       return { aborted: false };
     } catch (error) {

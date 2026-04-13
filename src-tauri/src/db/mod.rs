@@ -255,7 +255,7 @@ macro_rules! impl_sqlx_driver {
                     use sqlx::{Column, Row};
                     use futures::StreamExt;
 
-                    const BATCH_SIZE: usize = 500;
+                    const BATCH_SIZE: usize = 5000;
 
                     let sqlx_query = sqlx::query(&sql);
                     let sqlx_query = bind_params(sqlx_query, &params);

@@ -33,21 +33,21 @@
 		});
 	}
 
+	// Resolve column-name → position once per config / columns change.
+	const xIdx = $derived(data.chartConfig.xAxis ? data.columns.indexOf(data.chartConfig.xAxis) : -1);
+	const yIdx = $derived(data.chartConfig.yAxis.map((col) => data.columns.indexOf(col)));
+
 	// Transform data for the chart
 	const chartData = $derived(
 		data.rows.map((row, index) => {
 			const item: Record<string, unknown> = { _index: index };
 
 			// Add x-axis value
-			if (data.chartConfig.xAxis) {
-				item.x = row[data.chartConfig.xAxis] ?? `Row ${index + 1}`;
-			} else {
-				item.x = `Row ${index + 1}`;
-			}
+			item.x = xIdx !== -1 ? (row[xIdx] ?? `Row ${index + 1}`) : `Row ${index + 1}`;
 
 			// Add y-axis values
-			data.chartConfig.yAxis.forEach((col) => {
-				const val = row[col];
+			data.chartConfig.yAxis.forEach((col, i) => {
+				const val = yIdx[i] === -1 ? undefined : row[yIdx[i]];
 				item[col] = typeof val === "number" ? val : Number(val) || 0;
 			});
 
@@ -67,17 +67,20 @@
 
 	// For pie chart, transform data differently
 	const pieData = $derived(
-		data.rows.map((row, index) => ({
-			name: data.chartConfig.xAxis
-				? String(row[data.chartConfig.xAxis] ?? "Unknown")
-				: "Unknown",
-			value: data.chartConfig.yAxis[0]
-				? typeof row[data.chartConfig.yAxis[0]] === "number"
-					? (row[data.chartConfig.yAxis[0]] as number)
-					: Number(row[data.chartConfig.yAxis[0]]) || 0
-				: 0,
-			color: `var(--color-chart-${(index % 5) + 1})`,
-		}))
+		data.rows.map((row, index) => {
+			const name = xIdx !== -1 ? String(row[xIdx] ?? "Unknown") : "Unknown";
+			const yValRaw = yIdx[0] !== undefined && yIdx[0] !== -1 ? row[yIdx[0]] : undefined;
+			const value = yValRaw === undefined
+				? 0
+				: typeof yValRaw === "number"
+					? yValRaw
+					: Number(yValRaw) || 0;
+			return {
+				name,
+				value,
+				color: `var(--color-chart-${(index % 5) + 1})`,
+			};
+		})
 	);
 
 	const ChartTypeIcon = $derived.by(() => {

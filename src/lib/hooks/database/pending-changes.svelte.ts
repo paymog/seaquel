@@ -150,7 +150,7 @@ export class PendingChangesManager {
         // Add to query history
         this.queryHistory.addToHistory(change.sql, {
           columns: ["Result"],
-          rows: [{ Result: "Executed from pending changes" }],
+          rows: [["Executed from pending changes"]],
           rowCount: 1,
           totalRows: 1,
           executionTime: 0,

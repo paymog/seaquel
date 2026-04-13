@@ -51,6 +51,13 @@
 	const resultColumns = $derived(
 		previewResult && previewResult.length > 0 ? Object.keys(previewResult[0]) : []
 	);
+	// QueryChart takes columnar rows; `previewResult` comes back from
+	// `executeRaw` as row objects (shared with non-streaming consumers).
+	// Convert once reactively so we don't rebuild the array on every render
+	// of the markup below.
+	const columnarPreview = $derived(
+		previewResult ? previewResult.map((r) => resultColumns.map((c) => r[c])) : []
+	);
 
 	const savedQueries = $derived(db.state.projectQueries);
 
@@ -113,9 +120,10 @@
 		executeError = undefined;
 		try {
 			previewResult = await db.queries.executeRaw(q);
-			// Auto-configure chart if no config set
+			// Auto-configure chart if no config set. Chart helpers take
+			// columnar rows, so we reuse the `columnarPreview` $derived.
 			if (previewResult.length > 0 && chartConfig.yAxis.length === 0) {
-				chartConfig = createDefaultChartConfig(Object.keys(previewResult[0]), previewResult);
+				chartConfig = createDefaultChartConfig(resultColumns, columnarPreview);
 			} else if (previewResult.length > 0) {
 				// Filter out stale columns that no longer exist in the results
 				// (e.g., after the user modifies the query to add/remove aliases)
@@ -430,7 +438,11 @@
 								{#if widgetType === 'kpi'}
 									<DashboardKpiWidget widget={previewWidget} />
 								{:else if resultColumns.length > 0}
-									<QueryChart columns={resultColumns} rows={previewResult} config={chartConfig} />
+									<QueryChart
+										columns={resultColumns}
+										rows={columnarPreview}
+										config={chartConfig}
+									/>
 								{/if}
 							</div>
 						</div>
