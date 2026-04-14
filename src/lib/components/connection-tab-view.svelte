@@ -73,16 +73,21 @@
 	});
 
 	// When credentials are loaded from keyring, sync non-empty values to local state.
+	// This must run only once — otherwise editing a synced field (e.g. deleting a
+	// character in the password) would be immediately overwritten by the tab's value.
+	let credentialsSynced = $state(false);
 	$effect(() => {
-		if (tab.credentialsLoaded && tab.formData.password && tab.formData.password !== formData.password) {
+		if (!tab.credentialsLoaded || credentialsSynced) return;
+		if (tab.formData.password) {
 			formData.password = tab.formData.password;
 		}
-		if (tab.credentialsLoaded && tab.formData.sshPassword && tab.formData.sshPassword !== formData.sshPassword) {
+		if (tab.formData.sshPassword) {
 			formData.sshPassword = tab.formData.sshPassword;
 		}
-		if (tab.credentialsLoaded && tab.formData.sshKeyPassphrase && tab.formData.sshKeyPassphrase !== formData.sshKeyPassphrase) {
+		if (tab.formData.sshKeyPassphrase) {
 			formData.sshKeyPassphrase = tab.formData.sshKeyPassphrase;
 		}
+		credentialsSynced = true;
 	});
 
 	// Derived: selected database type config
