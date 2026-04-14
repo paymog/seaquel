@@ -11,6 +11,7 @@ import { getAdapter } from "$lib/db";
 import type { ProviderRegistry } from "$lib/providers";
 import type { PendingChangesManager } from "./pending-changes.svelte.js";
 import { toast } from "svelte-sonner";
+import { errorToast } from "$lib/utils/toast";
 
 /**
  * Manages create table tabs: add, remove, set active.
@@ -194,7 +195,7 @@ export class CreateTableTabManager extends BaseTabManager<CreateTableTab> {
     if (!connection?.providerConnectionId) return false;
 
     if (!tab.tableDefinition.schemaName) {
-      toast.error("A schema must be selected before creating a table");
+      errorToast("A schema must be selected before creating a table");
       return false;
     }
 
@@ -250,7 +251,7 @@ export class CreateTableTabManager extends BaseTabManager<CreateTableTab> {
       await this.refreshSchemaFn(connection.id);
       return true;
     } catch (error) {
-      toast.error(
+      errorToast(
         `Failed to ${tab.isEditMode ? "update" : "create"} table: ${error instanceof Error ? error.message : String(error)}`,
       );
       return false;

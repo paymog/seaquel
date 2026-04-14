@@ -27,6 +27,7 @@
 	} from "$lib/types";
 	import { parseCreateTableSql } from "$lib/db/parse-create-table";
 	import { toast } from "svelte-sonner";
+	import { errorToast } from "$lib/utils/toast";
 
 	let { tabId }: { tabId: string } = $props();
 
@@ -227,16 +228,16 @@
 	async function handleCreate() {
 		if (!tab || isCreating) return;
 		if (!tab.tableDefinition.tableName.trim()) {
-			toast.error("Table name is required");
+			errorToast("Table name is required");
 			return;
 		}
 		if (tab.tableDefinition.columns.length === 0) {
-			toast.error("At least one column is required");
+			errorToast("At least one column is required");
 			return;
 		}
 		const hasEmptyColumnName = tab.tableDefinition.columns.some((c) => !c.name.trim());
 		if (hasEmptyColumnName) {
-			toast.error("All columns must have names");
+			errorToast("All columns must have names");
 			return;
 		}
 

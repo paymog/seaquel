@@ -17,6 +17,7 @@
 	import { inputTypeForColumnType, inputStepForColumnType } from "$lib/utils/cell-type";
 	import { rowToObject } from "$lib/utils/row-access";
 	import { toast } from "svelte-sonner";
+	import { errorToast } from "$lib/utils/toast";
 	import { tick } from "svelte";
 
 	let { tabId }: { tabId: string } = $props();
@@ -196,7 +197,7 @@
 		}
 
 		if (Object.keys(insertValues).length === 0) {
-			toast.error("At least one value is required");
+			errorToast("At least one value is required");
 			return;
 		}
 
@@ -210,10 +211,10 @@
 				setPendingRowValues(pendingRowValues.filter((_, i) => i !== index));
 				toast.success("Row inserted");
 			} else {
-				toast.error("Failed to insert row");
+				errorToast("Failed to insert row");
 			}
 		} catch (error) {
-			toast.error(
+			errorToast(
 				`Failed to insert row: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		} finally {
@@ -244,7 +245,7 @@
 				void db.dataTabs.refresh(tabId);
 			}
 		} else {
-			toast.error(`Failed to update cell: ${result.error ?? "Unknown error"}`);
+			errorToast(`Failed to update cell: ${result.error ?? "Unknown error"}`);
 		}
 	}
 
@@ -263,7 +264,7 @@
 				void db.dataTabs.refresh(tabId);
 			}
 		} catch (error) {
-			toast.error(
+			errorToast(
 				`Failed to delete row: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		} finally {
@@ -306,7 +307,7 @@
 				void db.dataTabs.refresh(tabId);
 			}
 		} else {
-			toast.error(`Failed to set default: ${result.error ?? "Unknown error"}`);
+			errorToast(`Failed to set default: ${result.error ?? "Unknown error"}`);
 		}
 	}
 

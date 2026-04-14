@@ -5,6 +5,7 @@
 	import { sharedProjectImportStore } from "$lib/stores/shared-project-import.svelte.js";
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
 	import { toast } from "svelte-sonner";
+	import { errorToast } from "$lib/utils/toast";
 	import { m } from "$lib/paraglide/messages.js";
 	import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
 	import LoaderIcon from "@lucide/svelte/icons/loader";
@@ -26,7 +27,7 @@
 			sharedProjectImportStore.reset();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			toast.error(message);
+			errorToast(message);
 			sharedProjectImportStore.isImporting = false;
 		}
 	}

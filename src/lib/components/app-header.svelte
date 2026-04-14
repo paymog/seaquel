@@ -17,6 +17,7 @@
     import ImportSharedProjectDialog from "./import-shared-project-dialog.svelte";
     import { sharedProjectImportStore } from "$lib/stores/shared-project-import.svelte.js";
     import { toast } from "svelte-sonner";
+    import { errorToast } from "$lib/utils/toast";
     import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
     import CircleDollarSignIcon from "@lucide/svelte/icons/circle-dollar-sign";
     import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
@@ -61,7 +62,7 @@
                 updateStore.showUpToDate();
             }
         } catch {
-            toast.error("Failed to check for updates");
+            errorToast("Failed to check for updates");
         } finally {
             checkingForUpdates = false;
         }
@@ -142,7 +143,7 @@
             }
             sharedProjectImportStore.openWithResults(selected as string, projects);
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : String(error));
+            errorToast(error instanceof Error ? error.message : String(error));
         }
     };
 </script>

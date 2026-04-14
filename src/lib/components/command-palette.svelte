@@ -42,7 +42,7 @@
 	import { Link } from "@lucide/svelte";
 	import { handleDeepLink } from "$lib/services/deep-link";
 	import { rowsToObjects } from "$lib/utils/row-access";
-	import { toast } from "svelte-sonner";
+	import { errorToast } from "$lib/utils/toast";
 	import { onboardingStore } from "$lib/stores/onboarding.svelte";
 	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 
@@ -385,10 +385,10 @@
 			if (text.startsWith("seaquel://")) {
 				handleDeepLink(text, db);
 			} else {
-				toast.error("Clipboard does not contain a seaquel:// link");
+				errorToast("Clipboard does not contain a seaquel:// link");
 			}
 		} catch {
-			toast.error("Failed to read clipboard");
+			errorToast("Failed to read clipboard");
 		}
 	}
 

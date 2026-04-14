@@ -2,6 +2,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { CopyIcon } from '@lucide/svelte';
 	import { toast } from 'svelte-sonner';
+	import { errorToast } from '$lib/utils/toast';
 	import MonacoEditor from '$lib/components/monaco-editor.svelte';
 	import VirtualResultsTable from '$lib/components/virtual-results-table.svelte';
 	import ParameterInputDialog from '$lib/components/parameter-input-dialog.svelte';
@@ -127,7 +128,7 @@
 			await navigator.clipboard.writeText(editorValue);
 			toast.success('SQL copied to clipboard');
 		} catch {
-			toast.error('Failed to copy');
+			errorToast('Failed to copy');
 		}
 	}
 
@@ -137,7 +138,7 @@
 			await navigator.clipboard.writeText(queryError);
 			toast.success(m.workspace_error_copied());
 		} catch {
-			toast.error(m.workspace_copy_error_failed());
+			errorToast(m.workspace_copy_error_failed());
 		}
 	}
 

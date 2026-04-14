@@ -1,4 +1,4 @@
-import { toast } from "svelte-sonner";
+import { errorToast } from "$lib/utils/toast";
 import { generateSQL } from "$lib/services/ai";
 import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 import type { QueryEditorContext } from "./types.js";
@@ -106,7 +106,7 @@ export function createAIInlinePrompt(
         error = { message: "Rate limit reached. Please wait and try again." };
       } else {
         error = { message: "Something went wrong. Please try again." };
-        toast.error(msg);
+        errorToast(msg);
       }
     } finally {
       loading = false;

@@ -6,6 +6,7 @@
 	import { isDemo } from "$lib/features";
 	import { buildDeepLinkUrl } from "$lib/services/deep-link";
 	import { toast } from "svelte-sonner";
+	import { errorToast } from "$lib/utils/toast";
 	import { Connections, TabNav, SchemaTab, QueriesTab, DashboardsTab } from "./sidebar/manage/index.js";
 
 	interface Props {
@@ -33,12 +34,12 @@
 	const copyShareLink = async (resource: { repoId?: string; filePath?: string; name?: string; folder?: string }, resourceType: "query" | "dashboard" | "connection" = "query") => {
 		const repoId = resource.repoId ?? db.state.activeRepoId;
 		if (!repoId) {
-			toast.error("No repository configured");
+			errorToast("No repository configured");
 			return;
 		}
 		const repo = db.state.sharedRepos.find((r) => r.id === repoId);
 		if (!repo || !repo.remoteUrl) {
-			toast.error("This repository has no remote URL configured");
+			errorToast("This repository has no remote URL configured");
 			return;
 		}
 		let filePath = resource.filePath;
@@ -59,7 +60,7 @@
 			}
 		}
 		if (!filePath) {
-			toast.error("Cannot generate share link");
+			errorToast("Cannot generate share link");
 			return;
 		}
 		const url = buildDeepLinkUrl(repo.remoteUrl, repo.branch, filePath);

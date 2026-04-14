@@ -11,6 +11,7 @@
 	import { sharedProjectImportStore } from "$lib/stores/shared-project-import.svelte.js";
 	import ImportSharedProjectDialog from "../import-shared-project-dialog.svelte";
 	import { toast } from "svelte-sonner";
+	import { errorToast } from "$lib/utils/toast";
 
 	const db = useDatabase();
 	const features = getFeatures();
@@ -59,7 +60,7 @@
 			}
 			sharedProjectImportStore.openWithResults(selected as string, projects);
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : String(error));
+			errorToast(error instanceof Error ? error.message : String(error));
 		}
 	};
 

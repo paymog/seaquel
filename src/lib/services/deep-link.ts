@@ -10,6 +10,7 @@ import type { useDatabase } from "$lib/hooks/database.svelte.js";
 import { deepLinkDialogStore } from "$lib/stores/deep-link-dialog.svelte.js";
 import { deepLinkProjectPickerStore } from "$lib/stores/deep-link-project-picker.svelte.js";
 import { toast } from "svelte-sonner";
+import { errorToast } from "$lib/utils/toast";
 
 type DatabaseContext = ReturnType<typeof useDatabase>;
 
@@ -206,7 +207,7 @@ function handleQueryDeepLink(repoId: string, filePath: string, db: DatabaseConte
     }
     toast.success(`Opened shared query: ${scannedQuery.name}`);
   } else {
-    toast.error(`Query not found: ${filePath}`);
+    errorToast(`Query not found: ${filePath}`);
   }
 }
 
@@ -227,7 +228,7 @@ function handleDashboardDeepLink(repoId: string, filePath: string, db: DatabaseC
     }
     toast.success(`Opened shared dashboard: ${scannedDashboard.name}`);
   } else {
-    toast.error(`Dashboard not found: ${filePath}`);
+    errorToast(`Dashboard not found: ${filePath}`);
   }
 }
 
@@ -249,7 +250,7 @@ async function handleConnectionDeepLink(
   }
 
   if (!connection) {
-    toast.error(`Connection not found: ${filePath}`);
+    errorToast(`Connection not found: ${filePath}`);
     return;
   }
 
@@ -277,7 +278,7 @@ async function handleProjectDeepLink(
   // Extract project dirName from path like .seaquel/projects/<dirName>
   const dirName = filePath.replace(/\/$/, "").split("/").pop();
   if (!dirName) {
-    toast.error("Invalid project path");
+    errorToast("Invalid project path");
     return;
   }
 
@@ -285,7 +286,7 @@ async function handleProjectDeepLink(
   const sharedProject = sharedProjects.find((p) => p.dirName === dirName);
 
   if (!sharedProject) {
-    toast.error(`Project not found: ${dirName}`);
+    errorToast(`Project not found: ${dirName}`);
     return;
   }
 
