@@ -181,8 +181,11 @@ export function hasAllCredentials(formData: ConnectionFormData): boolean {
   const isFileBasedDb = formData.type === "sqlite" || formData.type === "duckdb";
   if (!isFileBasedDb && !formData.host.trim()) return false;
 
-  // Password requirement (SQLite and DuckDB don't need password)
-  if (!isFileBasedDb && !formData.password) return false;
+  // Password requirement (SQLite and DuckDB don't need password).
+  // If the saved connection had `savePassword` on but nothing came back from the
+  // keyring, it's an intentionally passwordless connection — allow auto-connect.
+  // Otherwise (user opted out of saving) we still need them to re-enter it.
+  if (!isFileBasedDb && !formData.password && !formData.savePassword) return false;
 
   // SSH requirements
   if (formData.sshEnabled) {

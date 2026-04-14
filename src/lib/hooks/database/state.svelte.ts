@@ -125,6 +125,9 @@ export class DatabaseState {
   // Tab ordering state (stores ordered array of all tab IDs per project)
   tabOrderByProject = $state<Record<string, string[]>>({});
 
+  // Connection ordering state (stores ordered array of connection IDs per project)
+  connectionOrderByProject = $state<Record<string, string[]>>({});
+
   // Pane layout state (stores split pane configuration per project)
   paneLayoutByProject = $state<Record<string, PaneLayout>>({});
 
@@ -215,12 +218,24 @@ export class DatabaseState {
   // Derived: active project object
   activeProject = $derived(this.projects.find((p) => p.id === this.activeProjectId) || null);
 
-  // Derived: connections for active project
-  projectConnections = $derived(
-    this.activeProjectId
-      ? this.connections.filter((c) => c.projectId === this.activeProjectId)
-      : [],
-  );
+  // Derived: connections for active project, ordered by connectionOrderByProject.
+  // Connections whose IDs are not yet in the order array are appended at the end
+  // in their natural (load/insertion) order.
+  projectConnections = $derived.by(() => {
+    if (!this.activeProjectId) return [];
+    const filtered = this.connections.filter((c) => c.projectId === this.activeProjectId);
+    const order = this.connectionOrderByProject[this.activeProjectId] ?? [];
+    if (order.length === 0) return filtered;
+    const indexById = new Map(order.map((id, i) => [id, i]));
+    const known: DatabaseConnection[] = [];
+    const unknown: DatabaseConnection[] = [];
+    for (const c of filtered) {
+      if (indexById.has(c.id)) known.push(c);
+      else unknown.push(c);
+    }
+    known.sort((a, b) => indexById.get(a.id)! - indexById.get(b.id)!);
+    return [...known, ...unknown];
+  });
 
   // === CONNECTION DERIVED VALUES ===
 

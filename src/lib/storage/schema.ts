@@ -90,6 +90,7 @@ const DDL_STATEMENTS = [
     active_create_table_tab_id TEXT,
     active_data_tab_id TEXT,
     tab_order TEXT NOT NULL DEFAULT '[]',
+    connection_order TEXT NOT NULL DEFAULT '[]',
     starred_shared_query_ids TEXT NOT NULL DEFAULT '[]',
     starred_shared_dashboard_ids TEXT NOT NULL DEFAULT '[]',
     pane_layout TEXT
@@ -422,6 +423,11 @@ async function upgradeSchema(db: SqliteDatabase): Promise<void> {
       table: "ai_messages",
       column: "dashboard_id",
       sql: "ALTER TABLE ai_messages ADD COLUMN dashboard_id TEXT",
+    },
+    {
+      table: "project_state",
+      column: "connection_order",
+      sql: "ALTER TABLE project_state ADD COLUMN connection_order TEXT NOT NULL DEFAULT '[]'",
     },
   ];
 

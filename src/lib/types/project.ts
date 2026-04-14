@@ -110,6 +110,8 @@ export interface PersistedProjectState {
   workflowTabs?: import("./persisted").PersistedWorkflowTab[];
   /** Ordered list of all tab IDs for drag-drop ordering */
   tabOrder: string[];
+  /** Ordered list of connection IDs for drag-drop ordering (per project) */
+  connectionOrder?: string[];
   /** Currently active query tab */
   activeQueryTabId: string | null;
   /** Currently active schema tab */

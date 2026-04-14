@@ -388,6 +388,7 @@ export class PersistenceManager {
         statisticsTabs: this.serializeStatisticsTabs(projectId),
         workflowTabs: this.serializeWorkflowTabs(projectId),
         tabOrder: this.state.tabOrderByProject[projectId] ?? [],
+        connectionOrder: this.state.connectionOrderByProject[projectId] ?? [],
         activeQueryTabId: this.state.activeQueryTabIdByProject[projectId] ?? null,
         activeSchemaTabId: this.state.activeSchemaTabIdByProject[projectId] ?? null,
         activeExplainTabId: this.state.activeExplainTabIdByProject[projectId] ?? null,

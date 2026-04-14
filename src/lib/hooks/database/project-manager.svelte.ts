@@ -717,6 +717,7 @@ export class ProjectManager {
       this.state.savedWorkflowsByProject[projectId] = [];
       this.state.dashboardTabsByProject[projectId] = [];
       this.state.tabOrderByProject[projectId] = [];
+      this.state.connectionOrderByProject[projectId] = [];
       this.state.activeQueryTabIdByProject[projectId] = null;
       this.state.activeSchemaTabIdByProject[projectId] = null;
       this.state.activeExplainTabIdByProject[projectId] = null;
@@ -809,6 +810,7 @@ export class ProjectManager {
 
     // Restore tab order and active IDs
     this.state.tabOrderByProject[projectId] = persistedState.tabOrder;
+    this.state.connectionOrderByProject[projectId] = persistedState.connectionOrder ?? [];
     this.state.activeQueryTabIdByProject[projectId] = persistedState.activeQueryTabId;
     this.state.activeSchemaTabIdByProject[projectId] = persistedState.activeSchemaTabId;
     this.state.activeExplainTabIdByProject[projectId] = persistedState.activeExplainTabId;

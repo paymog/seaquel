@@ -128,6 +128,9 @@ export class ConnectionManager {
       for (const connection of connectionEntries) {
         this.state.connections.push(connection);
         this.stateRestoration.initializeConnectionMaps(connection.id);
+        // Ensure legacy rows (pre-connection-order migration) are represented
+        // in the in-memory order; the first persist writes them back to disk.
+        this.appendToOrder(connection.projectId, connection.id);
       }
 
       // Phase 3: Load connection data (query history, AI chats) in parallel
@@ -247,6 +250,7 @@ export class ConnectionManager {
       if (!this.state.connections.find((c) => c.id === newConnection.id)) {
         this.state.connections.push(newConnection);
       }
+      this.appendToOrder(projectId, newConnection.id);
 
       this.stateRestoration.initializeConnectionMaps(newConnection.id);
 
@@ -598,6 +602,9 @@ export class ConnectionManager {
     await this.persistence.removePersistedConnection(id);
     this.state.connections = this.state.connections.filter((c) => c.id !== id);
     this.stateRestoration.cleanupConnectionMaps(id);
+    if (connection) {
+      this.removeFromOrder(connection.projectId, id);
+    }
 
     // If this was the active connection for its project, switch to another
     if (connection && this.state.activeConnectionIdByProject[connection.projectId] === id) {
@@ -667,6 +674,7 @@ export class ConnectionManager {
     }
 
     this.stateRestoration.initializeConnectionMaps(connectionId);
+    this.appendToOrder(projectId, connectionId);
 
     // Load schema
     const adapter = getAdapter("duckdb");
@@ -759,7 +767,11 @@ export class ConnectionManager {
       password = connection.password;
     }
 
-    if (!password) {
+    // If `savePassword` is off, the user opted to re-enter credentials each time —
+    // fall back to the reconnect tab. Otherwise an empty password is treated as
+    // an intentionally passwordless connection; the reconnect attempt below will
+    // surface a failure if the server actually requires one.
+    if (!password && !connection.savePassword) {
       void log.debug(`Auto-reconnect skipped (no password available): ${connectionId}`);
       return false;
     }
@@ -798,7 +810,7 @@ export class ConnectionManager {
         port: connection.port,
         databaseName: connection.databaseName,
         username: connection.username,
-        password,
+        password: password ?? "",
         sslMode: connection.sslMode,
         connectionString: connection.connectionString,
         sshTunnel: connection.sshTunnel,
@@ -957,5 +969,40 @@ export class ConnectionManager {
         }
       }
     }
+  }
+
+  /**
+   * Replace the entire connection order for a project (used by drag-and-drop).
+   */
+  reorder(projectId: string, orderedIds: string[]): void {
+    this.state.connectionOrderByProject = {
+      ...this.state.connectionOrderByProject,
+      [projectId]: [...orderedIds],
+    };
+    this.persistence.scheduleProject(projectId);
+  }
+
+  /**
+   * Append a connection ID to its project's order (if not already present).
+   */
+  private appendToOrder(projectId: string, connectionId: string): void {
+    const current = this.state.connectionOrderByProject[projectId] ?? [];
+    if (current.includes(connectionId)) return;
+    this.state.connectionOrderByProject = {
+      ...this.state.connectionOrderByProject,
+      [projectId]: [...current, connectionId],
+    };
+  }
+
+  /**
+   * Remove a connection ID from its project's order.
+   */
+  private removeFromOrder(projectId: string, connectionId: string): void {
+    const current = this.state.connectionOrderByProject[projectId] ?? [];
+    if (!current.includes(connectionId)) return;
+    this.state.connectionOrderByProject = {
+      ...this.state.connectionOrderByProject,
+      [projectId]: current.filter((id) => id !== connectionId),
+    };
   }
 }

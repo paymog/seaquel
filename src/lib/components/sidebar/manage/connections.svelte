@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
+	import { dndzone } from "svelte-dnd-action";
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import { Button } from "$lib/components/ui/button";
 	import { ChevronRightIcon, PlusIcon, PlugIcon, UnplugIcon, TagIcon, BarChart3Icon, NetworkIcon, WorkflowIcon, MoreHorizontalIcon, GitBranchIcon, PencilIcon, LoaderIcon, LayoutDashboardIcon, Trash2Icon, PuzzleIcon } from "@lucide/svelte";
@@ -33,6 +34,30 @@
 	let showLabelsDialog = $state(false);
 	let connectionToEditLabels = $state<string | null>(null);
 	let connectionToEditLabelsName = $state("");
+
+	// Drag & drop reordering state
+	type ProjectConnection = (typeof db.state.projectConnections)[number];
+	let isDragging = $state(false);
+	let draggedConnections = $state<ProjectConnection[]>([]);
+	const displayConnections = $derived(
+		isDragging ? draggedConnections : db.state.projectConnections,
+	);
+
+	function handleDndConsider(e: CustomEvent<{ items: ProjectConnection[] }>) {
+		isDragging = true;
+		draggedConnections = e.detail.items;
+	}
+
+	function handleDndFinalize(e: CustomEvent<{ items: ProjectConnection[] }>) {
+		isDragging = false;
+		draggedConnections = [];
+		const projectId = db.state.activeProjectId;
+		if (!projectId) return;
+		db.connections.reorder(
+			projectId,
+			e.detail.items.map((c) => c.id),
+		);
+	}
 
 	const handleConnectionClick = async (connection: typeof db.state.connections[0]) => {
 		if (connection.providerConnectionId) {
@@ -108,7 +133,18 @@
 		<CollapsibleContent>
 			<Sidebar.GroupContent>
 				<Sidebar.Menu class="px-2">
-					{#each db.state.projectConnections as connection (connection.id)}
+					<div
+						use:dndzone={{
+							items: displayConnections,
+							type: 'connections',
+							dropTargetStyle: {},
+							flipDurationMs: 150,
+						}}
+						onconsider={handleDndConsider}
+						onfinalize={handleDndFinalize}
+					>
+					{#each displayConnections as connection (connection.id)}
+						<div id={connection.id}>
 						<ContextMenu.Root>
 							<ContextMenu.Trigger class="w-full">
 								<Sidebar.MenuItem>
@@ -265,7 +301,9 @@
 								{/if}
 							</ContextMenu.Content>
 						</ContextMenu.Root>
+						</div>
 					{/each}
+					</div>
 					{#if db.state.projectConnections.length === 0}
 						<div class="text-center py-2 text-muted-foreground">
 							<p class="text-xs">{m.sidebar_no_connection()}</p>

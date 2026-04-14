@@ -19,6 +19,7 @@ export const projectStateRepo = {
       active_create_table_tab_id: string | null;
       active_data_tab_id: string | null;
       tab_order: string;
+      connection_order: string | null;
     }>("SELECT * FROM project_state WHERE project_id = ?", [projectId]);
 
     if (rows.length === 0) return null;
@@ -201,6 +202,7 @@ export const projectStateRepo = {
       statisticsTabs,
       workflowTabs,
       tabOrder: safeJsonParse(state.tab_order, []),
+      connectionOrder: safeJsonParse(state.connection_order ?? "[]", []),
       activeQueryTabId: state.active_query_tab_id,
       activeSchemaTabId: state.active_schema_tab_id,
       activeExplainTabId: state.active_explain_tab_id,
@@ -233,10 +235,10 @@ export const projectStateRepo = {
       sql: `INSERT OR REPLACE INTO project_state
        (project_id, active_view, active_connection_id, active_query_tab_id, active_schema_tab_id,
         active_explain_tab_id, active_erd_tab_id, active_statistics_tab_id, active_workflow_tab_id,
-        active_visualize_tab_id, active_starter_tab_id, tab_order,
+        active_visualize_tab_id, active_starter_tab_id, tab_order, connection_order,
         active_dashboard_tab_id, starred_shared_query_ids, starred_shared_dashboard_ids, pane_layout,
         active_create_table_tab_id, active_data_tab_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         state.projectId,
         state.activeView,
@@ -250,6 +252,7 @@ export const projectStateRepo = {
         null, // activeVisualizeTabId
         state.activeStarterTabId ?? null,
         JSON.stringify(state.tabOrder),
+        JSON.stringify(state.connectionOrder ?? []),
         state.activeDashboardTabId ?? null,
         JSON.stringify(state.starredSharedQueryIds ?? []),
         JSON.stringify(state.starredSharedDashboardIds ?? []),
