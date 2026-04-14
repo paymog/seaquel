@@ -37,12 +37,51 @@ export function detectCellType(value: unknown): CellType {
   return "text";
 }
 
-export function detectColumnTypes(columns: string[], rows: unknown[][]): Record<string, CellType> {
+/**
+ * Infer a CellType from a declared SQL column type (e.g. "BOOLEAN",
+ * "timestamp", "varchar(255)"). Returns null when the declared type doesn't
+ * map cleanly to a visual category — callers should fall back to value-based
+ * sampling in that case.
+ */
+export function cellTypeFromColumnType(dbType: string): CellType | null {
+  const t = dbType
+    .toLowerCase()
+    .replace(/\(.*\)/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (/^(boolean|bool|bit)$/.test(t)) return "boolean";
+  if (/timestamp|datetime|smalldatetime|datetimeoffset/.test(t)) return "datetime";
+  if (t === "date") return "date";
+  if (/^time\b/.test(t)) return "time";
+  if (t === "uuid" || t === "uniqueidentifier") return "uuid";
+  if (/^(json|jsonb)$/.test(t)) return "json";
+  if (t.endsWith("[]")) return "array";
+  if (/^(bytea|blob|varbinary|binary|image)$/.test(t)) return "binary";
+  return null;
+}
+
+export function detectColumnTypes(
+  columns: string[],
+  rows: unknown[][],
+  declaredTypes?: Record<string, string>,
+): Record<string, CellType> {
   const result: Record<string, CellType> = {};
   const sampleSize = 5;
 
   for (let colIdx = 0; colIdx < columns.length; colIdx++) {
     const column = columns[colIdx];
+
+    // Prefer declared-type classification when available — SQLite stores
+    // booleans as 0/1 integers, so value sampling alone would mis-classify
+    // BOOLEAN columns as "integer".
+    const declared = declaredTypes?.[column];
+    const fromDeclared = declared ? cellTypeFromColumnType(declared) : null;
+    if (fromDeclared) {
+      result[column] = fromDeclared;
+      continue;
+    }
+
     const typeCounts = new Map<CellType, number>();
     let sampled = 0;
 

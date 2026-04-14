@@ -37,6 +37,15 @@
 
 	const hasPrimaryKey = $derived(tableColumns.some((c) => c.isPrimaryKey));
 
+	// Map column name → declared SQL type so VirtualResultsTable can classify
+	// cells (e.g. SQLite BOOLEAN stores 0/1 integers — without this hint the
+	// column would render as a number column, not as checkboxes).
+	const declaredColumnTypes = $derived.by((): Record<string, string> => {
+		const map: Record<string, string> = {};
+		for (const c of tableColumns) map[c.name] = c.type;
+		return map;
+	});
+
 	// Build FK column map for navigation
 	const foreignKeyColumns = $derived.by((): Map<string, { ref: ForeignKeyRef; table: SchemaTable }> => {
 		const map = new Map<string, { ref: ForeignKeyRef; table: SchemaTable }>();
@@ -469,6 +478,7 @@
 							onRemovePendingInsert={handleRemovePendingInsert}
 							{foreignKeyColumns}
 							onForeignKeyClick={handleForeignKeyClick}
+							{declaredColumnTypes}
 						/>
 					</div>
 				{/if}

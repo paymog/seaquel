@@ -45,6 +45,8 @@
 		foreignKeyColumns?: Map<string, { ref: ForeignKeyRef; table: SchemaTable }>;
 		/** Called when a FK cell's navigation icon is clicked */
 		onForeignKeyClick?: (ref: ForeignKeyRef, table: SchemaTable, value: string) => void;
+		/** Map of column name → declared SQL type (e.g. "BOOLEAN", "varchar(255)"). Used to classify cells even when value sampling would misidentify them. */
+		declaredColumnTypes?: Record<string, string>;
 	}
 
 	let {
@@ -72,10 +74,11 @@
 		onRemovePendingInsert,
 		foreignKeyColumns,
 		onForeignKeyClick,
+		declaredColumnTypes,
 	}: Props = $props();
 
 	// Column type detection for formatted cells
-	const columnTypes = $derived(detectColumnTypes(columns, rows));
+	const columnTypes = $derived(detectColumnTypes(columns, rows, declaredColumnTypes));
 
 	// Virtual scrolling state
 	const ROW_HEIGHT = $derived(compact ? 28 : 37);

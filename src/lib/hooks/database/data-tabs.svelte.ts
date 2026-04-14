@@ -313,7 +313,8 @@ export class DataTabManager extends BaseTabManager<DataTab> {
    */
   buildQuery(tab: DataTab, dbType: string): { sql: string; params: unknown[] } {
     const q = this.quoteIdentifier(dbType);
-    const base = `SELECT * FROM ${q(tab.schemaName)}.${q(tab.tableName)}`;
+    const selectClause = this.buildSelectClause(tab, dbType, q);
+    const base = `SELECT ${selectClause} FROM ${q(tab.schemaName)}.${q(tab.tableName)}`;
     const params: unknown[] = [];
 
     // WHERE clause from enabled filters
@@ -375,12 +376,44 @@ export class DataTabManager extends BaseTabManager<DataTab> {
   }
 
   /**
+   * Build the SELECT column clause, handling MSSQL types that hang tiberius.
+   *
+   * tiberius 0.12.3 panics via `todo!()` when it encounters SQL_VARIANT or UDT
+   * columns (token_col_metadata.rs:174/204). The panic aborts the async task
+   * and the query future never resolves, so the UI spinner never clears.
+   * Work around it by explicitly listing columns and CASTing the problematic
+   * ones to NVARCHAR(MAX).
+   */
+  private buildSelectClause(tab: DataTab, dbType: string, q: (name: string) => string): string {
+    if (dbType !== "mssql") return "*";
+    const columns = this.getTableColumns(tab);
+    if (columns.length === 0) return "*";
+    const isTiberiusHanging = (type: string): boolean =>
+      /^(sql_variant|geography|geometry|hierarchyid)$/i.test(type.trim());
+    if (!columns.some((c) => isTiberiusHanging(c.type))) return "*";
+    return columns
+      .map((c) =>
+        isTiberiusHanging(c.type)
+          ? `CAST(${q(c.name)} AS NVARCHAR(MAX)) AS ${q(c.name)}`
+          : q(c.name),
+      )
+      .join(", ");
+  }
+
+  /**
+   * Get all columns (with type info) for a table from the schema cache.
+   */
+  private getTableColumns(tab: DataTab): Array<{ name: string; type: string }> {
+    const schemas = this.state.schemas[tab.connectionId] ?? [];
+    const table = schemas.find((t) => t.name === tab.tableName && t.schema === tab.schemaName);
+    return table?.columns.map((c) => ({ name: c.name, type: c.type })) ?? [];
+  }
+
+  /**
    * Get all column names for a table from the schema cache.
    */
   private getTableColumnNames(tab: DataTab): string[] {
-    const schemas = this.state.schemas[tab.connectionId] ?? [];
-    const table = schemas.find((t) => t.name === tab.tableName && t.schema === tab.schemaName);
-    return table?.columns.map((c) => c.name) ?? [];
+    return this.getTableColumns(tab).map((c) => c.name);
   }
 
   /**

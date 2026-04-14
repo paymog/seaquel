@@ -1,6 +1,8 @@
 use async_native_tls::TlsStream;
 use async_trait::async_trait;
+use futures::FutureExt;
 use log::{error, info};
+use std::panic::AssertUnwindSafe;
 use tiberius::{AuthMethod, Client, Config, Query, Row};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -125,6 +127,12 @@ impl MssqlDriver {
 
 /// Convert a tiberius Row to a vector of JSON values (positional)
 fn row_to_values(row: &Row) -> Vec<serde_json::Value> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use tiberius::numeric::Numeric;
+    use tiberius::time::chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
+    use tiberius::xml::XmlData;
+    use tiberius::Uuid;
+
     row.columns()
         .iter()
         .map(|col| {
@@ -145,8 +153,29 @@ fn row_to_values(row: &Row) -> Vec<serde_json::Value> {
                 serde_json::json!(v)
             } else if let Some(v) = row.try_get::<bool, _>(col_name).ok().flatten() {
                 serde_json::json!(v)
+            } else if let Some(v) = row.try_get::<Numeric, _>(col_name).ok().flatten() {
+                serde_json::json!(f64::from(v))
+            } else if let Some(v) = row
+                .try_get::<NaiveDateTime, _>(col_name)
+                .ok()
+                .flatten()
+            {
+                serde_json::json!(v.to_string())
+            } else if let Some(v) = row.try_get::<NaiveDate, _>(col_name).ok().flatten() {
+                serde_json::json!(v.to_string())
+            } else if let Some(v) = row.try_get::<NaiveTime, _>(col_name).ok().flatten() {
+                serde_json::json!(v.to_string())
+            } else if let Some(v) = row
+                .try_get::<DateTime<FixedOffset>, _>(col_name)
+                .ok()
+                .flatten()
+            {
+                serde_json::json!(v.to_rfc3339())
+            } else if let Some(v) = row.try_get::<Uuid, _>(col_name).ok().flatten() {
+                serde_json::json!(v.to_string())
+            } else if let Some(v) = row.try_get::<&XmlData, _>(col_name).ok().flatten() {
+                serde_json::json!(v.as_ref())
             } else if let Some(v) = row.try_get::<&[u8], _>(col_name).ok().flatten() {
-                use base64::{engine::general_purpose::STANDARD, Engine as _};
                 serde_json::json!(STANDARD.encode(v))
             } else {
                 serde_json::Value::Null
@@ -167,10 +196,23 @@ impl Driver for MssqlDriver {
         }
         let mut client = self.client.lock().await;
 
-        let rows = client.query_rows(sql).await.map_err(|e| {
-            error!(activity = "db.query", driver = "mssql", error_code = "QUERY_ERROR"; "Query failed");
-            DbError::query_error(e)
-        })?;
+        // tiberius 0.12.3 panics via `todo!()` on SQL_VARIANT / UDT column
+        // metadata (token_col_metadata.rs:174/204). Catch the panic so the
+        // Tauri command returns an error instead of hanging the UI forever.
+        let rows = match AssertUnwindSafe(client.query_rows(sql)).catch_unwind().await {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => {
+                error!(activity = "db.query", driver = "mssql", error_code = "QUERY_ERROR"; "Query failed");
+                return Err(DbError::query_error(e));
+            }
+            Err(_) => {
+                error!(activity = "db.query", driver = "mssql", error_code = "UNSUPPORTED_TYPE"; "Tiberius panicked on column metadata");
+                return Err(DbError {
+                    message: "SQL Server driver does not support a column type in this result (SQL_VARIANT or user-defined type). CAST the column to NVARCHAR(MAX) in your query.".to_string(),
+                    code: "UNSUPPORTED_TYPE".to_string(),
+                });
+            }
+        };
 
         let columns: Vec<String> = if !rows.is_empty() {
             rows[0]
@@ -201,10 +243,20 @@ impl Driver for MssqlDriver {
         }
         let mut client = self.client.lock().await;
 
-        let result = client.execute_sql(sql).await.map_err(|e| {
-            error!(activity = "db.execute", driver = "mssql", error_code = "EXECUTE_ERROR"; "Execute failed");
-            DbError::execute_error(e)
-        })?;
+        let result = match AssertUnwindSafe(client.execute_sql(sql)).catch_unwind().await {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => {
+                error!(activity = "db.execute", driver = "mssql", error_code = "EXECUTE_ERROR"; "Execute failed");
+                return Err(DbError::execute_error(e));
+            }
+            Err(_) => {
+                error!(activity = "db.execute", driver = "mssql", error_code = "UNSUPPORTED_TYPE"; "Tiberius panicked");
+                return Err(DbError {
+                    message: "SQL Server driver panicked. A column type in the result is unsupported (SQL_VARIANT or user-defined type).".to_string(),
+                    code: "UNSUPPORTED_TYPE".to_string(),
+                });
+            }
+        };
 
         let rows_affected: u64 = result.rows_affected().iter().sum();
 
