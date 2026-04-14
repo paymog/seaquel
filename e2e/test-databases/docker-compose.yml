@@ -1,0 +1,102 @@
+# Local database servers for e2e seeding/testing.
+#
+# Usage:
+#   docker compose -f e2e/test-databases/docker-compose.yml up -d
+#   docker compose -f e2e/test-databases/docker-compose.yml down
+#   docker compose -f e2e/test-databases/docker-compose.yml down -v   # also drops volumes
+#
+# Seeding (from repo root):
+#   node e2e/test-databases/seed.mjs postgresql
+#   node e2e/test-databases/seed.mjs mysql
+#   MARIADB_PORT=3307 node e2e/test-databases/seed.mjs mariadb
+#   MSSQL_PASSWORD='Seaquel_Test_123!' node e2e/test-databases/seed.mjs sqlserver
+#
+# Notes:
+# - MySQL occupies host port 3306; MariaDB is exposed on host port 3307 to avoid
+#   the clash. The seeder uses port 3307 by default.
+# - SQL Server refuses empty SA passwords and enforces complexity rules. The
+#   seeder defaults to an empty password — set MSSQL_PASSWORD to the value
+#   below (or override both here and there) when seeding sqlserver.
+# - On Apple Silicon the SQL Server image runs via Rosetta emulation
+#   (platform: linux/amd64). It works, just slower on first boot.
+
+name: seaquel-test-databases
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: seaquel-postgres
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8
+    container_name: seaquel-mysql
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  mariadb:
+    image: mariadb:11
+    container_name: seaquel-mariadb
+    environment:
+      MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "yes"
+    ports:
+      - "3307:3306"
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: seaquel-sqlserver
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-Seaquel_Test_123!}"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q 'SELECT 1' || exit 1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  mysql-data:
+  mariadb-data:
+  sqlserver-data:

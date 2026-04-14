@@ -13,7 +13,7 @@ export default async function seed() {
     server: process.env.MSSQL_HOST || "127.0.0.1",
     port: Number(process.env.MSSQL_PORT) || 1433,
     user: process.env.MSSQL_USER || "sa",
-    password: process.env.MSSQL_PASSWORD || "",
+    password: process.env.MSSQL_PASSWORD || "Seaquel_Test_123!",
     options: { encrypt: false, trustServerCertificate: true },
   };
 

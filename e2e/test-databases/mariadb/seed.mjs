@@ -11,7 +11,7 @@ const DATABASE = "seaquel_test";
 export default async function seed() {
   const config = {
     host: process.env.MARIADB_HOST || "127.0.0.1",
-    port: Number(process.env.MARIADB_PORT) || 3306,
+    port: Number(process.env.MARIADB_PORT) || 3307, // 3307 because mysql runs on 3306
     user: process.env.MARIADB_USER || "root",
     password: process.env.MARIADB_PASSWORD || "",
     multipleStatements: true,
