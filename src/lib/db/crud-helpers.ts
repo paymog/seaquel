@@ -17,6 +17,22 @@ export type CastLookup = (column: string) => string | undefined;
 
 type QuoteIdFn = (id: string) => string;
 
+/**
+ * A callback that returns the placeholder string for the Nth bind parameter
+ * (1-indexed). Postgres/SQLite use `$N`; MySQL uses `?`.
+ */
+export type PlaceholderFn = (index: number) => string;
+
+const defaultPlaceholder: PlaceholderFn = (i) => `$${i}`;
+
+/**
+ * Serializer for inline-strategy adapters. Defaults to `formatLiteralValue`,
+ * which emits `TRUE`/`FALSE` for booleans — correct for Postgres/DuckDB-style
+ * SQL. Adapters whose engines don't accept those keywords (e.g. T-SQL BIT,
+ * which wants `1`/`0`) pass their own formatter.
+ */
+export type ValueFormatter = (v: unknown) => string;
+
 // ─── Shared ──────────────────────────────────────────────────────────
 
 export function formatLiteralValue(v: unknown): string {
@@ -40,8 +56,9 @@ function buildInlineWhereClause(
   primaryKeys: string[],
   row: Record<string, unknown>,
   qi: QuoteIdFn,
+  formatValue: ValueFormatter,
 ): string {
-  return primaryKeys.map((pk) => `${qi(pk)} = ${formatLiteralValue(row[pk])}`).join(" AND ");
+  return primaryKeys.map((pk) => `${qi(pk)} = ${formatValue(row[pk])}`).join(" AND ");
 }
 
 export function buildInlineUpdate(
@@ -52,9 +69,10 @@ export function buildInlineUpdate(
   primaryKeys: string[],
   row: Record<string, unknown>,
   qi: QuoteIdFn,
+  formatValue: ValueFormatter = formatLiteralValue,
 ): SqlWithBindings {
-  const whereClause = buildInlineWhereClause(primaryKeys, row, qi);
-  const sql = `UPDATE ${qi(schema)}.${qi(table)} SET ${qi(column)} = ${formatLiteralValue(newValue)} WHERE ${whereClause}`;
+  const whereClause = buildInlineWhereClause(primaryKeys, row, qi, formatValue);
+  const sql = `UPDATE ${qi(schema)}.${qi(table)} SET ${qi(column)} = ${formatValue(newValue)} WHERE ${whereClause}`;
   return { sql };
 }
 
@@ -65,8 +83,9 @@ export function buildInlineSetDefault(
   primaryKeys: string[],
   row: Record<string, unknown>,
   qi: QuoteIdFn,
+  formatValue: ValueFormatter = formatLiteralValue,
 ): SqlWithBindings {
-  const whereClause = buildInlineWhereClause(primaryKeys, row, qi);
+  const whereClause = buildInlineWhereClause(primaryKeys, row, qi, formatValue);
   const sql = `UPDATE ${qi(schema)}.${qi(table)} SET ${qi(column)} = DEFAULT WHERE ${whereClause}`;
   return { sql };
 }
@@ -76,11 +95,12 @@ export function buildInlineInsert(
   table: string,
   values: Record<string, unknown>,
   qi: QuoteIdFn,
+  formatValue: ValueFormatter = formatLiteralValue,
 ): SqlWithBindings {
   const columns = Object.keys(values);
   const columnNames = columns.map((c) => qi(c)).join(", ");
   const valuesList = Object.values(values)
-    .map((v) => formatLiteralValue(v))
+    .map((v) => formatValue(v))
     .join(", ");
   const sql = `INSERT INTO ${qi(schema)}.${qi(table)} (${columnNames}) VALUES (${valuesList})`;
   return { sql };
@@ -92,8 +112,9 @@ export function buildInlineDelete(
   primaryKeys: string[],
   row: Record<string, unknown>,
   qi: QuoteIdFn,
+  formatValue: ValueFormatter = formatLiteralValue,
 ): SqlWithBindings {
-  const whereClause = buildInlineWhereClause(primaryKeys, row, qi);
+  const whereClause = buildInlineWhereClause(primaryKeys, row, qi, formatValue);
   const sql = `DELETE FROM ${qi(schema)}.${qi(table)} WHERE ${whereClause}`;
   return { sql };
 }
@@ -101,8 +122,13 @@ export function buildInlineDelete(
 // ─── Parameterized strategy (Postgres, MySQL, SQLite) ────────────────
 // Values use $N placeholders with a separate bindValues array.
 
-function getCastPlaceholder(paramIndex: number, column: string, castLookup?: CastLookup): string {
-  const placeholder = `$${paramIndex}`;
+function getCastPlaceholder(
+  paramIndex: number,
+  column: string,
+  placeholderFn: PlaceholderFn,
+  castLookup?: CastLookup,
+): string {
+  const placeholder = placeholderFn(paramIndex);
   if (!castLookup) return placeholder;
   const castType = castLookup(column);
   if (!castType) return placeholder;
@@ -118,9 +144,10 @@ export function buildParamUpdate(
   row: Record<string, unknown>,
   qi: QuoteIdFn,
   castLookup?: CastLookup,
+  placeholderFn: PlaceholderFn = defaultPlaceholder,
 ): SqlWithBindings {
-  const valuePlaceholder = getCastPlaceholder(1, column, castLookup);
-  const whereConditions = primaryKeys.map((pk, i) => `${qi(pk)} = $${i + 2}`);
+  const valuePlaceholder = getCastPlaceholder(1, column, placeholderFn, castLookup);
+  const whereConditions = primaryKeys.map((pk, i) => `${qi(pk)} = ${placeholderFn(i + 2)}`);
   const sql = `UPDATE ${qi(schema)}.${qi(table)} SET ${qi(column)} = ${valuePlaceholder} WHERE ${whereConditions.join(" AND ")}`;
   const bindValues = [newValue, ...primaryKeys.map((pk) => row[pk])];
   return { sql, bindValues };
@@ -133,8 +160,9 @@ export function buildParamSetDefault(
   primaryKeys: string[],
   row: Record<string, unknown>,
   qi: QuoteIdFn,
+  placeholderFn: PlaceholderFn = defaultPlaceholder,
 ): SqlWithBindings {
-  const whereConditions = primaryKeys.map((pk, i) => `${qi(pk)} = $${i + 1}`);
+  const whereConditions = primaryKeys.map((pk, i) => `${qi(pk)} = ${placeholderFn(i + 1)}`);
   const sql = `UPDATE ${qi(schema)}.${qi(table)} SET ${qi(column)} = DEFAULT WHERE ${whereConditions.join(" AND ")}`;
   const bindValues = primaryKeys.map((pk) => row[pk]);
   return { sql, bindValues };
@@ -146,11 +174,12 @@ export function buildParamInsert(
   values: Record<string, unknown>,
   qi: QuoteIdFn,
   castLookup?: CastLookup,
+  placeholderFn: PlaceholderFn = defaultPlaceholder,
 ): SqlWithBindings {
   const columns = Object.keys(values);
   const columnNames = columns.map((c) => qi(c)).join(", ");
   const placeholders = columns
-    .map((col, i) => getCastPlaceholder(i + 1, col, castLookup))
+    .map((col, i) => getCastPlaceholder(i + 1, col, placeholderFn, castLookup))
     .join(", ");
   const sql = `INSERT INTO ${qi(schema)}.${qi(table)} (${columnNames}) VALUES (${placeholders})`;
   return { sql, bindValues: Object.values(values) };
@@ -162,8 +191,9 @@ export function buildParamDelete(
   primaryKeys: string[],
   row: Record<string, unknown>,
   qi: QuoteIdFn,
+  placeholderFn: PlaceholderFn = defaultPlaceholder,
 ): SqlWithBindings {
-  const whereConditions = primaryKeys.map((pk, i) => `${qi(pk)} = $${i + 1}`);
+  const whereConditions = primaryKeys.map((pk, i) => `${qi(pk)} = ${placeholderFn(i + 1)}`);
   const sql = `DELETE FROM ${qi(schema)}.${qi(table)} WHERE ${whereConditions.join(" AND ")}`;
   const bindValues = primaryKeys.map((pk) => row[pk]);
   return { sql, bindValues };

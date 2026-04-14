@@ -17,7 +17,7 @@
 		value: unknown;
 		columnType: CellType;
 		isEditable?: boolean;
-		onSave?: (newValue: string | null) => Promise<void>;
+		onSave?: (newValue: unknown) => Promise<void>;
 	}
 
 	let { value, columnType, isEditable = false, onSave }: Props = $props();
@@ -30,7 +30,7 @@
 		checked={Boolean(value)}
 		disabled={!isEditable}
 		onCheckedChange={async (checked) => {
-			if (onSave) await onSave(String(checked));
+			if (onSave) await onSave(Boolean(checked));
 		}}
 	/>
 {:else if columnType === 'integer' || columnType === 'float'}

@@ -25,7 +25,7 @@ export function createCellEditing(ctx: QueryEditorContext) {
   let showDeleteConfirm = $state(false);
   let contextCell = $state<ContextCell | null>(null);
 
-  async function handleCellSave(rowIndex: number, column: string, newValue: string | null) {
+  async function handleCellSave(rowIndex: number, column: string, newValue: unknown) {
     const activeTabId = ctx.getActiveTabId();
     const activeResult = ctx.getActiveResult();
     const activeResultIndex = ctx.getActiveResultIndex();

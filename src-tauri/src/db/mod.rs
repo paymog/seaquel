@@ -195,6 +195,12 @@ macro_rules! impl_sqlx_driver {
             for value in values {
                 if value.is_null() {
                     query = query.bind(None::<JsonValue>);
+                } else if let Some(b) = value.as_bool() {
+                    // Bind JS booleans as native `bool`. sqlx encodes this as
+                    // BOOLEAN for Postgres and as TINYINT 0/1 for MySQL/SQLite.
+                    // Without this branch the fallback serializes to JSON text
+                    // ("true"/"false") and MySQL rejects it for tinyint columns.
+                    query = query.bind(b);
                 } else if value.is_string() {
                     query = query.bind(value.as_str().unwrap().to_owned());
                 } else if let Some(number) = value.as_number() {

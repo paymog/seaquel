@@ -226,7 +226,7 @@
 		db.dataTabs.toggleSort(tabId, column);
 	}
 
-	async function handleCellSave(rowIndex: number, column: string, newValue: string | null) {
+	async function handleCellSave(rowIndex: number, column: string, newValue: unknown) {
 		if (!tab?.results?.sourceTable) return;
 		const row = tab.results.rows[rowIndex];
 		if (!row) return;

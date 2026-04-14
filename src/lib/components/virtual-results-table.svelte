@@ -12,7 +12,7 @@
 		/** Columnar rows — `rows[i][j]` is the value in column `columns[j]`. */
 		rows: unknown[][];
 		isEditable?: boolean;
-		onCellSave?: (rowIndex: number, column: string, newValue: string | null) => Promise<void>;
+		onCellSave?: (rowIndex: number, column: string, newValue: unknown) => Promise<void>;
 		onRowDelete?: (rowIndex: number, row: unknown[]) => void;
 		deletingRowIndex?: number | null;
 		onCopyCell?: () => void;

@@ -9,7 +9,7 @@
 		value: unknown;
 		isEditable?: boolean;
 		columnType?: CellType;
-		onSave: (newValue: string | null) => Promise<void>;
+		onSave: (newValue: unknown) => Promise<void>;
 		onTextareaToggle?: (active: boolean) => void;
 		/** When true, render the idle state with green pending-change styling */
 		pendingDisplay?: boolean;

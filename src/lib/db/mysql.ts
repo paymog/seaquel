@@ -626,9 +626,14 @@ export class MysqlAdapter implements DatabaseAdapter {
 
   // === CRUD SQL GENERATION ===
 
+  // MySQL uses backtick-quoted identifiers; double quotes only work with the
+  // non-default ANSI_QUOTES SQL mode.
   private qi(id: string): string {
-    return `"${id.replace(/"/g, '""')}"`;
+    return `\`${id.replace(/`/g, "``")}\``;
   }
+
+  // MySQL (via sqlx) uses `?` placeholders, not `$N`.
+  private static readonly placeholder = () => "?";
 
   quoteIdentifier(id: string): string {
     return this.qi(id);
@@ -638,6 +643,10 @@ export class MysqlAdapter implements DatabaseAdapter {
     return `${baseQuery} LIMIT ${limit} OFFSET ${offset}`;
   }
 
+  // MySQL's CAST only accepts a fixed set of target types (SIGNED, UNSIGNED,
+  // CHAR, DATE, JSON, etc.); raw column types like `tinyint(1)` or
+  // `varchar(255)` are not valid CAST targets. sqlx binds JS scalars with
+  // correct types, so we skip the CAST wrapper entirely for MySQL.
   buildUpdateSql(
     schema: string,
     table: string,
@@ -645,7 +654,7 @@ export class MysqlAdapter implements DatabaseAdapter {
     newValue: unknown,
     primaryKeys: string[],
     row: Record<string, unknown>,
-    castLookup?: CastLookup,
+    _castLookup?: CastLookup,
   ): SqlWithBindings {
     return buildParamUpdate(
       schema,
@@ -655,7 +664,8 @@ export class MysqlAdapter implements DatabaseAdapter {
       primaryKeys,
       row,
       (id) => this.qi(id),
-      castLookup,
+      undefined,
+      MysqlAdapter.placeholder,
     );
   }
 
@@ -666,16 +676,31 @@ export class MysqlAdapter implements DatabaseAdapter {
     primaryKeys: string[],
     row: Record<string, unknown>,
   ): SqlWithBindings {
-    return buildParamSetDefault(schema, table, column, primaryKeys, row, (id) => this.qi(id));
+    return buildParamSetDefault(
+      schema,
+      table,
+      column,
+      primaryKeys,
+      row,
+      (id) => this.qi(id),
+      MysqlAdapter.placeholder,
+    );
   }
 
   buildInsertSql(
     schema: string,
     table: string,
     values: Record<string, unknown>,
-    castLookup?: CastLookup,
+    _castLookup?: CastLookup,
   ): SqlWithBindings {
-    return buildParamInsert(schema, table, values, (id) => this.qi(id), castLookup);
+    return buildParamInsert(
+      schema,
+      table,
+      values,
+      (id) => this.qi(id),
+      undefined,
+      MysqlAdapter.placeholder,
+    );
   }
 
   buildDeleteSql(
@@ -684,6 +709,13 @@ export class MysqlAdapter implements DatabaseAdapter {
     primaryKeys: string[],
     row: Record<string, unknown>,
   ): SqlWithBindings {
-    return buildParamDelete(schema, table, primaryKeys, row, (id) => this.qi(id));
+    return buildParamDelete(
+      schema,
+      table,
+      primaryKeys,
+      row,
+      (id) => this.qi(id),
+      MysqlAdapter.placeholder,
+    );
   }
 }

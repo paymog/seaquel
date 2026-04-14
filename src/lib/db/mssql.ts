@@ -3,12 +3,13 @@ import { validateIdentifier } from "./index";
 import type { ExplainPlanNode, ExplainResult } from "$lib/types";
 import { makeNodeIdFactory } from "./explain-helpers";
 import { generateAlterTableSql, generateCreateTableDdl, generateAddColumnDdl } from "./alter-table";
-import type { SqlWithBindings } from "./crud-helpers";
+import type { SqlWithBindings, ValueFormatter } from "./crud-helpers";
 import {
   buildInlineUpdate,
   buildInlineSetDefault,
   buildInlineInsert,
   buildInlineDelete,
+  formatLiteralValue,
 } from "./crud-helpers";
 import type {
   SchemaTable,
@@ -372,6 +373,13 @@ export class MssqlAdapter implements DatabaseAdapter {
     return `${baseQuery} OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`;
   }
 
+  // T-SQL's BIT column doesn't accept `TRUE`/`FALSE` keywords — only `1`/`0`.
+  // Everything else defers to the shared literal formatter.
+  private static readonly formatValue: ValueFormatter = (v) => {
+    if (typeof v === "boolean") return v ? "1" : "0";
+    return formatLiteralValue(v);
+  };
+
   buildUpdateSql(
     schema: string,
     table: string,
@@ -380,8 +388,15 @@ export class MssqlAdapter implements DatabaseAdapter {
     primaryKeys: string[],
     row: Record<string, unknown>,
   ): SqlWithBindings {
-    return buildInlineUpdate(schema, table, column, newValue, primaryKeys, row, (id) =>
-      this.quoteIdentifier(id),
+    return buildInlineUpdate(
+      schema,
+      table,
+      column,
+      newValue,
+      primaryKeys,
+      row,
+      (id) => this.quoteIdentifier(id),
+      MssqlAdapter.formatValue,
     );
   }
 
@@ -392,13 +407,25 @@ export class MssqlAdapter implements DatabaseAdapter {
     primaryKeys: string[],
     row: Record<string, unknown>,
   ): SqlWithBindings {
-    return buildInlineSetDefault(schema, table, column, primaryKeys, row, (id) =>
-      this.quoteIdentifier(id),
+    return buildInlineSetDefault(
+      schema,
+      table,
+      column,
+      primaryKeys,
+      row,
+      (id) => this.quoteIdentifier(id),
+      MssqlAdapter.formatValue,
     );
   }
 
   buildInsertSql(schema: string, table: string, values: Record<string, unknown>): SqlWithBindings {
-    return buildInlineInsert(schema, table, values, (id) => this.quoteIdentifier(id));
+    return buildInlineInsert(
+      schema,
+      table,
+      values,
+      (id) => this.quoteIdentifier(id),
+      MssqlAdapter.formatValue,
+    );
   }
 
   buildDeleteSql(
@@ -407,6 +434,13 @@ export class MssqlAdapter implements DatabaseAdapter {
     primaryKeys: string[],
     row: Record<string, unknown>,
   ): SqlWithBindings {
-    return buildInlineDelete(schema, table, primaryKeys, row, (id) => this.quoteIdentifier(id));
+    return buildInlineDelete(
+      schema,
+      table,
+      primaryKeys,
+      row,
+      (id) => this.quoteIdentifier(id),
+      MssqlAdapter.formatValue,
+    );
   }
 }
