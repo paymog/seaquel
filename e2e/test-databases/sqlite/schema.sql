@@ -1,5 +1,6 @@
 -- Seaquel E2E Test Database - SQLite
--- This script creates the schema. Data is inserted by create-test-db.mjs using faker.
+-- Schema + all_types coverage. Shared core data is loaded by seed.mjs from
+-- ../shared/*.json.
 
 -- Drop tables if they exist
 DROP TABLE IF EXISTS all_types;
@@ -56,7 +57,7 @@ CREATE TABLE order_items (
     unit_price DECIMAL(10, 2) NOT NULL
 );
 
--- All types table (for type coverage testing)
+-- All types table (regression coverage for every SQLite type affinity and common declared types)
 CREATE TABLE all_types (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     col_integer INTEGER,
@@ -84,6 +85,22 @@ CREATE TABLE all_types (
     col_native_character NATIVE CHARACTER(70),
     col_nchar NCHAR(55),
     col_nvarchar NVARCHAR(100)
+);
+
+INSERT INTO all_types (
+    col_integer, col_real, col_text, col_blob, col_numeric, col_boolean,
+    col_date, col_datetime, col_timestamp, col_decimal,
+    col_varchar, col_char, col_clob,
+    col_float, col_double,
+    col_smallint, col_mediumint, col_bigint, col_tinyint, col_int2, col_int8,
+    col_unsigned_big_int, col_native_character, col_nchar, col_nvarchar
+) VALUES (
+    42, 3.14, 'hello world', X'DEADBEEF', 123.456, 1,
+    '2026-03-08', '2026-03-08 12:30:00', '2026-03-08 12:30:00', 99999.99,
+    'variable length string', 'fixed     ', 'large text content',
+    2.718, 1.41421356,
+    32000, 8388607, 922337203685477, 127, 255, 1024,
+    1844674407370955, 'native character data', 'nchar data', 'nvarchar data'
 );
 
 -- Create indexes

@@ -1,0 +1,198 @@
+[
+  {
+    "name": "Laptop Pro 15\"",
+    "price": 1299.99,
+    "category_id": 1,
+    "stock_quantity": 45,
+    "description": "High-performance laptop with M3 chip"
+  },
+  {
+    "name": "Wireless Mouse",
+    "price": 49.99,
+    "category_id": 1,
+    "stock_quantity": 230,
+    "description": "Ergonomic bluetooth mouse"
+  },
+  {
+    "name": "USB-C Hub",
+    "price": 79.99,
+    "category_id": 1,
+    "stock_quantity": 120,
+    "description": "7-in-1 USB-C adapter"
+  },
+  {
+    "name": "Mechanical Keyboard",
+    "price": 149.99,
+    "category_id": 1,
+    "stock_quantity": 85,
+    "description": "RGB mechanical keyboard"
+  },
+  {
+    "name": "4K Monitor 27\"",
+    "price": 449.99,
+    "category_id": 1,
+    "stock_quantity": 32,
+    "description": "Ultra HD IPS display"
+  },
+  {
+    "name": "Noise-Canceling Headphones",
+    "price": 299.99,
+    "category_id": 1,
+    "stock_quantity": 67,
+    "description": "Premium wireless headphones"
+  },
+  {
+    "name": "Webcam HD",
+    "price": 89.99,
+    "category_id": 1,
+    "stock_quantity": 150,
+    "description": "1080p webcam with microphone"
+  },
+  {
+    "name": "Portable SSD 1TB",
+    "price": 119.99,
+    "category_id": 1,
+    "stock_quantity": 200,
+    "description": "Fast external storage"
+  },
+  {
+    "name": "Cotton T-Shirt",
+    "price": 24.99,
+    "category_id": 2,
+    "stock_quantity": 500,
+    "description": "Premium cotton basics"
+  },
+  {
+    "name": "Denim Jeans",
+    "price": 69.99,
+    "category_id": 2,
+    "stock_quantity": 180,
+    "description": "Classic fit jeans"
+  },
+  {
+    "name": "Running Shoes",
+    "price": 129.99,
+    "category_id": 2,
+    "stock_quantity": 95,
+    "description": "Lightweight running shoes"
+  },
+  {
+    "name": "Winter Jacket",
+    "price": 189.99,
+    "category_id": 2,
+    "stock_quantity": 60,
+    "description": "Insulated winter coat"
+  },
+  {
+    "name": "Leather Belt",
+    "price": 39.99,
+    "category_id": 2,
+    "stock_quantity": 220,
+    "description": "Genuine leather belt"
+  },
+  {
+    "name": "Sunglasses",
+    "price": 79.99,
+    "category_id": 2,
+    "stock_quantity": 145,
+    "description": "UV protection sunglasses"
+  },
+  {
+    "name": "Standing Desk",
+    "price": 499.99,
+    "category_id": 3,
+    "stock_quantity": 25,
+    "description": "Electric height-adjustable desk"
+  },
+  {
+    "name": "Office Chair",
+    "price": 349.99,
+    "category_id": 3,
+    "stock_quantity": 40,
+    "description": "Ergonomic mesh chair"
+  },
+  {
+    "name": "LED Desk Lamp",
+    "price": 59.99,
+    "category_id": 3,
+    "stock_quantity": 180,
+    "description": "Adjustable LED lamp"
+  },
+  {
+    "name": "Plant Pot Set",
+    "price": 34.99,
+    "category_id": 3,
+    "stock_quantity": 90,
+    "description": "Ceramic plant pots (3-pack)"
+  },
+  {
+    "name": "Garden Tools Kit",
+    "price": 49.99,
+    "category_id": 3,
+    "stock_quantity": 75,
+    "description": "Essential gardening tools"
+  },
+  {
+    "name": "Programming Guide",
+    "price": 49.99,
+    "category_id": 4,
+    "stock_quantity": 300,
+    "description": "Learn to code in 30 days"
+  },
+  {
+    "name": "Database Design",
+    "price": 59.99,
+    "category_id": 4,
+    "stock_quantity": 150,
+    "description": "SQL and data modeling"
+  },
+  {
+    "name": "Fiction Bestseller",
+    "price": 16.99,
+    "category_id": 4,
+    "stock_quantity": 400,
+    "description": "Award-winning novel"
+  },
+  {
+    "name": "Cookbook Classics",
+    "price": 29.99,
+    "category_id": 4,
+    "stock_quantity": 200,
+    "description": "Traditional recipes"
+  },
+  {
+    "name": "Yoga Mat",
+    "price": 29.99,
+    "category_id": 5,
+    "stock_quantity": 250,
+    "description": "Non-slip exercise mat"
+  },
+  {
+    "name": "Dumbbells Set",
+    "price": 89.99,
+    "category_id": 5,
+    "stock_quantity": 80,
+    "description": "Adjustable weight set"
+  },
+  {
+    "name": "Tennis Racket",
+    "price": 119.99,
+    "category_id": 5,
+    "stock_quantity": 55,
+    "description": "Professional tennis racket"
+  },
+  {
+    "name": "Basketball",
+    "price": 34.99,
+    "category_id": 5,
+    "stock_quantity": 120,
+    "description": "Official size basketball"
+  },
+  {
+    "name": "Fitness Tracker",
+    "price": 149.99,
+    "category_id": 5,
+    "stock_quantity": 175,
+    "description": "Smart fitness watch"
+  }
+]

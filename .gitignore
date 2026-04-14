@@ -19,7 +19,8 @@ docs/data
 docs/plans
 
 # E2E test databases
-e2e/test-databases/duckdb/test_duckdb.duckdb
+e2e/test-databases/duckdb/*.duckdb
+e2e/test-databases/duckdb/*.duckdb.wal
 e2e/test-databases/sqlite/*.db
 e2e/test-databases/sqlite/*.db-shm
 e2e/test-databases/sqlite/*.db-wal
