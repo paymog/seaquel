@@ -87,9 +87,12 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
     );
     const tableWithMetadata = cached ?? table;
 
-    // Check if table is already open
+    // Check if table is already open on the active connection
     const existingTab = tabs.find(
-      (t) => t.table.name === table.name && t.table.schema === table.schema,
+      (t) =>
+        t.connectionId === connectionId &&
+        t.table.name === table.name &&
+        t.table.schema === table.schema,
     );
     if (existingTab) {
       this.updateTab(existingTab.id, (t) => ({ ...t, table: tableWithMetadata }));

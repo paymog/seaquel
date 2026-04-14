@@ -46,9 +46,12 @@ export class DataTabManager extends BaseTabManager<DataTab> {
   ): string | null {
     if (!this.state.activeProjectId || !this.state.activeConnectionId) return null;
 
-    // Check if already open for this table
+    // Check if already open for this table on the active connection
     const existing = this.getProjectTabs().find(
-      (t) => t.tableName === table.name && t.schemaName === table.schema,
+      (t) =>
+        t.connectionId === this.state.activeConnectionId &&
+        t.tableName === table.name &&
+        t.schemaName === table.schema,
     );
     if (existing) {
       this.setActive(existing.id);
