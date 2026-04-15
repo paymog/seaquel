@@ -1,6 +1,6 @@
 {
   "name": "seaquel",
-  "version": "2026.4.8-beta.2",
+  "version": "2026.4.8",
   "description": "Explore, query, and visualize your databases — all in one app.",
   "license": "MIT",
   "type": "module",
