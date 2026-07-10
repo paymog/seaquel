@@ -8,6 +8,9 @@ RUN npm run build:server
 
 # ── Stage 2: Build Rust server ────────────────────────────────────────────────
 FROM rust:1-bookworm AS server-builder
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends cmake pkg-config libssl-dev && \
+    rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 # Copy the entire src-tauri directory and build.
