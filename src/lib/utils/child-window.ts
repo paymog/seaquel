@@ -1,4 +1,6 @@
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { isTauri } from "$lib/utils/environment";
+// platform-specific: WebviewWindow only exists inside the Tauri runtime; type is erased at build
+import type { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 interface ChildWindowConfig {
   label: string;
@@ -15,16 +17,20 @@ const windowRefs = new Map<string, WebviewWindow>();
 /**
  * Opens a child window with the given config.
  * If the window is already open, focuses it instead.
+ * No-ops in web/server mode — child windows require Tauri.
  */
 export async function openChildWindow(config: ChildWindowConfig): Promise<void> {
+  if (!isTauri()) return;
   try {
-    const existing = await WebviewWindow.getByLabel(config.label);
+    // platform-specific: WebviewWindow is not available outside the Tauri runtime
+    const { WebviewWindow: WV } = await import("@tauri-apps/api/webviewWindow");
+    const existing = await WV.getByLabel(config.label);
     if (existing) {
       await existing.setFocus();
       return;
     }
 
-    const window = new WebviewWindow(config.label, {
+    const window = new WV(config.label, {
       url: config.url,
       title: config.title,
       width: config.width,

@@ -391,11 +391,70 @@ async fn handle_delete_secret(
 }
 
 
+// ── SSH tunnel handlers ───────────────────────────────────────────────────────
+
+struct SshApiError(StatusCode, TunnelError);
+
+impl IntoResponse for SshApiError {
+    fn into_response(self) -> Response {
+        let body = serde_json::to_string(&self.1).unwrap_or_default();
+        (self.0, body).into_response()
+    }
+}
+
+impl From<TunnelError> for SshApiError {
+    fn from(e: TunnelError) -> Self {
+        let status = match e.code.as_str() {
+            "TUNNEL_NOT_FOUND" => StatusCode::NOT_FOUND,
+            "KEY_NOT_FOUND" | "KEY_LOAD_ERROR" | "INVALID_AUTH_METHOD" => {
+                StatusCode::UNPROCESSABLE_ENTITY
+            }
+            "TIMEOUT" | "CONNECTION_ERROR" | "AUTH_FAILED" | "AUTH_ERROR" => {
+                StatusCode::BAD_GATEWAY
+            }
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        SshApiError(status, e)
+    }
+}
+
+async fn handle_create_tunnel(
+    State(tunnels): State<Arc<TunnelManager>>,
+    Json(config): Json<TunnelConfig>,
+) -> Result<Json<TunnelResult>, SshApiError> {
+    let result = tunnels.establish(&config).await.map_err(SshApiError::from)?;
+    Ok(Json(result))
+}
+
+async fn handle_close_tunnel(
+    State(tunnels): State<Arc<TunnelManager>>,
+    Path(tunnel_id): Path<String>,
+) -> impl IntoResponse {
+    if tunnels.close(&tunnel_id).await {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    }
+}
+
+async fn handle_tunnel_status(
+    State(tunnels): State<Arc<TunnelManager>>,
+    Path(tunnel_id): Path<String>,
+) -> impl IntoResponse {
+    let active = tunnels.is_active(&tunnel_id).await;
+    Json(serde_json::json!({ "active": active }))
+}
+
+async fn handle_list_tunnels(State(tunnels): State<Arc<TunnelManager>>) -> impl IntoResponse {
+    Json(tunnels.list().await)
+}
+
+
 // ── Router builder ────────────────────────────────────────────────────────────
 
 /// Build the application router.  Exposed `pub` so tests and the binary can
 /// both call it without duplicating handler wiring.
-pub fn build_router(db_state: Arc<ConnectionManager>, secret_state: Arc<SecretStore>) -> Router {
+pub fn build_router(db_state: Arc<ConnectionManager>, secret_state: Arc<SecretStore>, tunnel_state: Arc<TunnelManager>) -> Router {
     let static_dir =
         std::env::var("SEAQUEL_STATIC_DIR").unwrap_or_else(|_| "./static".to_string());
 
@@ -405,6 +464,7 @@ pub fn build_router(db_state: Arc<ConnectionManager>, secret_state: Arc<SecretSt
     let state = AppState {
         db: db_state,
         secrets: secret_state,
+        tunnels: tunnel_state,
     };
 
     Router::new()
@@ -418,6 +478,10 @@ pub fn build_router(db_state: Arc<ConnectionManager>, secret_state: Arc<SecretSt
         .route("/api/secrets", post(handle_set_secret))
         .route("/api/secrets/{key}", get(handle_get_secret))
         .route("/api/secrets/{key}", delete(handle_delete_secret))
+        .route("/api/ssh/tunnel", post(handle_create_tunnel))
+        .route("/api/ssh/tunnel/{tunnel_id}", delete(handle_close_tunnel))
+        .route("/api/ssh/tunnel/{tunnel_id}/status", get(handle_tunnel_status))
+        .route("/api/ssh/tunnels", get(handle_list_tunnels))
         .layer(CorsLayer::permissive())
         .fallback_service(serve_dir)
         .with_state(state)
@@ -429,7 +493,8 @@ pub async fn run_server() {
 
     let state = Arc::new(ConnectionManager::new());
     let secrets = Arc::new(SecretStore::new());
-    let app = build_router(state, secrets);
+    let tunnels = Arc::new(TunnelManager::new());
+    let app = build_router(state, secrets, tunnels);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await

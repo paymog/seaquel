@@ -1,0 +1,1 @@
+import{i as t,g as i}from"./HsS-CJOd.js";class o{#e=()=>{};#r=t(()=>this.#e());constructor(s,r){let e;r!==void 0&&(e=r),this.#e=()=>{try{return e}finally{e=s()}}}get current(){return i(this.#r)}}export{o as P};

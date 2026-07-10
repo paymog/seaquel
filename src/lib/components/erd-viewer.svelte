@@ -6,10 +6,7 @@
   import { generateErdSvg } from "$lib/utils/erd-svg-export";
   import { toast } from "svelte-sonner";
 import { errorToast } from "$lib/utils/toast";
-  import { save } from "@tauri-apps/plugin-dialog";
-  import { writeFile, writeTextFile, remove } from "@tauri-apps/plugin-fs";
-  import { tempDir } from "@tauri-apps/api/path";
-  import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+  import { isTauri } from "$lib/utils/environment";
   import { copyImageToClipboard } from "$lib/api/tauri";
   import { Input } from "$lib/components/ui/input";
   import { Button } from "$lib/components/ui/button";
@@ -135,16 +132,25 @@ import { errorToast } from "$lib/utils/toast";
     if (!element) return;
 
     try {
-      const filePath = await save({
-        defaultPath: `erd-${db.state.activeConnection?.name || 'diagram'}.png`,
-        filters: [{ name: 'PNG Image', extensions: ['png'] }]
-      });
-      if (!filePath) return;
-
       const dataUrl = await toPng(element, getImageOptions());
-      const base64 = dataUrl.split(',')[1];
-      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-      await writeFile(filePath, bytes);
+      if (isTauri()) {
+        // platform-specific: native file save dialog not available in browser
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        const { writeFile } = await import("@tauri-apps/plugin-fs");
+        const filePath = await save({
+          defaultPath: `erd-${db.state.activeConnection?.name || 'diagram'}.png`,
+          filters: [{ name: 'PNG Image', extensions: ['png'] }]
+        });
+        if (!filePath) return;
+        const base64 = dataUrl.split(',')[1];
+        const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+        await writeFile(filePath, bytes);
+      } else {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = `erd-${db.state.activeConnection?.name || 'diagram'}.png`;
+        a.click();
+      }
       toast.success('PNG saved');
     } catch (e) {
       errorToast('Failed to export PNG');
@@ -153,16 +159,28 @@ import { errorToast } from "$lib/utils/toast";
 
   const exportToSvg = async () => {
     try {
-      const filePath = await save({
-        defaultPath: `erd-${db.state.activeConnection?.name || 'diagram'}.svg`,
-        filters: [{ name: 'SVG Image', extensions: ['svg'] }]
-      });
-      if (!filePath) return;
-
       const svg = generateErdSvg(nodes, edges, {
         theme: mode.current === 'dark' ? 'dark' : 'light'
       });
-      await writeTextFile(filePath, svg);
+      if (isTauri()) {
+        // platform-specific: native file save dialog not available in browser
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+        const filePath = await save({
+          defaultPath: `erd-${db.state.activeConnection?.name || 'diagram'}.svg`,
+          filters: [{ name: 'SVG Image', extensions: ['svg'] }]
+        });
+        if (!filePath) return;
+        await writeTextFile(filePath, svg);
+      } else {
+        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `erd-${db.state.activeConnection?.name || 'diagram'}.svg`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
       toast.success('SVG saved');
     } catch (e) {
       errorToast('Failed to export SVG');
@@ -178,16 +196,19 @@ import { errorToast } from "$lib/utils/toast";
       const base64 = dataUrl.split(',')[1];
       const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
 
-      // Write to temp file, copy from there
-      const tempPath = await tempDir();
-      const filePath = `${tempPath}erd-clipboard-${Date.now()}.png`;
-      await writeFile(filePath, bytes);
-
-      await copyImageToClipboard(filePath);
-
-      // Clean up temp file
-      await remove(filePath).catch(() => {});
-
+      if (isTauri()) {
+        // platform-specific: Tauri clipboard image copy via temp file
+        const { tempDir } = await import("@tauri-apps/api/path");
+        const { writeFile, remove } = await import("@tauri-apps/plugin-fs");
+        const tempPath = await tempDir();
+        const filePath = `${tempPath}erd-clipboard-${Date.now()}.png`;
+        await writeFile(filePath, bytes);
+        await copyImageToClipboard(filePath);
+        await remove(filePath).catch(() => {});
+      } else {
+        const blob = new Blob([bytes], { type: 'image/png' });
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      }
       toast.success('PNG copied to clipboard');
     } catch (e) {
       console.error('Failed to copy PNG:', e);
@@ -200,7 +221,13 @@ import { errorToast } from "$lib/utils/toast";
       const svg = generateErdSvg(nodes, edges, {
         theme: mode.current === 'dark' ? 'dark' : 'light'
       });
-      await writeText(svg);
+      if (isTauri()) {
+        // platform-specific: Tauri clipboard plugin not available in browser
+        const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+        await writeText(svg);
+      } else {
+        await navigator.clipboard.writeText(svg);
+      }
       toast.success('SVG copied to clipboard');
     } catch (e) {
       errorToast('Failed to copy SVG');

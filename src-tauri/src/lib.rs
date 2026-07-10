@@ -3,14 +3,15 @@ pub mod db;
 #[cfg(feature = "server")]
 pub mod server;
 
-#[cfg(feature = "tauri")]
-mod git;
+#[cfg(any(feature = "tauri", feature = "server"))]
+pub mod git;
 #[cfg(feature = "tauri")]
 mod license;
 #[cfg(feature = "tauri")]
 mod logging;
-#[cfg(feature = "tauri")]
-mod ssh_tunnel;
+// ssh_tunnel core is Tauri-free; command wrappers are gated inside the module
+#[cfg(any(feature = "tauri", feature = "server"))]
+pub mod ssh_tunnel;
 
 #[cfg(feature = "tauri")]
 use arboard::Clipboard;

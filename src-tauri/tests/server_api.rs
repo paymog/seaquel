@@ -11,13 +11,15 @@ use std::sync::Arc;
 use futures::{SinkExt, StreamExt};
 use seaquel_lib::db::ConnectionManager;
 use seaquel_lib::server::{build_router, SecretStore};
+use seaquel_lib::ssh_tunnel::TunnelManager;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 /// Start a server on a random port. Returns the `http://` base URL.
 async fn spawn_test_server() -> String {
     let db_state = Arc::new(ConnectionManager::new());
     let secret_state = Arc::new(SecretStore::new());
-    let app = build_router(db_state, secret_state);
+    let tunnel_state = Arc::new(TunnelManager::new());
+    let app = build_router(db_state, secret_state, tunnel_state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
@@ -900,4 +902,88 @@ async fn test_secret_overwrite() {
     assert_eq!(res.status(), 200);
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["value"], "second", "overwritten value should be new value");
+}
+
+// ── SSH tunnel route tests ─────────────────────────────────────────────────────
+
+/// GET /api/ssh/tunnels returns an empty JSON array when no tunnels are active.
+#[tokio::test]
+async fn test_ssh_list_tunnels_empty() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    let res = client
+        .get(format!("{}/api/ssh/tunnels", base))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body.is_array(), "expected JSON array");
+    assert_eq!(body.as_array().unwrap().len(), 0, "expected empty list");
+}
+
+/// GET /api/ssh/tunnel/{id}/status returns { active: false } for an unknown id.
+#[tokio::test]
+async fn test_ssh_tunnel_status_unknown() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    let res = client
+        .get(format!("{}/api/ssh/tunnel/nonexistent-tunnel/status", base))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["active"], false, "unknown tunnel should report inactive");
+}
+
+/// DELETE /api/ssh/tunnel/{id} returns 404 for an unknown tunnel id.
+#[tokio::test]
+async fn test_ssh_close_tunnel_not_found() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    let res = client
+        .delete(format!("{}/api/ssh/tunnel/ghost-tunnel", base))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), 404);
+}
+
+/// POST /api/ssh/tunnel with a bad host returns a non-2xx error (connection refused / timeout).
+#[tokio::test]
+async fn test_ssh_create_tunnel_bad_host() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // 127.0.0.2 port 1 — guaranteed connection refused on any CI box.
+    let body = serde_json::json!({
+        "ssh_host": "127.0.0.2",
+        "ssh_port": 1u16,
+        "ssh_username": "nobody",
+        "auth_method": "password",
+        "password": "wrong",
+        "remote_host": "127.0.0.1",
+        "remote_port": 5432u16,
+    });
+
+    let res = client
+        .post(format!("{}/api/ssh/tunnel", base))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+
+    // Must be a client/server error — any 4xx or 5xx is acceptable.
+    assert!(
+        res.status().is_client_error() || res.status().is_server_error(),
+        "expected error status, got {}",
+        res.status()
+    );
 }

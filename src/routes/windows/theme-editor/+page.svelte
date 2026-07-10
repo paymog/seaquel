@@ -13,8 +13,7 @@
 	import { applyThemeColors } from "$lib/themes/apply";
 	import { COLOR_GROUPS, type Theme, type ThemeColors } from "$lib/types/theme";
 	import ColorPicker from "$lib/components/color-picker.svelte";
-	import { emit } from "@tauri-apps/api/event";
-	import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+	import { isTauri } from "$lib/utils/environment";
 	import { onMount } from "svelte";
 
 	// Get theme ID from URL params
@@ -58,25 +57,31 @@
 	$effect(() => {
 		if (initialized) {
 			applyThemeColors(colors);
-			// Emit to main window for real-time preview
-			emit("theme-editor:color-update", { colors });
+			if (isTauri()) {
+				// platform-specific: Tauri event IPC not available in web mode
+				import("@tauri-apps/api/event").then(({ emit }) => {
+					void emit("theme-editor:color-update", { colors });
+				});
+			}
 		}
 	});
 
 	// Handle window close button (treat as cancel)
 	onMount(() => {
-		const currentWindow = getCurrentWebviewWindow();
-		const unlisten = currentWindow.onCloseRequested(async (event) => {
-			// Prevent default close behavior so we can emit cancel first
-			event.preventDefault();
-			// Emit cancel event
-			await emit("theme-editor:cancel", {});
-			// Now destroy the window
-			await currentWindow.destroy();
+		if (!isTauri()) return;
+		let unlisten: (() => void) | null = null;
+		// platform-specific: WebviewWindow close events only exist in Tauri runtime
+		void import("@tauri-apps/api/webviewWindow").then(async ({ getCurrentWebviewWindow }) => {
+			const currentWindow = getCurrentWebviewWindow();
+			unlisten = await currentWindow.onCloseRequested(async (event) => {
+				event.preventDefault();
+				const { emit } = await import("@tauri-apps/api/event");
+				await emit("theme-editor:cancel", {});
+				await currentWindow.destroy();
+			});
 		});
-
 		return () => {
-			unlisten.then((fn) => fn());
+			unlisten?.();
 		};
 	});
 
@@ -92,17 +97,18 @@
 			return;
 		}
 
-		// Emit save event to main window
-		await emit("theme-editor:save", {
-			themeId: themeId,
-			name: themeName.trim(),
-			isDark,
-			colors,
-		});
-
-		// Destroy the window (use destroy to skip onCloseRequested)
-		const currentWindow = getCurrentWebviewWindow();
-		await currentWindow.destroy();
+		if (isTauri()) {
+			// platform-specific: Tauri events and WebviewWindow not available in web mode
+			const { emit } = await import("@tauri-apps/api/event");
+			await emit("theme-editor:save", {
+				themeId: themeId,
+				name: themeName.trim(),
+				isDark,
+				colors,
+			});
+			const { getCurrentWebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+			await getCurrentWebviewWindow().destroy();
+		}
 	}
 
 	async function handleCancel() {
@@ -110,11 +116,13 @@
 		if (originalColors) {
 			applyThemeColors(originalColors);
 		}
-		// Emit cancel event
-		await emit("theme-editor:cancel", {});
-		// Destroy the window (use destroy to skip onCloseRequested)
-		const currentWindow = getCurrentWebviewWindow();
-		await currentWindow.destroy();
+		if (isTauri()) {
+			// platform-specific: Tauri events and WebviewWindow not available in web mode
+			const { emit } = await import("@tauri-apps/api/event");
+			await emit("theme-editor:cancel", {});
+			const { getCurrentWebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+			await getCurrentWebviewWindow().destroy();
+		}
 	}
 
 	// Get color group name for display

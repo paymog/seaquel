@@ -1,8 +1,15 @@
-import { hostname } from "@tauri-apps/plugin-os";
+import { isTauri } from "$lib/utils/environment";
 import { getKeyringService } from "$lib/services/keyring";
 import { activateLicense, validateLicense, deactivateLicense, getUsername } from "$lib/api/tauri";
 import type { LicenseResponse } from "$lib/api/tauri";
 import { getDatabase, licenseRepo } from "$lib/storage";
+
+async function getHostname(): Promise<string> {
+  if (!isTauri()) return "web";
+  // platform-specific: plugin-os hostname only available in Tauri runtime
+  const { hostname } = await import("@tauri-apps/plugin-os");
+  return (await hostname()) ?? "unknown";
+}
 
 export type LicenseStatus = "personal" | "active" | "expired" | "invalid";
 export type LicenseTier = "personal" | "individual" | "business";
@@ -87,7 +94,7 @@ class LicenseStore {
     this.activationError = null;
 
     try {
-      const [host, user] = await Promise.all([hostname(), getUsername()]);
+      const [host, user] = await Promise.all([getHostname(), getUsername()]);
       const instanceName = `${host ?? "unknown"}__${user}`;
       const response = await activateLicense(key, instanceName);
 

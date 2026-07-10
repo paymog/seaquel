@@ -1,11 +1,14 @@
 use async_trait::async_trait;
-use log::{debug, error, info, warn};
+#[cfg(feature = "tauri")]
+use log::debug;
+use log::{error, info, warn};
 use russh::{client, ChannelMsg};
 use russh_keys::ssh_key::PrivateKey;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+#[cfg(feature = "tauri")]
 use tauri::State;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -61,6 +64,35 @@ impl TunnelManager {
         }
     }
 
+    /// Establish a new SSH tunnel. Callable from any module.
+    pub async fn establish(&self, config: &TunnelConfig) -> Result<TunnelResult, TunnelError> {
+        establish_tunnel(config, self).await
+    }
+
+    /// Close a tunnel by id. Returns `true` if it existed, `false` if not found.
+    pub async fn close(&self, tunnel_id: &str) -> bool {
+        let mut tunnels = self.tunnels.lock().await;
+        if let Some(mut handle) = tunnels.remove(tunnel_id) {
+            if let Some(tx) = handle.shutdown_tx.take() {
+                let _ = tx.send(());
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Return whether a tunnel is currently active.
+    pub async fn is_active(&self, tunnel_id: &str) -> bool {
+        let tunnels = self.tunnels.lock().await;
+        tunnels.contains_key(tunnel_id)
+    }
+
+    /// Return all active tunnel ids.
+    pub async fn list(&self) -> Vec<String> {
+        let tunnels = self.tunnels.lock().await;
+        tunnels.keys().cloned().collect()
+    }
 }
 
 impl Default for TunnelManager {
@@ -314,6 +346,7 @@ async fn handle_connection(
     Ok(())
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 pub async fn create_ssh_tunnel(
     config: TunnelConfig,
@@ -322,6 +355,7 @@ pub async fn create_ssh_tunnel(
     establish_tunnel(&config, &tunnel_manager).await
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 pub async fn close_ssh_tunnel(
     tunnel_id: String,
@@ -344,6 +378,7 @@ pub async fn close_ssh_tunnel(
     }
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 pub async fn check_tunnel_status(
     tunnel_id: String,
@@ -354,6 +389,7 @@ pub async fn check_tunnel_status(
     Ok(tunnels.contains_key(&tunnel_id))
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 pub async fn list_active_tunnels(
     tunnel_manager: State<'_, TunnelManager>,

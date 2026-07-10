@@ -7,14 +7,21 @@
 		SelectTrigger,
 	} from "$lib/components/ui/select";
 	import { setMode, resetMode, mode } from "mode-watcher";
-	import { setTheme } from "@tauri-apps/api/app";
+	import { isTauri } from "$lib/utils/environment";
 
 	async function handleModeChange(value: string) {
+		if (isTauri()) {
+			// platform-specific: setTheme (native titlebar tinting) only works in Tauri runtime
+			const { setTheme } = await import("@tauri-apps/api/app");
+			if (value === "system") {
+				await setTheme(null);
+			} else {
+				await setTheme(value as "light" | "dark");
+			}
+		}
 		if (value === "system") {
-			await setTheme(null);
 			resetMode();
 		} else {
-			await setTheme(value as "light" | "dark");
 			setMode(value as "light" | "dark");
 		}
 	}

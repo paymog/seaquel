@@ -103,7 +103,7 @@ fn create_callbacks(credentials: Option<GitCredentials>) -> RemoteCallbacks<'sta
     callbacks
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_clone_repo(
     url: String,
     path: String,
@@ -130,7 +130,7 @@ pub fn git_clone_repo(
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_init_repo(path: String) -> Result<(), GitError> {
     info!(activity = "git.init"; "Initializing repository");
     Repository::init(Path::new(&path))
@@ -145,7 +145,7 @@ pub fn git_init_repo(path: String) -> Result<(), GitError> {
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_pull_repo(path: String, credentials: Option<GitCredentials>) -> Result<SyncResult, GitError> {
     debug!(activity = "git.pull"; "Pulling changes");
     let repo = Repository::open(Path::new(&path))
@@ -389,7 +389,7 @@ pub fn git_pull_repo(path: String, credentials: Option<GitCredentials>) -> Resul
     })
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_push_repo(
     path: String,
     credentials: Option<GitCredentials>,
@@ -457,7 +457,7 @@ pub fn git_push_repo(
     })
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_get_repo_status(path: String) -> Result<RepoStatus, GitError> {
     debug!(activity = "git.status"; "Getting repository status");
     let repo = Repository::open(Path::new(&path))
@@ -543,7 +543,7 @@ pub fn git_get_repo_status(path: String) -> Result<RepoStatus, GitError> {
     })
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_commit_changes(path: String, message: String) -> Result<String, GitError> {
     debug!(activity = "git.commit"; "Creating commit");
     let repo = Repository::open(Path::new(&path))
@@ -602,7 +602,7 @@ pub fn git_commit_changes(path: String, message: String) -> Result<String, GitEr
     Ok(commit_id.to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_stage_file(path: String, file_path: String) -> Result<(), GitError> {
     debug!(activity = "git.stage"; "Staging file");
     let repo = Repository::open(Path::new(&path))
@@ -631,7 +631,7 @@ pub fn git_stage_file(path: String, file_path: String) -> Result<(), GitError> {
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_discard_file(path: String, file_path: String) -> Result<(), GitError> {
     debug!(activity = "git.discard"; "Discarding file changes");
     let repo = Repository::open(Path::new(&path))
@@ -689,7 +689,7 @@ pub fn git_discard_file(path: String, file_path: String) -> Result<(), GitError>
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_resolve_conflict(path: String, file_path: String, resolution: String) -> Result<(), GitError> {
     debug!(activity = "git.resolve"; "Resolving conflict");
     let repo = Repository::open(Path::new(&path))
@@ -739,7 +739,7 @@ pub fn git_resolve_conflict(path: String, file_path: String, resolution: String)
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_get_conflict_content(path: String, file_path: String) -> Result<ConflictContent, GitError> {
     let repo = Repository::open(Path::new(&path))
         .map_err(|e| GitError {
@@ -810,7 +810,7 @@ pub struct ConflictContent {
     pub theirs: String,
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_set_remote(path: String, url: String) -> Result<(), GitError> {
     debug!(activity = "git.remote"; "Setting remote");
     let repo = Repository::open(Path::new(&path))
@@ -832,7 +832,7 @@ pub fn git_set_remote(path: String, url: String) -> Result<(), GitError> {
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri", tauri::command)]
 pub fn git_get_remote_url(path: String) -> Result<Option<String>, GitError> {
     let repo = Repository::open(Path::new(&path))
         .map_err(|e| GitError {
@@ -900,5 +900,63 @@ fn calculate_ahead_behind(repo: &Repository, branch: &str) -> Option<(usize, usi
                 None
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Initialise a fresh repo in a temp dir and verify the status is clean.
+    #[test]
+    fn test_init_repo_and_get_status() {
+        let tmp = std::env::temp_dir()
+            .join(format!("seaquel_git_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmp).expect("create tmp dir");
+        let path = tmp.to_string_lossy().to_string();
+
+        // init
+        git_init_repo(path.clone()).expect("git_init_repo");
+
+        // status on a freshly-init'd (unborn) repo
+        let status = git_get_repo_status(path).expect("git_get_repo_status");
+        assert!(status.is_clean, "new repo should be clean");
+        assert_eq!(status.pending_changes, 0);
+        assert!(!status.has_conflicts);
+        assert!(status.modified_files.is_empty());
+        assert!(status.untracked_files.is_empty());
+        // branch name is either "main" or "master" depending on git config
+        assert!(!status.current_branch.is_empty());
+
+        // cleanup
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// Stage a new file and confirm it shows up as a pending change.
+    #[test]
+    fn test_stage_file_appears_in_status() {
+        let tmp = std::env::temp_dir()
+            .join(format!("seaquel_git_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmp).expect("create tmp dir");
+        let path = tmp.to_string_lossy().to_string();
+
+        git_init_repo(path.clone()).expect("git_init_repo");
+
+        // write a file
+        let file_path = tmp.join("query.sql");
+        std::fs::write(&file_path, "SELECT 1;").expect("write file");
+
+        let status_before = git_get_repo_status(path.clone()).expect("status before stage");
+        assert_eq!(status_before.untracked_files.len(), 1);
+        assert!(!status_before.is_clean);
+
+        // stage it
+        git_stage_file(path.clone(), "query.sql".to_string()).expect("git_stage_file");
+
+        let status_after = git_get_repo_status(path.clone()).expect("status after stage");
+        assert_eq!(status_after.pending_changes, 1, "staged file should count as pending");
+        assert!(!status_after.is_clean);
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { isServer } from "$lib/utils/environment";
 
 export interface TunnelConfig {
   sshHost: string;
@@ -18,6 +19,27 @@ export interface TunnelResult {
 }
 
 export async function createSshTunnel(config: TunnelConfig): Promise<TunnelResult> {
+  if (isServer()) {
+    const res = await fetch("/api/ssh/tunnel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ssh_host: config.sshHost,
+        ssh_port: config.sshPort,
+        ssh_username: config.sshUsername,
+        auth_method: config.authMethod,
+        password: config.password,
+        key_path: config.keyPath,
+        key_passphrase: config.keyPassphrase,
+        remote_host: config.remoteHost,
+        remote_port: config.remotePort,
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    return { tunnelId: data.tunnel_id, localPort: data.local_port };
+  }
+
   const result = await invoke<{ tunnel_id: string; local_port: number }>("create_ssh_tunnel", {
     config: {
       ssh_host: config.sshHost,
@@ -39,5 +61,28 @@ export async function createSshTunnel(config: TunnelConfig): Promise<TunnelResul
 }
 
 export async function closeSshTunnel(tunnelId: string): Promise<void> {
+  if (isServer()) {
+    await fetch(`/api/ssh/tunnel/${encodeURIComponent(tunnelId)}`, { method: "DELETE" });
+    return;
+  }
   await invoke("close_ssh_tunnel", { tunnelId });
+}
+
+export async function checkTunnelStatus(tunnelId: string): Promise<boolean> {
+  if (isServer()) {
+    const res = await fetch(`/api/ssh/tunnel/${encodeURIComponent(tunnelId)}/status`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    return data.active as boolean;
+  }
+  return invoke<boolean>("check_tunnel_status", { tunnelId });
+}
+
+export async function listActiveTunnels(): Promise<string[]> {
+  if (isServer()) {
+    const res = await fetch("/api/ssh/tunnels");
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+  return invoke<string[]>("list_active_tunnels");
 }

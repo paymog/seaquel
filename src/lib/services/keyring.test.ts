@@ -107,7 +107,7 @@ describe("ServerKeyringService", () => {
     await svc.deleteAllForConnection("conn4");
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    const urls = fetchMock.mock.calls.map(([url]: [string]) => url);
+    const urls = fetchMock.mock.calls.map((args: unknown[]) => args[0] as string);
     expect(urls).toContain("/api/secrets/db%3Aconn4");
     expect(urls).toContain("/api/secrets/ssh%3Aconn4");
     expect(urls).toContain("/api/secrets/ssh-key%3Aconn4");
@@ -149,8 +149,7 @@ describe("ServerKeyringService", () => {
 describe("getKeyringService", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
-    // @ts-expect-error - reset Tauri marker
-    delete window.__TAURI_INTERNALS__;
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
     // Reset the module singleton via the module's internal cache.
     // We achieve this by re-importing the module with resetModules in each test.
   });

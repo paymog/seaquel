@@ -2,8 +2,6 @@
 	import { onMount } from "svelte";
 	import { m } from "$lib/paraglide/messages.js";
 	import { Button } from "$lib/components/ui/button";
-	import { getVersion } from "@tauri-apps/api/app";
-	import { appConfigDir, appDataDir, appLogDir } from "@tauri-apps/api/path";
 	import { errorToast } from "$lib/utils/toast";
 	import { isTauri } from "$lib/utils/environment";
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
@@ -28,11 +26,14 @@
 	let isConnectingInternal = $state(false);
 
 	onMount(() => {
-		loadAppInfo();
+		if (isTauri()) loadAppInfo();
 	});
 
 	async function loadAppInfo() {
 		try {
+			// platform-specific: app/path APIs only available in Tauri runtime
+			const { getVersion } = await import("@tauri-apps/api/app");
+			const { appConfigDir, appDataDir, appLogDir } = await import("@tauri-apps/api/path");
 			appVersion = await getVersion();
 			configPath = await appConfigDir();
 			dataPath = await appDataDir();
