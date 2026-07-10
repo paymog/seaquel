@@ -6026,6 +6026,7 @@ checksum = "1c107b6f4780854c8b126e228ea8869f4d7b71260f962fefb57b996b8959ba6b"
 name = "seaquel"
 version = "2026.4.8"
 dependencies = [
+ "aes-gcm",
  "arboard",
  "async-native-tls 0.5.0",
  "async-stream",
@@ -6038,16 +6039,19 @@ dependencies = [
  "env_logger",
  "futures",
  "git2",
+ "hmac",
  "image",
  "log",
  "opener",
  "plist",
+ "rand 0.8.5",
  "reqwest 0.12.28",
  "russh",
  "russh-keys",
  "rust_decimal",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "tauri",
  "tauri-build",

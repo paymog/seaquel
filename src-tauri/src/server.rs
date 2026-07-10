@@ -15,7 +15,6 @@ use axum::{
         Path, Query, State,
     },
     http::StatusCode,
-    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
     Json, Router,
@@ -24,7 +23,6 @@ use futures::{SinkExt, StreamExt};
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
-use crate::auth::AuthConfig;
 
 use crate::db::{
     duckdb::DuckdbDriver, mssql::MssqlDriver, mysql::MysqlDriver, postgres::PostgresDriver,
@@ -197,7 +195,6 @@ pub struct AppState {
     pub db: Arc<ConnectionManager>,
     pub secrets: Arc<SecretStore>,
     pub tunnels: Arc<TunnelManager>,
-    pub auth: Arc<AuthConfig>,
 }
 
 impl axum::extract::FromRef<AppState> for Arc<ConnectionManager> {
@@ -218,11 +215,6 @@ impl axum::extract::FromRef<AppState> for Arc<TunnelManager> {
     }
 }
 
-impl axum::extract::FromRef<AppState> for Arc<AuthConfig> {
-    fn from_ref(state: &AppState) -> Self {
-        Arc::clone(&state.auth)
-    }
-}
 
 
 // ── Request body types ────────────────────────────────────────────────────────
