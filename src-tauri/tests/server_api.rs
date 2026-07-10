@@ -9,18 +9,22 @@
 use std::sync::Arc;
 
 use futures::{SinkExt, StreamExt};
+use seaquel_lib::auth::AuthConfig;
 use seaquel_lib::db::ConnectionManager;
 use seaquel_lib::server::{build_router, SecretStore};
 use seaquel_lib::ssh_tunnel::TunnelManager;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use base64::Engine as _;
 
-/// Start a server on a random port. Returns the `http://` base URL.
-async fn spawn_test_server() -> String {
+/// Start a server on a random port. Returns the `http://` base URL and a
+/// valid auth token for use in tests.
+async fn spawn_test_server() -> (String, String) {
     let db_state = Arc::new(ConnectionManager::new());
     let secret_state = Arc::new(SecretStore::new());
     let tunnel_state = Arc::new(TunnelManager::new());
-    let app = build_router(db_state, secret_state, tunnel_state);
+    let auth_state = Arc::new(AuthConfig::from_env());
+    let token = auth_state.create_token();
+    let app = build_router(db_state, secret_state, tunnel_state, auth_state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
@@ -28,15 +32,28 @@ async fn spawn_test_server() -> String {
     tokio::spawn(async move {
         axum::serve(listener, app).await.expect("serve");
     });
-    format!("http://{}", addr)
+    (format!("http://{}", addr), token)
+}
+
+/// Build a reqwest client that automatically attaches the bearer token.
+fn auth_client(token: &str) -> reqwest::Client {
+    let mut headers = reqwest::header::HeaderMap::new();
+    let auth_value = format!("Bearer {}", token)
+        .parse()
+        .expect("valid header");
+    headers.insert("authorization", auth_value);
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .expect("client build")
 }
 
 // ── HTTP lifecycle tests ───────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_sqlite_full_lifecycle() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     // 1. Connect
     let res = client
@@ -146,8 +163,8 @@ async fn test_sqlite_full_lifecycle() {
 
 #[tokio::test]
 async fn test_query_nonexistent_connection_returns_404() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     let res = client
         .post(format!("{}/api/db/query", base))
@@ -166,8 +183,8 @@ async fn test_query_nonexistent_connection_returns_404() {
 
 #[tokio::test]
 async fn test_transaction() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     // Connect
     let res = client
@@ -217,8 +234,8 @@ async fn test_transaction() {
 /// Connect to SQLite, stream a query, assert batch + done events arrive.
 #[tokio::test]
 async fn test_stream_basic() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     // Connect
     let body: serde_json::Value = client
@@ -255,7 +272,7 @@ async fn test_stream_basic() {
         .unwrap();
 
     // Open WebSocket
-    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream?token=" + &token;
     let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
         .await
         .expect("ws connect");
@@ -301,8 +318,8 @@ async fn test_stream_basic() {
 /// Send a cancel message mid-stream and verify the connection remains usable.
 #[tokio::test]
 async fn test_stream_cancel() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     // Connect
     let body: serde_json::Value = client
@@ -339,7 +356,7 @@ async fn test_stream_cancel() {
         .unwrap();
 
     // Open WebSocket and start stream
-    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream?token=" + &token;
     let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
         .await
         .unwrap();
@@ -398,9 +415,9 @@ async fn test_stream_cancel() {
 /// error event (not a panic or hang).
 #[tokio::test]
 async fn test_stream_nonexistent_connection() {
-    let base = spawn_test_server().await;
+    let (base, token) = spawn_test_server().await;
 
-    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream?token=" + &token;
     let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
         .await
         .unwrap();
@@ -446,8 +463,8 @@ async fn test_stream_nonexistent_connection() {
 /// batches, columns only on the first batch, done event at the end.
 #[tokio::test]
 async fn test_stream_large_result_set_batching() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     // Connect
     let body: serde_json::Value = client
@@ -489,7 +506,7 @@ async fn test_stream_large_result_set_batching() {
     }
 
     // Open WebSocket and stream SELECT *
-    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream?token=" + &token;
     let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
         .await
         .expect("ws connect");
@@ -563,8 +580,8 @@ async fn test_stream_large_result_set_batching() {
 /// Stream a parameterized query and verify only matching rows arrive.
 #[tokio::test]
 async fn test_stream_with_parameters() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     // Connect and seed
     let body: serde_json::Value = client
@@ -600,7 +617,7 @@ async fn test_stream_with_parameters() {
         .unwrap();
 
     // Stream parameterized query: only rows with id > 5
-    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream?token=" + &token;
     let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url).await.unwrap();
 
     ws.send(WsMessage::Text(
@@ -655,8 +672,8 @@ async fn test_stream_with_parameters() {
 /// Connection must remain usable after a stream completes naturally.
 #[tokio::test]
 async fn test_connection_usable_after_stream_completes() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     // Connect
     let body: serde_json::Value = client
@@ -693,7 +710,7 @@ async fn test_connection_usable_after_stream_completes() {
         .unwrap();
 
     // Run stream to completion
-    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream?token=" + &token;
     let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url).await.unwrap();
     ws.send(WsMessage::Text(
         serde_json::to_string(&serde_json::json!({
@@ -740,8 +757,8 @@ async fn test_connection_usable_after_stream_completes() {
 /// Connection must remain usable after a stream is cancelled by the client.
 #[tokio::test]
 async fn test_connection_usable_after_stream_cancelled() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     // Connect and seed enough rows that we can cancel mid-stream
     let body: serde_json::Value = client
@@ -777,7 +794,7 @@ async fn test_connection_usable_after_stream_cancelled() {
         .unwrap();
 
     // Start stream, cancel immediately, drain to done
-    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream?token=" + &token;
     let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url).await.unwrap();
     ws.send(WsMessage::Text(
         serde_json::to_string(&serde_json::json!({
@@ -832,8 +849,8 @@ async fn test_connection_usable_after_stream_cancelled() {
 
 #[tokio::test]
 async fn test_secret_lifecycle() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     // Set a secret → 201
     let res = client
@@ -873,8 +890,8 @@ async fn test_secret_lifecycle() {
 
 #[tokio::test]
 async fn test_secret_overwrite() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     // Set initial value
     let res = client
@@ -910,8 +927,8 @@ async fn test_secret_overwrite() {
 /// GET /api/ssh/tunnels returns an empty JSON array when no tunnels are active.
 #[tokio::test]
 async fn test_ssh_list_tunnels_empty() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     let res = client
         .get(format!("{}/api/ssh/tunnels", base))
@@ -928,8 +945,8 @@ async fn test_ssh_list_tunnels_empty() {
 /// GET /api/ssh/tunnel/{id}/status returns { active: false } for an unknown id.
 #[tokio::test]
 async fn test_ssh_tunnel_status_unknown() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     let res = client
         .get(format!("{}/api/ssh/tunnel/nonexistent-tunnel/status", base))
@@ -945,8 +962,8 @@ async fn test_ssh_tunnel_status_unknown() {
 /// DELETE /api/ssh/tunnel/{id} returns 404 for an unknown tunnel id.
 #[tokio::test]
 async fn test_ssh_close_tunnel_not_found() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     let res = client
         .delete(format!("{}/api/ssh/tunnel/ghost-tunnel", base))
@@ -960,8 +977,8 @@ async fn test_ssh_close_tunnel_not_found() {
 /// POST /api/ssh/tunnel with a bad host returns a non-2xx error (connection refused / timeout).
 #[tokio::test]
 async fn test_ssh_create_tunnel_bad_host() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     // 127.0.0.2 port 1 — guaranteed connection refused on any CI box.
     let body = serde_json::json!({
@@ -995,8 +1012,8 @@ async fn test_ssh_create_tunnel_bad_host() {
 /// plaintext even though the value is stored encrypted.
 #[tokio::test]
 async fn test_secret_encryption() {
-    let base = spawn_test_server().await;
-    let client = reqwest::Client::new();
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
 
     client
         .post(format!("{}/api/secrets", base))
@@ -1074,4 +1091,96 @@ async fn test_secret_different_nonce_each_time() {
         Some("same-value"),
         "final value must still be recoverable"
     );
+}
+
+// ── Auth tests ────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_login_correct_password() {
+    let (base, _token) = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    let res = client
+        .post(format!("{}/api/auth/login", base))
+        .json(&serde_json::json!({"password": "admin"}))
+        .send()
+        .await
+        .expect("login request");
+
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.expect("login body");
+    assert!(body["token"].as_str().is_some(), "token present");
+}
+
+#[tokio::test]
+async fn test_login_wrong_password() {
+    let (base, _token) = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    let res = client
+        .post(format!("{}/api/auth/login", base))
+        .json(&serde_json::json!({"password": "wrong"}))
+        .send()
+        .await
+        .expect("login request");
+
+    assert_eq!(res.status(), 401);
+}
+
+#[tokio::test]
+async fn test_protected_route_without_token() {
+    let (base, _token) = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    let res = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(res.status(), 401);
+}
+
+#[tokio::test]
+async fn test_protected_route_with_valid_token() {
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
+
+    let res = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(res.status(), 200);
+}
+
+#[tokio::test]
+async fn test_protected_route_with_garbage_token() {
+    let (base, _token) = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    let res = client
+        .post(format!("{}/api/db/connect", base))
+        .header("authorization", "Bearer garbage.token")
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(res.status(), 401);
+}
+
+#[tokio::test]
+async fn test_static_files_without_auth() {
+    // Non-API routes should NOT require auth
+    let (base, _token) = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // The root URL should return something (even if 404 for missing static dir)
+    // — the key assertion is that it does NOT return 401.
+    let res = client.get(&base).send().await.expect("request");
+    assert_ne!(res.status(), 401, "static files should not require auth");
 }

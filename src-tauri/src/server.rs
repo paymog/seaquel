@@ -15,6 +15,7 @@ use axum::{
         Path, Query, State,
     },
     http::StatusCode,
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
     Json, Router,
@@ -22,6 +23,8 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
+
+use crate::auth::AuthConfig;
 
 
 use crate::db::{
@@ -195,6 +198,7 @@ pub struct AppState {
     pub db: Arc<ConnectionManager>,
     pub secrets: Arc<SecretStore>,
     pub tunnels: Arc<TunnelManager>,
+    pub auth: Arc<AuthConfig>,
 }
 
 impl axum::extract::FromRef<AppState> for Arc<ConnectionManager> {
@@ -212,6 +216,12 @@ impl axum::extract::FromRef<AppState> for Arc<SecretStore> {
 impl axum::extract::FromRef<AppState> for Arc<TunnelManager> {
     fn from_ref(state: &AppState) -> Self {
         Arc::clone(&state.tunnels)
+    }
+}
+
+impl axum::extract::FromRef<AppState> for Arc<AuthConfig> {
+    fn from_ref(state: &AppState) -> Self {
+        Arc::clone(&state.auth)
     }
 }
 
@@ -261,6 +271,68 @@ struct SetSecretRequest {
 #[derive(serde::Serialize)]
 struct GetSecretResponse {
     value: String,
+}
+
+// ── Auth types ────────────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct LoginRequest {
+    password: String,
+}
+
+#[derive(serde::Serialize)]
+struct LoginResponse {
+    token: String,
+}
+
+// ── Auth middleware ────────────────────────────────────────────────────────────
+
+/// Reject any `/api/*` request (except `/api/auth/login`) that lacks a valid
+/// bearer token. WebSocket connections may pass the token as `?token=…`.
+async fn auth_middleware(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let path = req.uri().path();
+
+    // Login endpoint and non-API routes are always accessible.
+    if path == "/api/auth/login" || !path.starts_with("/api/") {
+        return Ok(next.run(req).await);
+    }
+
+    // Extract token from Authorization header or query string (WebSocket).
+    let token = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .or_else(|| {
+            req.uri()
+                .query()
+                .and_then(|q| q.split('&').find(|p| p.starts_with("token=")))
+                .and_then(|p| p.strip_prefix("token="))
+        })
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    if !state.auth.verify_token(token) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    Ok(next.run(req).await)
+}
+
+async fn handle_login(
+    State(state): State<AppState>,
+    Json(req): Json<LoginRequest>,
+) -> Result<Json<LoginResponse>, StatusCode> {
+    if state.auth.verify_password(&req.password) {
+        Ok(Json(LoginResponse {
+            token: state.auth.create_token(),
+        }))
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
 }
 
 // ── Error response ────────────────────────────────────────────────────────────
@@ -812,7 +884,12 @@ async fn handle_git_remote_url(
 
 /// Build the application router.  Exposed `pub` so tests and the binary can
 /// both call it without duplicating handler wiring.
-pub fn build_router(db_state: Arc<ConnectionManager>, secret_state: Arc<SecretStore>, tunnel_state: Arc<TunnelManager>) -> Router {
+pub fn build_router(
+    db_state: Arc<ConnectionManager>,
+    secret_state: Arc<SecretStore>,
+    tunnel_state: Arc<TunnelManager>,
+    auth_state: Arc<AuthConfig>,
+) -> Router {
     let static_dir =
         std::env::var("SEAQUEL_STATIC_DIR").unwrap_or_else(|_| "./static".to_string());
 
@@ -823,9 +900,11 @@ pub fn build_router(db_state: Arc<ConnectionManager>, secret_state: Arc<SecretSt
         db: db_state,
         secrets: secret_state,
         tunnels: tunnel_state,
+        auth: auth_state,
     };
 
     Router::new()
+        .route("/api/auth/login", post(handle_login))
         .route("/api/db/connect", post(handle_connect))
         .route("/api/db/query", post(handle_query))
         .route("/api/db/execute", post(handle_execute))
@@ -853,6 +932,7 @@ pub fn build_router(db_state: Arc<ConnectionManager>, secret_state: Arc<SecretSt
         .route("/api/git/remote", post(handle_git_set_remote))
         .route("/api/git/remote-url", get(handle_git_remote_url))
         .layer(CorsLayer::permissive())
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         .fallback_service(serve_dir)
         .with_state(state)
 }
@@ -864,7 +944,8 @@ pub async fn run_server() {
     let state = Arc::new(ConnectionManager::new());
     let secrets = Arc::new(SecretStore::new());
     let tunnels = Arc::new(TunnelManager::new());
-    let app = build_router(state, secrets, tunnels);
+    let auth = Arc::new(AuthConfig::from_env());
+    let app = build_router(state, secrets, tunnels, auth);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await

@@ -2,6 +2,8 @@ pub mod db;
 
 #[cfg(feature = "server")]
 pub mod server;
+#[cfg(feature = "server")]
+pub mod auth;
 
 #[cfg(any(feature = "tauri", feature = "server"))]
 pub mod git;

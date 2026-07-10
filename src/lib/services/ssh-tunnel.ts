@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isServer } from "$lib/utils/environment";
+import { authHeaders } from "$lib/auth/token";
 
 export interface TunnelConfig {
   sshHost: string;
@@ -22,7 +23,7 @@ export async function createSshTunnel(config: TunnelConfig): Promise<TunnelResul
   if (isServer()) {
     const res = await fetch("/api/ssh/tunnel", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({
         ssh_host: config.sshHost,
         ssh_port: config.sshPort,
@@ -62,7 +63,7 @@ export async function createSshTunnel(config: TunnelConfig): Promise<TunnelResul
 
 export async function closeSshTunnel(tunnelId: string): Promise<void> {
   if (isServer()) {
-    await fetch(`/api/ssh/tunnel/${encodeURIComponent(tunnelId)}`, { method: "DELETE" });
+    await fetch(`/api/ssh/tunnel/${encodeURIComponent(tunnelId)}`, { method: "DELETE", headers: authHeaders() });
     return;
   }
   await invoke("close_ssh_tunnel", { tunnelId });
@@ -70,7 +71,7 @@ export async function closeSshTunnel(tunnelId: string): Promise<void> {
 
 export async function checkTunnelStatus(tunnelId: string): Promise<boolean> {
   if (isServer()) {
-    const res = await fetch(`/api/ssh/tunnel/${encodeURIComponent(tunnelId)}/status`);
+    const res = await fetch(`/api/ssh/tunnel/${encodeURIComponent(tunnelId)}/status`, { headers: authHeaders() });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     return data.active as boolean;
@@ -80,7 +81,7 @@ export async function checkTunnelStatus(tunnelId: string): Promise<boolean> {
 
 export async function listActiveTunnels(): Promise<string[]> {
   if (isServer()) {
-    const res = await fetch("/api/ssh/tunnels");
+    const res = await fetch("/api/ssh/tunnels", { headers: authHeaders() });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   }

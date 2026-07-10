@@ -26,6 +26,9 @@
     import { tablePlusImportStore } from "$lib/stores/tableplus-import.svelte.js";
     import { tutorialProgressStore } from "$lib/stores/tutorial-progress.svelte.js";
     import { isTauri } from "$lib/utils/environment";
+    import { isServer } from "$lib/utils/environment";
+    import { isAuthenticated } from "$lib/auth/token";
+    import { goto } from "$app/navigation";
     import { initLogger } from "$lib/utils/logger";
     import { initializeDemo } from "$lib/demo/init";
     import { createDemoDashboard } from "$lib/demo/sample-dashboard";
@@ -50,6 +53,12 @@
 
     // Initialize stores on mount
     onMount(async () => {
+        // Server mode auth guard
+        if (isServer() && !isAuthenticated() && page.url.pathname !== "/login") {
+            goto("/login");
+            return;
+        }
+
         const commonInit = [
             initLogger(),
             themeStore.initialize(),
@@ -205,7 +214,7 @@
 
 <FileDropOverlay />
 
-{#if isStandaloneWindow}
+{#if isStandaloneWindow || (isServer() && page.url.pathname === "/login")}
     <!-- Standalone window: minimal layout, no app shell -->
     {@render children()}
 {:else}

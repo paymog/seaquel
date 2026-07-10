@@ -8,6 +8,7 @@
  */
 
 import { isServer, isTauri } from "$lib/utils/environment";
+import { authHeaders } from "$lib/auth/token";
 
 const SERVICE = "app.seaquel.desktop";
 
@@ -257,18 +258,20 @@ class NoopKeyringService implements KeyringService {
  */
 export class ServerKeyringService implements KeyringService {
   private baseUrl = "";
+    // Auth headers attached on every request via the helper below.
 
   private async setSecret(key: string, value: string): Promise<void> {
     await fetch(`${this.baseUrl}/api/secrets`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ key, value }),
     });
   }
 
   private async getSecret(key: string): Promise<string | null> {
     const res = await fetch(
-      `${this.baseUrl}/api/secrets/${encodeURIComponent(key)}`
+      `${this.baseUrl}/api/secrets/${encodeURIComponent(key)}`,
+      { headers: authHeaders() }
     );
     if (!res.ok) return null;
     const data = await res.json();
@@ -278,7 +281,7 @@ export class ServerKeyringService implements KeyringService {
   private async deleteSecret(key: string): Promise<void> {
     await fetch(
       `${this.baseUrl}/api/secrets/${encodeURIComponent(key)}`,
-      { method: "DELETE" }
+      { method: "DELETE", headers: authHeaders() }
     );
   }
 

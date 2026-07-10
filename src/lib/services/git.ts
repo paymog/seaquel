@@ -5,6 +5,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { isServer } from "$lib/utils/environment";
+import { authHeaders } from "$lib/auth/token";
 import type { GitCredentials, RepoStatus, SyncResult, ConflictContent } from "$lib/types";
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -12,7 +13,7 @@ import type { GitCredentials, RepoStatus, SyncResult, ConflictContent } from "$l
 async function gitPost(endpoint: string, body: unknown): Promise<Response> {
   const res = await fetch(`/api/git/${endpoint}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -21,7 +22,7 @@ async function gitPost(endpoint: string, body: unknown): Promise<Response> {
 
 async function gitGet(endpoint: string, params: Record<string, string>): Promise<Response> {
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`/api/git/${endpoint}?${qs}`);
+  const res = await fetch(`/api/git/${endpoint}?${qs}`, { headers: authHeaders() });
   if (!res.ok) throw new Error(await res.text());
   return res;
 }

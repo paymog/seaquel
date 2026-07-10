@@ -6,6 +6,7 @@
 
 import type { DatabaseProvider, ConnectionConfig, ExecuteResult } from "./types";
 import { dedupeColumnNames } from "$lib/utils/row-access";
+import { authHeaders, authTokenQuery } from "$lib/auth/token";
 
 interface DbError {
   message: string;
@@ -58,7 +59,7 @@ export class HttpDatabaseProvider implements DatabaseProvider {
   private async post<T>(path: string, body: unknown): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(body),
     });
     const data: unknown = await response.json();
@@ -154,7 +155,8 @@ export class HttpDatabaseProvider implements DatabaseProvider {
     }
 
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${proto}//${window.location.host}${this.baseUrl}/api/db/stream`;
+    const tokenQuery = authTokenQuery();
+    const wsUrl = `${proto}//${window.location.host}${this.baseUrl}/api/db/stream${tokenQuery ? `?${tokenQuery}` : ""}`;
     const queryId = crypto.randomUUID();
 
     let cancelled = false;
