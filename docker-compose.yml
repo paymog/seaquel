@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  seaquel:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - SEAQUEL_BIND_ADDR=0.0.0.0:3000
+      - SEAQUEL_STATIC_DIR=/app/static
+      - SEAQUEL_ADMIN_PASSWORD=${SEAQUEL_ADMIN_PASSWORD:-admin}
+      - SEAQUEL_SECRET_KEY=${SEAQUEL_SECRET_KEY:-}
+      - SEAQUEL_DATA_DIR=/app/data
+      - RUST_LOG=info
+    volumes:
+      - seaquel-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  seaquel-data:

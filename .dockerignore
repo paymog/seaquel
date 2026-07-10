@@ -1,0 +1,10 @@
+src-tauri/target/
+node_modules/
+build/
+build-server/
+build-demo/
+.git/
+.claude/
+e2e/
+docs/
+*.md
