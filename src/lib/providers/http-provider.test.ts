@@ -494,4 +494,106 @@ describe("HttpDatabaseProvider", () => {
     }).length;
     expect(cancelCount).toBe(1);
   });
+
+  // -------------------------------------------------------------------------
+  // selectStream — multi-batch streaming
+  // -------------------------------------------------------------------------
+
+  it("selectStream: multi-batch — all batches received in order with correct fields", async () => {
+    const batches: Array<{ columns: string[] | null; rows: unknown[][]; isFinal: boolean }> = [];
+    const onBatch = vi.fn().mockImplementation((b: (typeof batches)[0]) => {
+      batches.push(b);
+      return true;
+    });
+
+    const streamPromise = provider.selectStream("conn-1", "SELECT x FROM t", [], onBatch);
+
+    const ws = wsInstance!;
+    ws.simulateOpen();
+
+    ws.simulateMessage({ type: "batch", columns: ["x"], rows: [[1], [2]], is_final: false });
+    ws.simulateMessage({ type: "batch", columns: null, rows: [[3], [4]], is_final: false });
+    ws.simulateMessage({ type: "batch", columns: null, rows: [[5]], is_final: false });
+    ws.simulateMessage({ type: "done" });
+
+    const result = await streamPromise;
+
+    expect(result).toEqual({ aborted: false });
+    expect(onBatch).toHaveBeenCalledTimes(3);
+    expect(batches[0]).toMatchObject({ columns: ["x"], rows: [[1], [2]], isFinal: false });
+    expect(batches[1]).toMatchObject({ columns: null, rows: [[3], [4]], isFinal: false });
+    expect(batches[2]).toMatchObject({ columns: null, rows: [[5]], isFinal: false });
+  });
+
+  // -------------------------------------------------------------------------
+  // selectStream — empty result set
+  // -------------------------------------------------------------------------
+
+  it("selectStream: empty result set — columns preserved on terminal batch with no rows", async () => {
+    const batches: Array<{ columns: string[] | null; rows: unknown[][]; isFinal: boolean }> = [];
+    const onBatch = vi.fn().mockImplementation((b: (typeof batches)[0]) => {
+      batches.push(b);
+      return true;
+    });
+
+    const streamPromise = provider.selectStream("conn-1", "SELECT x, y FROM t WHERE false", [], onBatch);
+
+    const ws = wsInstance!;
+    ws.simulateOpen();
+
+    // Server emits a single terminal batch with columns but no rows
+    ws.simulateMessage({ type: "batch", columns: ["x", "y"], rows: [], is_final: true });
+    ws.simulateMessage({ type: "done" });
+
+    const result = await streamPromise;
+
+    expect(result).toEqual({ aborted: false });
+    expect(onBatch).toHaveBeenCalledOnce();
+    expect(batches[0]).toMatchObject({ columns: ["x", "y"], rows: [], isFinal: true });
+  });
+
+  // -------------------------------------------------------------------------
+  // selectStream — error after batch
+  // -------------------------------------------------------------------------
+
+  it("selectStream: error event after batch — batch received, error returned", async () => {
+    const batches: unknown[] = [];
+    const onBatch = vi.fn().mockImplementation((b: unknown) => {
+      batches.push(b);
+      return true;
+    });
+
+    const streamPromise = provider.selectStream("conn-1", "SELECT x FROM t", [], onBatch);
+
+    const ws = wsInstance!;
+    ws.simulateOpen();
+
+    ws.simulateMessage({ type: "batch", columns: ["x"], rows: [[1]], is_final: false });
+    ws.simulateMessage({ type: "error", message: "disk full", code: "IO_ERROR" });
+
+    const result = await streamPromise;
+
+    expect(onBatch).toHaveBeenCalledOnce();
+    expect(batches[0]).toMatchObject({ columns: ["x"], rows: [[1]], isFinal: false });
+    expect(result).toEqual({ aborted: false, error: "IO_ERROR: disk full" });
+  });
+
+  // -------------------------------------------------------------------------
+  // selectStream — WebSocket connection error
+  // -------------------------------------------------------------------------
+
+  it("selectStream: WebSocket connection error returns error result, no batches fired", async () => {
+    const onBatch = vi.fn().mockReturnValue(true);
+
+    const streamPromise = provider.selectStream("conn-1", "SELECT 1", [], onBatch);
+
+    const ws = wsInstance!;
+    // Simulate a network-level error before the socket ever opens
+    ws.simulateError();
+
+    const result = await streamPromise;
+
+    expect(result).toEqual({ aborted: false, error: "WebSocket connection error" });
+    expect(onBatch).not.toHaveBeenCalled();
+  });
 });

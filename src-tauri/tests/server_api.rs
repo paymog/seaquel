@@ -435,3 +435,391 @@ async fn test_stream_nonexistent_connection() {
 
     assert!(got_error, "should have received an error event");
 }
+
+// ── Additional streaming edge-case tests ─────────────────────────────────────
+
+/// 15 000 rows across the BATCH_SIZE=5000 boundary → at least 2 non-final
+/// batches, columns only on the first batch, done event at the end.
+#[tokio::test]
+async fn test_stream_large_result_set_batching() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // Connect
+    let body: serde_json::Value = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cid = body["connection_id"].as_str().unwrap().to_string();
+
+    // Create table
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "CREATE TABLE large_t (x INTEGER)",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Insert 15 000 rows in 3 chunks of 5 000 — avoids recursion-depth limits.
+    for chunk in 0_i64..3 {
+        let values: String = (1 + chunk * 5000..=5000 + chunk * 5000)
+            .map(|i| format!("({})", i))
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!("INSERT INTO large_t (x) VALUES {}", values);
+        client
+            .post(format!("{}/api/db/execute", base))
+            .json(&serde_json::json!({"connection_id": cid, "sql": sql, "values": []}))
+            .send()
+            .await
+            .unwrap();
+    }
+
+    // Open WebSocket and stream SELECT *
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
+        .await
+        .expect("ws connect");
+
+    ws.send(WsMessage::Text(
+        serde_json::to_string(&serde_json::json!({
+            "query_id": "q-large",
+            "connection_id": cid,
+            "sql": "SELECT * FROM large_t ORDER BY x",
+            "values": []
+        }))
+        .unwrap()
+        .into(),
+    ))
+    .await
+    .unwrap();
+
+    let mut batch_count = 0usize;
+    let mut total_rows = 0usize;
+    let mut got_done = false;
+    let mut first_batch_columns: Option<Vec<String>> = None;
+    let mut subsequent_null_columns = true;
+
+    while let Some(msg) = ws.next().await {
+        match msg.unwrap() {
+            WsMessage::Text(text) => {
+                let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+                match v["type"].as_str().unwrap() {
+                    "batch" => {
+                        batch_count += 1;
+                        total_rows += v["rows"].as_array().unwrap().len();
+                        if batch_count == 1 {
+                            first_batch_columns = v["columns"]
+                                .as_array()
+                                .map(|a| a.iter().map(|c| c.as_str().unwrap().to_string()).collect());
+                        } else if !v["columns"].is_null() {
+                            subsequent_null_columns = false;
+                        }
+                    }
+                    "done" => {
+                        got_done = true;
+                        break;
+                    }
+                    other => panic!("unexpected event: {}", other),
+                }
+            }
+            WsMessage::Close(_) => break,
+            _ => {}
+        }
+    }
+
+    assert!(got_done, "should receive done event");
+    assert!(
+        batch_count >= 2,
+        "expected at least 2 batches for 15k rows, got {}",
+        batch_count
+    );
+    assert_eq!(total_rows, 15000, "should stream all 15 000 rows");
+    assert!(
+        first_batch_columns.is_some(),
+        "first batch must carry column names"
+    );
+    assert_eq!(
+        first_batch_columns.as_deref(),
+        Some(vec!["x".to_string()].as_slice()),
+        "first batch columns should be [\"x\"]"
+    );
+    assert!(subsequent_null_columns, "subsequent batches must have null columns");
+}
+
+/// Stream a parameterized query and verify only matching rows arrive.
+#[tokio::test]
+async fn test_stream_with_parameters() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // Connect and seed
+    let body: serde_json::Value = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cid = body["connection_id"].as_str().unwrap().to_string();
+
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "CREATE TABLE p_test (id INTEGER)",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "INSERT INTO p_test VALUES (1),(2),(3),(4),(5),(6),(7),(8),(9),(10)",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Stream parameterized query: only rows with id > 5
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url).await.unwrap();
+
+    ws.send(WsMessage::Text(
+        serde_json::to_string(&serde_json::json!({
+            "query_id": "q-params",
+            "connection_id": cid,
+            "sql": "SELECT id FROM p_test WHERE id > ? ORDER BY id",
+            "values": [5]
+        }))
+        .unwrap()
+        .into(),
+    ))
+    .await
+    .unwrap();
+
+    let mut total_rows = 0usize;
+    let mut all_rows: Vec<serde_json::Value> = Vec::new();
+    let mut got_done = false;
+
+    while let Some(msg) = ws.next().await {
+        match msg.unwrap() {
+            WsMessage::Text(text) => {
+                let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+                match v["type"].as_str().unwrap() {
+                    "batch" => {
+                        let rows = v["rows"].as_array().unwrap().clone();
+                        total_rows += rows.len();
+                        all_rows.extend(rows);
+                    }
+                    "done" => {
+                        got_done = true;
+                        break;
+                    }
+                    other => panic!("unexpected event: {}", other),
+                }
+            }
+            WsMessage::Close(_) => break,
+            _ => {}
+        }
+    }
+
+    assert!(got_done, "should receive done");
+    assert_eq!(total_rows, 5, "should return exactly 5 rows (6–10)");
+    // Verify actual values — SQLite returns integers as JSON numbers
+    let ids: Vec<i64> = all_rows
+        .iter()
+        .map(|r| r[0].as_i64().unwrap())
+        .collect();
+    assert_eq!(ids, vec![6, 7, 8, 9, 10], "ids should be 6–10 in order");
+}
+
+/// Connection must remain usable after a stream completes naturally.
+#[tokio::test]
+async fn test_connection_usable_after_stream_completes() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // Connect
+    let body: serde_json::Value = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cid = body["connection_id"].as_str().unwrap().to_string();
+
+    // Seed data
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "CREATE TABLE cs_test (v INTEGER)",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "INSERT INTO cs_test VALUES (42)",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Run stream to completion
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url).await.unwrap();
+    ws.send(WsMessage::Text(
+        serde_json::to_string(&serde_json::json!({
+            "query_id": "q-cs",
+            "connection_id": cid,
+            "sql": "SELECT v FROM cs_test",
+            "values": []
+        }))
+        .unwrap()
+        .into(),
+    ))
+    .await
+    .unwrap();
+
+    loop {
+        match ws.next().await {
+            Some(Ok(WsMessage::Text(text))) => {
+                let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+                if v["type"] == "done" {
+                    break;
+                }
+            }
+            Some(Ok(WsMessage::Close(_))) | None => break,
+            _ => {}
+        }
+    }
+
+    // Connection must still be usable
+    let res = client
+        .post(format!("{}/api/db/query", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "SELECT v FROM cs_test",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "query after stream should succeed");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["rows"][0][0], 42, "data should be intact after stream");
+}
+
+/// Connection must remain usable after a stream is cancelled by the client.
+#[tokio::test]
+async fn test_connection_usable_after_stream_cancelled() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // Connect and seed enough rows that we can cancel mid-stream
+    let body: serde_json::Value = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cid = body["connection_id"].as_str().unwrap().to_string();
+
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "CREATE TABLE cc_test (v INTEGER)",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "INSERT INTO cc_test VALUES (1),(2),(3),(4),(5)",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Start stream, cancel immediately, drain to done
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url).await.unwrap();
+    ws.send(WsMessage::Text(
+        serde_json::to_string(&serde_json::json!({
+            "query_id": "q-cc",
+            "connection_id": cid,
+            "sql": "SELECT v FROM cc_test",
+            "values": []
+        }))
+        .unwrap()
+        .into(),
+    ))
+    .await
+    .unwrap();
+    ws.send(WsMessage::Text(
+        serde_json::to_string(&serde_json::json!({"type": "cancel"}))
+            .unwrap()
+            .into(),
+    ))
+    .await
+    .unwrap();
+
+    loop {
+        match ws.next().await {
+            Some(Ok(WsMessage::Text(text))) => {
+                let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+                if v["type"] == "done" {
+                    break;
+                }
+            }
+            Some(Ok(WsMessage::Close(_))) | None => break,
+            _ => {}
+        }
+    }
+
+    // Connection must still be usable
+    let res = client
+        .post(format!("{}/api/db/query", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "SELECT count(*) AS n FROM cc_test",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "query after cancel should succeed");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["rows"][0][0], 5, "row count should be intact after cancel");
+}
