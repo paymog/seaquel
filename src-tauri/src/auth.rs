@@ -53,8 +53,9 @@ impl AuthConfig {
             .unwrap()
             .as_secs();
         let exp = now + TOKEN_TTL_SECS;
+        let sid = uuid::Uuid::new_v4().to_string();
 
-        let payload = format!("{{\"exp\":{}}}", exp);
+        let payload = format!("{{\"exp\":{},\"sid\":\"{}\"}}", exp, sid);
         let payload_b64 = B64.encode(&payload);
 
         let mut mac = HmacSha256::new_from_slice(&self.secret_key).unwrap();
@@ -64,53 +65,36 @@ impl AuthConfig {
         format!("{}.{}", payload_b64, sig)
     }
 
-    pub fn verify_token(&self, token: &str) -> bool {
+    /// Verify token and return the session ID if valid.
+    pub fn verify_token(&self, token: &str) -> Option<String> {
         let mut parts = token.splitn(2, '.');
-        let payload_b64 = match parts.next() {
-            Some(s) => s,
-            None => return false,
-        };
-        let sig_b64 = match parts.next() {
-            Some(s) => s,
-            None => return false,
-        };
+        let payload_b64 = parts.next()?;
+        let sig_b64 = parts.next()?;
 
         // Verify HMAC
-        let mut mac = match HmacSha256::new_from_slice(&self.secret_key) {
-            Ok(m) => m,
-            Err(_) => return false,
-        };
+        let mut mac = HmacSha256::new_from_slice(&self.secret_key).ok()?;
         mac.update(payload_b64.as_bytes());
-        let expected_sig = match B64.decode(sig_b64) {
-            Ok(s) => s,
-            Err(_) => return false,
-        };
-        if mac.verify_slice(&expected_sig).is_err() {
-            return false;
-        }
+        let expected_sig = B64.decode(sig_b64).ok()?;
+        mac.verify_slice(&expected_sig).ok()?;
+
+        // Decode payload
+        let payload_bytes = B64.decode(payload_b64).ok()?;
+        let payload_str = std::str::from_utf8(&payload_bytes).ok()?;
+        let payload: serde_json::Value = serde_json::from_str(payload_str).ok()?;
 
         // Check expiry
-        let payload_bytes = match B64.decode(payload_b64) {
-            Ok(p) => p,
-            Err(_) => return false,
-        };
-        let payload_str = match std::str::from_utf8(&payload_bytes) {
-            Ok(s) => s,
-            Err(_) => return false,
-        };
-        let exp = payload_str
-            .trim_start_matches("{\"exp\":")
-            .trim_end_matches('}')
-            .parse::<u64>()
-            .unwrap_or(0);
-
+        let exp = payload["exp"].as_u64().unwrap_or(0);
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
+        if exp <= now {
+            return None;
+        }
 
-        exp > now
+        payload["sid"].as_str().map(|s| s.to_string())
     }
+
 }
 
 #[cfg(test)]
@@ -133,14 +117,30 @@ mod tests {
     fn test_token_roundtrip() {
         let cfg = AuthConfig::from_env();
         let token = cfg.create_token();
-        assert!(cfg.verify_token(&token));
+        assert!(cfg.verify_token(&token).is_some());
     }
 
     #[test]
     fn test_garbage_token() {
         let cfg = AuthConfig::from_env();
-        assert!(!cfg.verify_token("garbage"));
-        assert!(!cfg.verify_token("a.b"));
-        assert!(!cfg.verify_token(""));
+        assert!(cfg.verify_token("garbage").is_none());
+        assert!(cfg.verify_token("a.b").is_none());
+        assert!(cfg.verify_token("").is_none());
     }
 }
+
+    #[test]
+    fn test_token_has_session_id() {
+        let cfg = AuthConfig::from_env();
+        let token = cfg.create_token();
+        let sid = cfg.verify_token(&token).expect("valid token");
+        assert!(!sid.is_empty(), "session ID should be non-empty");
+    }
+
+    #[test]
+    fn test_different_logins_have_different_sessions() {
+        let cfg = AuthConfig::from_env();
+        let sid1 = cfg.verify_token(&cfg.create_token()).unwrap();
+        let sid2 = cfg.verify_token(&cfg.create_token()).unwrap();
+        assert_ne!(sid1, sid2, "each login should get a unique session");
+    }

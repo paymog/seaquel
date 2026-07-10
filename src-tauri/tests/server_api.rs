@@ -12,6 +12,7 @@ use futures::{SinkExt, StreamExt};
 use seaquel_lib::auth::AuthConfig;
 use seaquel_lib::db::ConnectionManager;
 use seaquel_lib::server::{build_router, SecretStore};
+use seaquel_lib::server::SessionRegistry;
 use seaquel_lib::ssh_tunnel::TunnelManager;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use base64::Engine as _;
@@ -23,8 +24,9 @@ async fn spawn_test_server() -> (String, String) {
     let secret_state = Arc::new(SecretStore::new());
     let tunnel_state = Arc::new(TunnelManager::new());
     let auth_state = Arc::new(AuthConfig::from_env());
+    let session_state = Arc::new(SessionRegistry::new());
     let token = auth_state.create_token();
-    let app = build_router(db_state, secret_state, tunnel_state, auth_state);
+    let app = build_router(db_state, secret_state, tunnel_state, auth_state, session_state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
@@ -1183,4 +1185,62 @@ async fn test_static_files_without_auth() {
     // — the key assertion is that it does NOT return 401.
     let res = client.get(&base).send().await.expect("request");
     assert_ne!(res.status(), 401, "static files should not require auth");
+}
+
+// ── Multi-tenant session scoping tests ────────────────────────────────────────
+
+#[tokio::test]
+async fn test_cross_session_connection_isolation() {
+    // Two different sessions should not be able to access each other's connections.
+    let (base, token_a) = spawn_test_server().await;
+    let client_a = auth_client(&token_a);
+
+    // Session A connects to SQLite
+    let res = client_a
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .expect("connect");
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.expect("body");
+    let conn_id_a = body["connection_id"].as_str().expect("connection_id").to_string();
+
+    // Create a second session by logging in again
+    let plain_client = reqwest::Client::new();
+    let login_res = plain_client
+        .post(format!("{}/api/auth/login", base))
+        .json(&serde_json::json!({"password": "admin"}))
+        .send()
+        .await
+        .expect("login");
+    let login_body: serde_json::Value = login_res.json().await.expect("login body");
+    let token_b = login_body["token"].as_str().expect("token").to_string();
+    let client_b = auth_client(&token_b);
+
+    // Session B tries to query Session A's connection → should fail
+    let res = client_b
+        .post(format!("{}/api/db/query", base))
+        .json(&serde_json::json!({
+            "connection_id": conn_id_a,
+            "sql": "SELECT 1",
+            "values": []
+        }))
+        .send()
+        .await
+        .expect("query");
+    assert_eq!(res.status(), 404, "session B should not access session A's connection");
+
+    // Session A can still query its own connection
+    let res = client_a
+        .post(format!("{}/api/db/query", base))
+        .json(&serde_json::json!({
+            "connection_id": conn_id_a,
+            "sql": "SELECT 1 as val",
+            "values": []
+        }))
+        .send()
+        .await
+        .expect("query");
+    assert_eq!(res.status(), 200, "session A can access its own connection");
 }

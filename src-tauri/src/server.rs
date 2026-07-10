@@ -199,6 +199,7 @@ pub struct AppState {
     pub secrets: Arc<SecretStore>,
     pub tunnels: Arc<TunnelManager>,
     pub auth: Arc<AuthConfig>,
+    pub sessions: Arc<SessionRegistry>,
 }
 
 impl axum::extract::FromRef<AppState> for Arc<ConnectionManager> {
@@ -222,6 +223,12 @@ impl axum::extract::FromRef<AppState> for Arc<TunnelManager> {
 impl axum::extract::FromRef<AppState> for Arc<AuthConfig> {
     fn from_ref(state: &AppState) -> Self {
         Arc::clone(&state.auth)
+    }
+}
+
+impl axum::extract::FromRef<AppState> for Arc<SessionRegistry> {
+    fn from_ref(state: &AppState) -> Self {
+        Arc::clone(&state.sessions)
     }
 }
 
@@ -285,13 +292,83 @@ struct LoginResponse {
     token: String,
 }
 
+// ── Session scoping ────────────────────────────────────────────────────────────
+
+/// Extracted from the auth token by the middleware; identifies which session
+/// owns the request. Handlers use this to scope connection access.
+#[derive(Debug, Clone)]
+pub struct SessionId(pub String);
+
+impl axum::extract::FromRequestParts<AppState> for SessionId {
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<SessionId>()
+            .cloned()
+            .ok_or(StatusCode::UNAUTHORIZED)
+    }
+}
+
+/// Tracks which connections belong to which session, preventing cross-session
+/// access even if a connection_id leaks.
+#[derive(Default)]
+pub struct SessionRegistry {
+    /// session_id → set of connection_ids owned by that session
+    sessions: tokio::sync::RwLock<HashMap<String, std::collections::HashSet<String>>>,
+}
+
+impl SessionRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub async fn register(&self, session_id: &str, connection_id: &str) {
+        self.sessions
+            .write()
+            .await
+            .entry(session_id.to_string())
+            .or_default()
+            .insert(connection_id.to_string());
+    }
+
+    pub async fn verify(&self, session_id: &str, connection_id: &str) -> bool {
+        self.sessions
+            .read()
+            .await
+            .get(session_id)
+            .map(|conns| conns.contains(connection_id))
+            .unwrap_or(false)
+    }
+
+    pub async fn unregister(&self, session_id: &str, connection_id: &str) {
+        if let Some(conns) = self.sessions.write().await.get_mut(session_id) {
+            conns.remove(connection_id);
+        }
+    }
+
+    /// Remove all connections for a session (on logout/cleanup).
+    pub async fn cleanup_session(&self, session_id: &str) -> Vec<String> {
+        self.sessions
+            .write()
+            .await
+            .remove(session_id)
+            .map(|s| s.into_iter().collect())
+            .unwrap_or_default()
+    }
+}
+
 // ── Auth middleware ────────────────────────────────────────────────────────────
 
 /// Reject any `/api/*` request (except `/api/auth/login`) that lacks a valid
 /// bearer token. WebSocket connections may pass the token as `?token=…`.
 async fn auth_middleware(
     State(state): State<AppState>,
-    req: axum::extract::Request,
+    mut req: axum::extract::Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
     let path = req.uri().path();
@@ -315,9 +392,13 @@ async fn auth_middleware(
         })
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    if !state.auth.verify_token(token) {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
+    let session_id = state
+        .auth
+        .verify_token(token)
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    // Inject session_id into request extensions so handlers can scope connections.
+    req.extensions_mut().insert(SessionId(session_id));
 
     Ok(next.run(req).await)
 }
@@ -373,6 +454,8 @@ async fn connect_driver(config: &ConnectConfig) -> Result<Box<dyn Driver>, DbErr
 
 async fn handle_connect(
     State(manager): State<Arc<ConnectionManager>>,
+    State(sessions): State<Arc<SessionRegistry>>,
+    session: SessionId,
     Json(config): Json<ConnectConfig>,
 ) -> Result<Json<ConnectResult>, ApiError> {
     let driver_name = format!("{:?}", config.driver);
@@ -383,14 +466,20 @@ async fn handle_connect(
         .write()
         .await
         .insert(connection_id.clone(), Arc::from(driver));
-    log::info!("connected driver={} connection_id={}", driver_name, connection_id);
+    sessions.register(&session.0, &connection_id).await;
+    log::info!("connected driver={} connection_id={} session={}", driver_name, connection_id, session.0);
     Ok(Json(ConnectResult { connection_id }))
 }
 
 async fn handle_query(
     State(manager): State<Arc<ConnectionManager>>,
+    State(sessions): State<Arc<SessionRegistry>>,
+    session: SessionId,
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<QueryResult>, ApiError> {
+    if !sessions.verify(&session.0, &req.connection_id).await {
+        return Err(ApiError(StatusCode::NOT_FOUND, DbError::connection_not_found(&req.connection_id)));
+    }
     let connections = manager.connections.read().await;
     let driver = connections
         .get(&req.connection_id)
@@ -401,8 +490,13 @@ async fn handle_query(
 
 async fn handle_execute(
     State(manager): State<Arc<ConnectionManager>>,
+    State(sessions): State<Arc<SessionRegistry>>,
+    session: SessionId,
     Json(req): Json<ExecuteRequest>,
 ) -> Result<Json<ExecuteResult>, ApiError> {
+    if !sessions.verify(&session.0, &req.connection_id).await {
+        return Err(ApiError(StatusCode::NOT_FOUND, DbError::connection_not_found(&req.connection_id)));
+    }
     let connections = manager.connections.read().await;
     let driver = connections
         .get(&req.connection_id)
@@ -419,8 +513,14 @@ async fn handle_test(Json(config): Json<ConnectConfig>) -> Result<Json<()>, ApiE
 
 async fn handle_disconnect(
     State(manager): State<Arc<ConnectionManager>>,
+    State(sessions): State<Arc<SessionRegistry>>,
+    session: SessionId,
     Json(req): Json<DisconnectRequest>,
 ) -> Result<Json<()>, ApiError> {
+    if !sessions.verify(&session.0, &req.connection_id).await {
+        return Err(ApiError(StatusCode::NOT_FOUND, DbError::connection_not_found(&req.connection_id)));
+    }
+    sessions.unregister(&session.0, &req.connection_id).await;
     let mut connections = manager.connections.write().await;
     if let Some(driver) = connections.remove(&req.connection_id) {
         driver.close().await?;
@@ -431,8 +531,13 @@ async fn handle_disconnect(
 
 async fn handle_transaction(
     State(manager): State<Arc<ConnectionManager>>,
+    State(sessions): State<Arc<SessionRegistry>>,
+    session: SessionId,
     Json(req): Json<TransactionRequest>,
 ) -> Result<Json<()>, ApiError> {
+    if !sessions.verify(&session.0, &req.connection_id).await {
+        return Err(ApiError(StatusCode::NOT_FOUND, DbError::connection_not_found(&req.connection_id)));
+    }
     let connections = manager.connections.read().await;
     let driver = connections
         .get(&req.connection_id)
@@ -444,11 +549,14 @@ async fn handle_transaction(
 async fn handle_stream(
     ws: WebSocketUpgrade,
     State(manager): State<Arc<ConnectionManager>>,
+    State(sessions): State<Arc<SessionRegistry>>,
+    session: SessionId,
 ) -> Response {
-    ws.on_upgrade(|socket| stream_handler(socket, manager))
+    let sid = session.0;
+    ws.on_upgrade(move |socket| stream_handler(socket, manager, sessions, sid))
 }
 
-async fn stream_handler(socket: WebSocket, manager: Arc<ConnectionManager>) {
+async fn stream_handler(socket: WebSocket, manager: Arc<ConnectionManager>, sessions: Arc<SessionRegistry>, session_id: String) {
     let (mut sender, mut receiver) = socket.split();
 
     // Wait for the initial query request from the client.
@@ -474,6 +582,19 @@ async fn stream_handler(socket: WebSocket, manager: Arc<ConnectionManager>) {
             return;
         }
     };
+
+    // Verify session ownership of the connection
+    if !sessions.verify(&session_id, &req.connection_id).await {
+        let err = StreamEvent::Error {
+            message: format!("Connection not found: {}", req.connection_id),
+            code: "CONNECTION_NOT_FOUND".to_string(),
+        };
+        let _ = sender
+            .send(Message::Text(serde_json::to_string(&err).unwrap().into()))
+            .await;
+        let _ = sender.send(Message::Close(None)).await;
+        return;
+    }
 
     // Clone the Arc before dropping the read lock so the stream can run
     // without holding the lock for its full duration.
@@ -889,6 +1010,7 @@ pub fn build_router(
     secret_state: Arc<SecretStore>,
     tunnel_state: Arc<TunnelManager>,
     auth_state: Arc<AuthConfig>,
+    session_state: Arc<SessionRegistry>,
 ) -> Router {
     let static_dir =
         std::env::var("SEAQUEL_STATIC_DIR").unwrap_or_else(|_| "./static".to_string());
@@ -901,6 +1023,7 @@ pub fn build_router(
         secrets: secret_state,
         tunnels: tunnel_state,
         auth: auth_state,
+        sessions: session_state,
     };
 
     Router::new()
@@ -945,7 +1068,8 @@ pub async fn run_server() {
     let secrets = Arc::new(SecretStore::new());
     let tunnels = Arc::new(TunnelManager::new());
     let auth = Arc::new(AuthConfig::from_env());
-    let app = build_router(state, secrets, tunnels, auth);
+    let sessions = Arc::new(SessionRegistry::new());
+    let app = build_router(state, secrets, tunnels, auth, sessions);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
