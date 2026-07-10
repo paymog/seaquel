@@ -7,7 +7,7 @@
  * Falls back to a no-op implementation in browser demo mode.
  */
 
-import { isTauri } from "$lib/utils/environment";
+import { isServer, isTauri } from "$lib/utils/environment";
 
 const SERVICE = "app.seaquel.desktop";
 
@@ -251,17 +251,136 @@ class NoopKeyringService implements KeyringService {
   }
 }
 
+/**
+ * Server-side implementation using the Rust secret store HTTP API.
+ * Used when running as a self-hosted web app.
+ */
+export class ServerKeyringService implements KeyringService {
+  private baseUrl = "";
+
+  private async setSecret(key: string, value: string): Promise<void> {
+    await fetch(`${this.baseUrl}/api/secrets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, value }),
+    });
+  }
+
+  private async getSecret(key: string): Promise<string | null> {
+    const res = await fetch(
+      `${this.baseUrl}/api/secrets/${encodeURIComponent(key)}`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.value ?? null;
+  }
+
+  private async deleteSecret(key: string): Promise<void> {
+    await fetch(
+      `${this.baseUrl}/api/secrets/${encodeURIComponent(key)}`,
+      { method: "DELETE" }
+    );
+  }
+
+  async setDbPassword(connectionId: string, password: string): Promise<void> {
+    await this.setSecret(`db:${connectionId}`, password);
+  }
+
+  async getDbPassword(connectionId: string): Promise<string | null> {
+    return this.getSecret(`db:${connectionId}`);
+  }
+
+  async deleteDbPassword(connectionId: string): Promise<void> {
+    await this.deleteSecret(`db:${connectionId}`);
+  }
+
+  async setSshPassword(connectionId: string, password: string): Promise<void> {
+    await this.setSecret(`ssh:${connectionId}`, password);
+  }
+
+  async getSshPassword(connectionId: string): Promise<string | null> {
+    return this.getSecret(`ssh:${connectionId}`);
+  }
+
+  async deleteSshPassword(connectionId: string): Promise<void> {
+    await this.deleteSecret(`ssh:${connectionId}`);
+  }
+
+  async setSshKeyPassphrase(connectionId: string, passphrase: string): Promise<void> {
+    await this.setSecret(`ssh-key:${connectionId}`, passphrase);
+  }
+
+  async getSshKeyPassphrase(connectionId: string): Promise<string | null> {
+    return this.getSecret(`ssh-key:${connectionId}`);
+  }
+
+  async deleteSshKeyPassphrase(connectionId: string): Promise<void> {
+    await this.deleteSecret(`ssh-key:${connectionId}`);
+  }
+
+  async deleteAllForConnection(connectionId: string): Promise<void> {
+    await Promise.all([
+      this.deleteDbPassword(connectionId),
+      this.deleteSshPassword(connectionId),
+      this.deleteSshKeyPassphrase(connectionId),
+    ]);
+  }
+
+  async setLicenseKey(key: string): Promise<void> {
+    await this.setSecret("license-key", key);
+  }
+
+  async getLicenseKey(): Promise<string | null> {
+    return this.getSecret("license-key");
+  }
+
+  async deleteLicenseKey(): Promise<void> {
+    await this.deleteSecret("license-key");
+  }
+
+  async setAIApiKey(key: string): Promise<void> {
+    await this.setSecret("ai-api-key", key);
+  }
+
+  async getAIApiKey(): Promise<string | null> {
+    return this.getSecret("ai-api-key");
+  }
+
+  async deleteAIApiKey(): Promise<void> {
+    await this.deleteSecret("ai-api-key");
+  }
+
+  async setAIApiKeyForProvider(id: string, key: string): Promise<void> {
+    await this.setSecret(`ai-api-key:${id}`, key);
+  }
+
+  async getAIApiKeyForProvider(id: string): Promise<string | null> {
+    return this.getSecret(`ai-api-key:${id}`);
+  }
+
+  async deleteAIApiKeyForProvider(id: string): Promise<void> {
+    await this.deleteSecret(`ai-api-key:${id}`);
+  }
+
+  isAvailable(): boolean {
+    return true;
+  }
+}
+
 let keyringService: KeyringService | null = null;
 
 /**
  * Get the keyring service instance.
- * Returns a Tauri implementation in desktop app, or a no-op in browser demo.
+ * Returns a Tauri implementation in desktop app, a server implementation
+ * when self-hosted, or a no-op in browser demo.
  */
 export function getKeyringService(): KeyringService {
   if (keyringService) return keyringService;
 
   if (isTauri()) {
     keyringService = new TauriKeyringService();
+  } else if (isServer()) {
+    keyringService = new ServerKeyringService();
   } else {
     keyringService = new NoopKeyringService();
   }

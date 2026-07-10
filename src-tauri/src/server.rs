@@ -1,17 +1,18 @@
 //! HTTP + WebSocket server — exposed as `seaquel_lib::server` so both the
 //! binary and the integration tests can share `build_router` / `run_server`.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        State,
+        Path, State,
     },
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use futures::{SinkExt, StreamExt};
@@ -23,6 +24,65 @@ use crate::db::{
     sqlite::SqliteDriver, BatchStatement, ConnectConfig, ConnectResult, ConnectionManager, DbError,
     Driver, DriverType, ExecuteResult, QueryResult, StreamEvent,
 };
+
+use crate::ssh_tunnel::{TunnelConfig, TunnelError, TunnelManager, TunnelResult};
+
+// ── Secret store ─────────────────────────────────────────────────────────────
+
+#[derive(Default)]
+pub struct SecretStore {
+    secrets: tokio::sync::RwLock<HashMap<String, String>>,
+}
+
+impl SecretStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub async fn set(&self, key: &str, value: &str) {
+        self.secrets
+            .write()
+            .await
+            .insert(key.to_string(), value.to_string());
+    }
+
+    pub async fn get(&self, key: &str) -> Option<String> {
+        self.secrets.read().await.get(key).cloned()
+    }
+
+    pub async fn delete(&self, key: &str) -> bool {
+        self.secrets.write().await.remove(key).is_some()
+    }
+}
+// ── App state ─────────────────────────────────────────────────────────────────
+
+/// Combined application state; sub-states are extracted via `FromRef` so
+/// existing handlers that take `State<Arc<ConnectionManager>>` compile unchanged.
+#[derive(Clone)]
+pub struct AppState {
+    pub db: Arc<ConnectionManager>,
+    pub secrets: Arc<SecretStore>,
+    pub tunnels: Arc<TunnelManager>,
+}
+
+impl axum::extract::FromRef<AppState> for Arc<ConnectionManager> {
+    fn from_ref(state: &AppState) -> Self {
+        Arc::clone(&state.db)
+    }
+}
+
+impl axum::extract::FromRef<AppState> for Arc<SecretStore> {
+    fn from_ref(state: &AppState) -> Self {
+        Arc::clone(&state.secrets)
+    }
+}
+
+impl axum::extract::FromRef<AppState> for Arc<TunnelManager> {
+    fn from_ref(state: &AppState) -> Self {
+        Arc::clone(&state.tunnels)
+    }
+}
+
 
 // ── Request body types ────────────────────────────────────────────────────────
 
@@ -57,6 +117,17 @@ struct StreamRequest {
     connection_id: String,
     sql: String,
     values: Vec<serde_json::Value>,
+}
+
+#[derive(serde::Deserialize)]
+struct SetSecretRequest {
+    key: String,
+    value: String,
+}
+
+#[derive(serde::Serialize)]
+struct GetSecretResponse {
+    value: String,
 }
 
 // ── Error response ────────────────────────────────────────────────────────────
@@ -291,16 +362,50 @@ async fn stream_handler(socket: WebSocket, manager: Arc<ConnectionManager>) {
     manager.cancellation_flags.write().await.remove(&req.query_id);
 }
 
+// ── Secret handlers ───────────────────────────────────────────────────────────
+
+async fn handle_set_secret(
+    State(store): State<Arc<SecretStore>>,
+    Json(req): Json<SetSecretRequest>,
+) -> impl IntoResponse {
+    store.set(&req.key, &req.value).await;
+    StatusCode::CREATED
+}
+
+async fn handle_get_secret(
+    State(store): State<Arc<SecretStore>>,
+    Path(key): Path<String>,
+) -> impl IntoResponse {
+    match store.get(&key).await {
+        Some(value) => (StatusCode::OK, Json(GetSecretResponse { value })).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn handle_delete_secret(
+    State(store): State<Arc<SecretStore>>,
+    Path(key): Path<String>,
+) -> impl IntoResponse {
+    store.delete(&key).await;
+    StatusCode::NO_CONTENT
+}
+
+
 // ── Router builder ────────────────────────────────────────────────────────────
 
 /// Build the application router.  Exposed `pub` so tests and the binary can
 /// both call it without duplicating handler wiring.
-pub fn build_router(state: Arc<ConnectionManager>) -> Router {
+pub fn build_router(db_state: Arc<ConnectionManager>, secret_state: Arc<SecretStore>) -> Router {
     let static_dir =
         std::env::var("SEAQUEL_STATIC_DIR").unwrap_or_else(|_| "./static".to_string());
 
     let serve_dir = ServeDir::new(&static_dir)
         .fallback(ServeFile::new(format!("{}/index.html", static_dir)));
+
+    let state = AppState {
+        db: db_state,
+        secrets: secret_state,
+    };
 
     Router::new()
         .route("/api/db/connect", post(handle_connect))
@@ -310,6 +415,9 @@ pub fn build_router(state: Arc<ConnectionManager>) -> Router {
         .route("/api/db/disconnect", post(handle_disconnect))
         .route("/api/db/transaction", post(handle_transaction))
         .route("/api/db/stream", get(handle_stream))
+        .route("/api/secrets", post(handle_set_secret))
+        .route("/api/secrets/{key}", get(handle_get_secret))
+        .route("/api/secrets/{key}", delete(handle_delete_secret))
         .layer(CorsLayer::permissive())
         .fallback_service(serve_dir)
         .with_state(state)
@@ -320,7 +428,8 @@ pub async fn run_server() {
         std::env::var("SEAQUEL_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_string());
 
     let state = Arc::new(ConnectionManager::new());
-    let app = build_router(state);
+    let secrets = Arc::new(SecretStore::new());
+    let app = build_router(state, secrets);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await

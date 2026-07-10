@@ -10,13 +10,14 @@ use std::sync::Arc;
 
 use futures::{SinkExt, StreamExt};
 use seaquel_lib::db::ConnectionManager;
-use seaquel_lib::server::build_router;
+use seaquel_lib::server::{build_router, SecretStore};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 /// Start a server on a random port. Returns the `http://` base URL.
 async fn spawn_test_server() -> String {
-    let state = Arc::new(ConnectionManager::new());
-    let app = build_router(state);
+    let db_state = Arc::new(ConnectionManager::new());
+    let secret_state = Arc::new(SecretStore::new());
+    let app = build_router(db_state, secret_state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
@@ -822,4 +823,81 @@ async fn test_connection_usable_after_stream_cancelled() {
     assert_eq!(res.status(), 200, "query after cancel should succeed");
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["rows"][0][0], 5, "row count should be intact after cancel");
+}
+
+// ── Secret store tests ───────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_secret_lifecycle() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // Set a secret → 201
+    let res = client
+        .post(format!("{}/api/secrets", base))
+        .json(&serde_json::json!({ "key": "test-key", "value": "test-value" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201, "set secret should return 201");
+
+    // Get it back → 200 with value
+    let res = client
+        .get(format!("{}/api/secrets/test-key", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "get secret should return 200");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["value"], "test-value", "returned value should match");
+
+    // Delete it → 204
+    let res = client
+        .delete(format!("{}/api/secrets/test-key", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 204, "delete secret should return 204");
+
+    // Get after delete → 404
+    let res = client
+        .get(format!("{}/api/secrets/test-key", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404, "get after delete should return 404");
+}
+
+#[tokio::test]
+async fn test_secret_overwrite() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // Set initial value
+    let res = client
+        .post(format!("{}/api/secrets", base))
+        .json(&serde_json::json!({ "key": "overwrite-key", "value": "first" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+
+    // Overwrite with new value
+    let res = client
+        .post(format!("{}/api/secrets", base))
+        .json(&serde_json::json!({ "key": "overwrite-key", "value": "second" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+
+    // Verify new value
+    let res = client
+        .get(format!("{}/api/secrets/overwrite-key", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["value"], "second", "overwritten value should be new value");
 }
