@@ -14,11 +14,42 @@ edition = "2021"
 name = "seaquel_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "seaquel-server"
+path = "src/bin/server.rs"
+required-features = ["server"]
+
+[features]
+default = ["tauri"]
+tauri = [
+    "dep:tauri",
+    "dep:tauri-build",
+    "dep:tauri-plugin-store",
+    "dep:tauri-plugin-dialog",
+    "dep:tauri-plugin-fs",
+    "dep:tauri-plugin-os",
+    "dep:tauri-plugin-clipboard-manager",
+    "dep:tauri-plugin-keyring",
+    "dep:tauri-plugin-deep-link",
+    "dep:tauri-plugin-log",
+    "dep:tauri-plugin-updater",
+    "dep:tauri-plugin-process",
+    "dep:arboard",
+    "dep:image",
+]
+server = [
+    "dep:axum",
+    "dep:axum-extra",
+    "dep:tower",
+    "dep:tower-http",
+    "tokio/full",
+]
+
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = [], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql", "sqlite", "json", "time", "rust_decimal", "ipnetwork", "mac_address", "bit-vec"] }
@@ -27,35 +58,43 @@ time = { version = "0.3", features = ["formatting"] }
 thiserror = "2"
 duckdb = { version = "1.1", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
-tauri-plugin-store = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-fs = "2"
+tauri-plugin-store = { version = "2", optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
+tauri-plugin-fs = { version = "2", optional = true }
 russh = "0.48"
 russh-keys = "0.48"
 async-trait = "0.1"
 async-stream = "0.3"
 futures = "0.3"
-tokio = { version = "1", features = ["sync", "net", "io-util"] }
+tokio = { version = "1", features = ["sync", "net", "io-util", "rt-multi-thread", "macros"] }
 tiberius = { version = "0.12", default-features = false, features = ["tokio", "chrono", "tds73", "native-tls"] }
 async-native-tls = "0.5"
 tokio-util = { version = "0.7", features = ["compat"] }
 base64 = "0.22"
-tauri-plugin-os = "2"
-tauri-plugin-clipboard-manager = "2.3.2"
-arboard = "3.6.1"
-image = "0.25.9"
+tauri-plugin-os = { version = "2", optional = true }
+tauri-plugin-clipboard-manager = { version = "2.3.2", optional = true }
+arboard = { version = "3.6.1", optional = true }
+image = { version = "0.25.9", optional = true }
 dirs = "5"
-tauri-plugin-keyring = "0.1"
+tauri-plugin-keyring = { version = "0.1", optional = true }
 git2 = { version = "0.19", features = ["vendored-libgit2", "vendored-openssl"] }
 opener = "0.7"
 reqwest = { version = "0.12", features = ["json", "native-tls"] }
 whoami = "1"
 plist = "1"
-tauri-plugin-deep-link = "2"
-tauri-plugin-log = "2"
+tauri-plugin-deep-link = { version = "2", optional = true }
+tauri-plugin-log = { version = "2", optional = true }
 log = { version = "0.4", features = ["kv"] }
+env_logger = "0.11"
+axum = { version = "0.8", features = ["ws"], optional = true }
+axum-extra = { version = "0.10", optional = true }
+tower = { version = "0.5", optional = true }
+tower-http = { version = "0.6", features = ["cors", "fs", "trace"], optional = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-updater = "2"
-tauri-plugin-process = "2"
+tauri-plugin-updater = { version = "2", optional = true }
+tauri-plugin-process = { version = "2", optional = true }
 
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json", "native-tls"] }
+tokio = { version = "1", features = ["full"] }

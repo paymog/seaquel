@@ -1,3 +1,4 @@
+#[cfg(feature = "tauri")]
 pub mod commands;
 pub mod decode;
 pub mod duckdb;
@@ -29,6 +30,17 @@ pub struct StreamBatch {
     pub columns: Option<Vec<String>>,
     pub rows: Vec<Vec<serde_json::Value>>,
     pub is_final: bool,
+}
+
+/// Events sent back to the frontend through a streaming query's Channel.
+/// Terminal events (`Done`, `Error`) are sent through the channel rather than
+/// as a thrown invoke error so the JS side sees one unified termination path.
+#[derive(Debug, Serialize, Clone)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum StreamEvent {
+    Batch(StreamBatch),
+    Done,
+    Error { message: String, code: String },
 }
 
 /// Result of a write operation

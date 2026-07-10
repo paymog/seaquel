@@ -1,5 +1,4 @@
 use log::{debug, info};
-use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{command, ipc::Channel, State};
@@ -7,19 +6,8 @@ use tauri::{command, ipc::Channel, State};
 use super::{
     duckdb::DuckdbDriver, mssql::MssqlDriver, mysql::MysqlDriver, postgres::PostgresDriver,
     sqlite::SqliteDriver, BatchStatement, ConnectConfig, ConnectResult, ConnectionManager, DbError,
-    Driver, DriverType, ExecuteResult, QueryResult, StreamBatch,
+    Driver, DriverType, ExecuteResult, QueryResult, StreamEvent,
 };
-
-/// Events sent back to the frontend through a streaming query's Channel.
-/// Terminal events (`Done`, `Error`) are sent through the channel rather than
-/// as a thrown invoke error so the JS side sees one unified termination path.
-#[derive(Debug, Serialize, Clone)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum StreamEvent {
-    Batch(StreamBatch),
-    Done,
-    Error { message: String, code: String },
-}
 
 fn sql_keyword(sql: &str) -> &str {
     sql.trim_start().split_whitespace().next().unwrap_or("?")

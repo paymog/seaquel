@@ -1,21 +1,37 @@
-use arboard::Clipboard;
-use image::ImageReader;
-use log::{debug, error, info};
-use std::fs;
-use std::sync::Mutex;
-use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
-use tauri::{Emitter, Manager};
-use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
-use tauri_plugin_updater::UpdaterExt;
+pub mod db;
 
-mod db;
+#[cfg(feature = "tauri")]
 mod git;
+#[cfg(feature = "tauri")]
 mod license;
+#[cfg(feature = "tauri")]
 mod logging;
+#[cfg(feature = "tauri")]
 mod ssh_tunnel;
 
+#[cfg(feature = "tauri")]
+use arboard::Clipboard;
+#[cfg(feature = "tauri")]
+use image::ImageReader;
+#[cfg(feature = "tauri")]
+use log::{debug, error, info};
+#[cfg(feature = "tauri")]
+use std::fs;
+#[cfg(feature = "tauri")]
+use std::sync::Mutex;
+#[cfg(feature = "tauri")]
+use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
+#[cfg(feature = "tauri")]
+use tauri::{Emitter, Manager};
+#[cfg(feature = "tauri")]
+use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
+#[cfg(feature = "tauri")]
+use tauri_plugin_updater::UpdaterExt;
+
+#[cfg(feature = "tauri")]
 use ssh_tunnel::TunnelManager;
 
+#[cfg(feature = "tauri")]
 #[derive(Debug, Clone, serde::Serialize)]
 struct UpdateInfo {
     version: String,
@@ -23,30 +39,36 @@ struct UpdateInfo {
     size: Option<u64>,
 }
 
+#[cfg(feature = "tauri")]
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct CommandError {
     message: String,
     code: String,
 }
 
+#[cfg(feature = "tauri")]
 impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {}", self.code, self.message)
     }
 }
 
+#[cfg(feature = "tauri")]
 impl std::error::Error for CommandError {}
 
+#[cfg(feature = "tauri")]
 struct PendingUpdate {
     bytes: Mutex<Option<Vec<u8>>>,
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+#[cfg(feature = "tauri")]
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust! Yep", name)
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 fn read_dbeaver_config() -> Result<Option<String>, CommandError> {
     let home = dirs::home_dir().ok_or(CommandError {
@@ -75,6 +97,7 @@ fn read_dbeaver_config() -> Result<Option<String>, CommandError> {
     }
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 fn read_tableplus_config() -> Result<Option<String>, CommandError> {
     #[cfg(not(target_os = "macos"))]
@@ -107,6 +130,7 @@ fn read_tableplus_config() -> Result<Option<String>, CommandError> {
     }
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 fn copy_image_to_clipboard(path: String) -> Result<(), CommandError> {
     debug!(activity = "app.clipboard"; "Copying image to clipboard");
@@ -145,6 +169,7 @@ fn copy_image_to_clipboard(path: String) -> Result<(), CommandError> {
     Ok(())
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 fn open_path(path: String) -> Result<(), CommandError> {
     debug!(activity = "app.open"; "Opening external path");
@@ -154,11 +179,13 @@ fn open_path(path: String) -> Result<(), CommandError> {
     })
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 fn get_username() -> String {
     whoami::username()
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 fn read_log_file(app: tauri::AppHandle) -> Result<String, CommandError> {
     use std::io::{Read, Seek, SeekFrom};
@@ -207,6 +234,7 @@ fn read_log_file(app: tauri::AppHandle) -> Result<String, CommandError> {
     Ok(content)
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 fn clear_log_file(app: tauri::AppHandle) -> Result<(), CommandError> {
     let log_dir = app.path().app_log_dir().map_err(|e| CommandError {
@@ -223,6 +251,7 @@ fn clear_log_file(app: tauri::AppHandle) -> Result<(), CommandError> {
     Ok(())
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 fn get_data_dir(app: tauri::AppHandle) -> Result<String, CommandError> {
     if let Ok(custom_dir) = std::env::var("SEAQUEL_DATA_DIR") {
@@ -253,6 +282,7 @@ fn get_data_dir(app: tauri::AppHandle) -> Result<String, CommandError> {
     }
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 async fn install_update(
     app: tauri::AppHandle,
@@ -295,6 +325,7 @@ async fn install_update(
     Ok(())
 }
 
+#[cfg(feature = "tauri")]
 #[tauri::command]
 async fn check_for_update_command(
     app: tauri::AppHandle,
@@ -340,6 +371,7 @@ async fn check_for_update_command(
     }
 }
 
+#[cfg(feature = "tauri")]
 fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // Load and decode the app icon for the About dialog
     let icon = {
@@ -432,6 +464,7 @@ fn create_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &window_menu])
 }
 
+#[cfg(feature = "tauri")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     info!(activity = "app.startup"; "Seaquel starting");
@@ -587,6 +620,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+#[cfg(feature = "tauri")]
 async fn check_for_update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
     if let Some(update) = app.updater()?.check().await? {
         let mut downloaded = 0;
