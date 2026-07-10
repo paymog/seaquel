@@ -76,6 +76,7 @@
 	let aiPrivacyExpanded = $state(formData.aiShareSchema !== undefined || formData.aiShareData !== undefined);
 
 	const selectDatabaseFile = async () => {
+		if (!isTauri()) return;
 		try {
 			const isDuckDB = formData.type === "duckdb";
 			const filters = isDuckDB
@@ -107,6 +108,7 @@
 	};
 
 	const selectSshKeyFile = async () => {
+		if (!isTauri()) return;
 		try {
 			const selected = await openFileDialog({
 				multiple: false,
@@ -172,9 +174,11 @@
 							class="pl-9"
 						/>
 					</div>
-					<Button variant="outline" type="button" onclick={selectDatabaseFile}>
-						{m.connection_dialog_button_browse()}
-					</Button>
+					{#if isTauri()}
+						<Button variant="outline" type="button" onclick={selectDatabaseFile}>
+							{m.connection_dialog_button_browse()}
+						</Button>
+					{/if}
 				</div>
 				{#if formData.type === "duckdb"}
 					<button
@@ -426,9 +430,11 @@
 														placeholder={m.connection_dialog_placeholder_ssh_key_path()}
 														class="flex-1"
 													/>
-													<Button variant="outline" type="button" onclick={selectSshKeyFile}>
-														{m.connection_dialog_button_browse()}
-													</Button>
+						{#if isTauri()}
+							<Button variant="outline" type="button" onclick={selectSshKeyFile}>
+								{m.connection_dialog_button_browse()}
+							</Button>
+						{/if}
 												</div>
 											</div>
 											<div class="grid gap-2">

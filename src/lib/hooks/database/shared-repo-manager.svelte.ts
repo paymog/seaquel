@@ -23,17 +23,7 @@ import {
   serializeConnectionFile,
   nameToFilename,
 } from "$lib/services/config-file-parser";
-import {
-  readDir,
-  readTextFile,
-  exists,
-  writeTextFile,
-  mkdir,
-  remove,
-  rename,
-  stat,
-} from "@tauri-apps/plugin-fs";
-import { join } from "@tauri-apps/api/path";
+import { readDir, readTextFile, exists, writeTextFile, mkdir, remove, rename, stat, join } from "$lib/utils/tauri-fs";
 import { log } from "$lib/utils/logger";
 import { extractErrorMessage } from "$lib/errors";
 

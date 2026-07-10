@@ -4,7 +4,7 @@
  */
 
 import { load as tauriLoad } from "@tauri-apps/plugin-store";
-import { remove } from "@tauri-apps/plugin-fs";
+import { remove } from "$lib/utils/tauri-fs";
 import { getDataDir } from "$lib/api/tauri";
 import type { StorageProvider, Store, StoreLoadOptions } from "./types";
 

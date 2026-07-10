@@ -7,8 +7,7 @@ import {
   isValidQueryPath,
 } from "$lib/services/query-file-parser";
 import { nameToFilename } from "$lib/services/config-file-parser";
-import { writeTextFile, remove, mkdir, exists } from "@tauri-apps/plugin-fs";
-import { join, dirname } from "@tauri-apps/api/path";
+import { writeTextFile, remove, mkdir, exists, join, dirname } from "$lib/utils/tauri-fs";
 
 /**
  * File projection utility for shared queries.

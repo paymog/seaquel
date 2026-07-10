@@ -11,8 +11,7 @@
 	import { themeStore } from "$lib/stores/theme.svelte.js";
 	import { toast } from "svelte-sonner";
 	import { errorToast } from "$lib/utils/toast";
-	import { open, save } from "@tauri-apps/plugin-dialog";
-	import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+	import { saveFile, pickFile } from "$lib/utils/file-bridge";
 	import PaletteIcon from "@lucide/svelte/icons/palette";
 	import PlusIcon from "@lucide/svelte/icons/plus";
 	import UploadIcon from "@lucide/svelte/icons/upload";
@@ -70,16 +69,8 @@
 		try {
 			const json = themeStore.exportTheme(theme.id);
 			const fileName = theme.name.toLowerCase().replace(/\s+/g, "-") + ".json";
-
-			const filePath = await save({
-				defaultPath: fileName,
-				filters: [{ name: "JSON", extensions: ["json"] }],
-			});
-
-			if (filePath) {
-				await writeTextFile(filePath, json);
-				toast.success(m.theme_export_success());
-			}
+			await saveFile(fileName, json, "application/json");
+			toast.success(m.theme_export_success());
 		} catch (error) {
 			console.error("Failed to export theme:", error);
 		}
@@ -87,13 +78,9 @@
 
 	async function importTheme() {
 		try {
-			const filePath = await open({
-				filters: [{ name: "JSON", extensions: ["json"] }],
-				multiple: false,
-			});
-
-			if (filePath) {
-				const content = await readTextFile(filePath as string);
+			const file = await pickFile(".json");
+			if (file) {
+				const content = await file.text();
 				themeStore.importTheme(content);
 				toast.success(m.theme_import_success());
 			}

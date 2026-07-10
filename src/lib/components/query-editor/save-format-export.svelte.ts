@@ -1,7 +1,6 @@
 import { toast } from "svelte-sonner";
 import { errorToast } from "$lib/utils/toast";
-import { save } from "@tauri-apps/plugin-dialog";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { saveFile } from "$lib/utils/file-bridge";
 import { format as formatSQL } from "sql-formatter";
 import { formatConfig, getExportContent, type ExportFormat } from "$lib/utils/export-formats.js";
 import { m } from "$lib/paraglide/messages.js";
@@ -62,17 +61,11 @@ export function createSaveFormatExport(ctx: QueryEditorContext) {
 
   async function handleExport(format: ExportFormat) {
     if (!ctx.getActiveResult()) return;
-
     const config = formatConfig[format];
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
     const defaultName = `query_results_${timestamp}.${config.extension}`;
-    const filters = [{ name: config.name, extensions: [config.extension] }];
-
-    const filePath = await save({ defaultPath: defaultName, filters });
-    if (!filePath) return;
-
     const content = getContent(format);
-    await writeTextFile(filePath, content);
+    await saveFile(defaultName, content);
   }
 
   async function handleCopy(format: ExportFormat) {

@@ -5,8 +5,7 @@
 	import { toPng } from "html-to-image";
 	import { toast } from "svelte-sonner";
 import { errorToast } from "$lib/utils/toast";
-	import { save } from "@tauri-apps/plugin-dialog";
-	import { writeFile } from "@tauri-apps/plugin-fs";
+	import { saveFile } from "$lib/utils/file-bridge";
 	import { Button } from "$lib/components/ui/button";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
 	import * as Popover from "$lib/components/ui/popover";
@@ -96,21 +95,18 @@ import { errorToast } from "$lib/utils/toast";
 	const exportToPng = async () => {
 		const element = getFlowElement();
 		if (!element) return;
-
 		try {
-			const filePath = await save({
-				defaultPath: `query-visual-${Date.now()}.png`,
-				filters: [{ name: 'PNG Image', extensions: ['png'] }]
-			});
-			if (!filePath) return;
-
 			const dataUrl = await toPng(element, getImageOptions());
-			const base64 = dataUrl.split(',')[1];
+			const base64 = dataUrl.split(",")[1];
 			const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-			await writeFile(filePath, bytes);
-			toast.success('PNG saved');
+			await saveFile(
+				`query-visual-${Date.now()}.png`,
+				new Blob([bytes], { type: "image/png" }),
+				"image/png",
+			);
+			toast.success("PNG saved");
 		} catch (e) {
-			errorToast('Failed to export PNG');
+			errorToast("Failed to export PNG");
 		}
 	};
 
