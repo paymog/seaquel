@@ -5,6 +5,7 @@ import adapter from "@sveltejs/adapter-static";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
 const isDemo = process.env.BUILD_TARGET === "demo";
+const isServer = process.env.BUILD_TARGET === "server";
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -12,8 +13,8 @@ const config = {
   kit: {
     adapter: adapter({
       fallback: "index.html",
-      pages: isDemo ? "build-demo" : "build",
-      assets: isDemo ? "build-demo" : "build",
+      pages: isDemo ? "build-demo" : isServer ? "build-server" : "build",
+      assets: isDemo ? "build-demo" : isServer ? "build-server" : "build",
     }),
     paths: {
       base: isDemo ? "/demo" : "",

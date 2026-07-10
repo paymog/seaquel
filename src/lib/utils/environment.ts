@@ -24,10 +24,21 @@ export function isTauri(): boolean {
 }
 
 /**
- * Check if running in browser demo mode (not Tauri).
+ * Check if running as a self-hosted web app (served by the Rust backend).
+ * The app is NOT in Tauri and NOT in demo mode.
+ */
+export function isServer(): boolean {
+  if (typeof window === "undefined") return false;
+  const v = import.meta.env.VITE_IS_SERVER;
+  // Vite define injects the literal boolean; vi.stubEnv sets a string in tests
+  return !isTauri() && (v === true || v === "true");
+}
+
+/**
+ * Check if running in browser demo mode (not Tauri, not server).
  */
 export function isDemo(): boolean {
-  return !isTauri();
+  return !isTauri() && !isServer();
 }
 
 /**

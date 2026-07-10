@@ -8,6 +8,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "build:demo": "BUILD_TARGET=demo vite build --mode demo",
+    "build:server": "BUILD_TARGET=server vite build --mode server",
     "format": "oxfmt",
     "lint": "oxlint --type-aware --type-check --deny-warnings --fix",
     "preview": "vite preview",

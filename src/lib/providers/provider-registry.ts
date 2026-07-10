@@ -5,7 +5,7 @@
 
 import type { DatabaseProvider } from "./types";
 import { getProvider, getDuckDBProvider } from "./index";
-import { isTauri } from "$lib/utils/environment";
+import { isTauri, isServer } from "$lib/utils/environment";
 
 export class ProviderRegistry {
   private provider: DatabaseProvider | null = null;
@@ -17,14 +17,15 @@ export class ProviderRegistry {
    * Lazily initializes and caches provider instances.
    */
   async getForType(dbType: string): Promise<DatabaseProvider> {
-    // Browser-only providers for demo mode
-    if (dbType === "sqlite" && !isTauri()) {
-      return this.getOrCreateWebSqlite();
+    if (isTauri()) {
+      return this.getOrCreateDefault();
     }
-    if (dbType === "duckdb" && !isTauri()) {
-      return this.getOrCreateDuckDB();
+    if (isServer()) {
+      return this.getOrCreateDefault();
     }
-    // In Tauri, the unified provider handles all database types
+    // Demo mode: use browser-native providers
+    if (dbType === "sqlite") return this.getOrCreateWebSqlite();
+    if (dbType === "duckdb") return this.getOrCreateDuckDB();
     return this.getOrCreateDefault();
   }
 

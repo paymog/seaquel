@@ -5,10 +5,12 @@ import { sveltekit } from "@sveltejs/kit/vite";
 
 const host = process.env.TAURI_DEV_HOST;
 const isDemo = process.env.BUILD_TARGET === "demo";
+const isServer = process.env.BUILD_TARGET === "server";
 
 // https://vitejs.dev/config/
 export default defineConfig(async ({ mode }) => {
   const isDemoMode = mode === "demo" || isDemo;
+  const isServerMode = mode === "server" || isServer;
 
   return {
     plugins: [
@@ -24,11 +26,12 @@ export default defineConfig(async ({ mode }) => {
     // Define environment variables
     define: {
       "import.meta.env.VITE_IS_DEMO": JSON.stringify(isDemoMode),
+      "import.meta.env.VITE_IS_SERVER": JSON.stringify(isServerMode),
     },
 
     // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
     // Skip Tauri-specific config in demo mode
-    ...(isDemoMode
+    ...(isDemoMode || isServerMode
       ? {}
       : {
           // 1. prevent vite from obscuring rust errors
@@ -64,19 +67,25 @@ export default defineConfig(async ({ mode }) => {
         : {}),
     },
 
-    // Build configuration for demo mode
+    // Build configuration for demo/server mode
     build: isDemoMode
       ? {
           outDir: "build-demo",
-          // Externalize Tauri packages in demo mode (they won't be used)
           rollupOptions: {
             external: (/** @type {string} */ _id) => {
-              // Don't externalize - let the dynamic imports handle it
-              // The environment checks will prevent Tauri code from running
               return false;
             },
           },
         }
-      : {},
+      : isServerMode
+        ? {
+            outDir: "build-server",
+            rollupOptions: {
+              external: (/** @type {string} */ _id) => {
+                return false;
+              },
+            },
+          }
+        : {},
   };
 });
