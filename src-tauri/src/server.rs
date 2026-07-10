@@ -8,7 +8,7 @@ use std::sync::Arc;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Path, State,
+        Path, Query, State,
     },
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -449,6 +449,231 @@ async fn handle_list_tunnels(State(tunnels): State<Arc<TunnelManager>>) -> impl 
     Json(tunnels.list().await)
 }
 
+// ── Git helpers ───────────────────────────────────────────────────────────────
+
+fn git_base_dir() -> std::path::PathBuf {
+    let base = std::env::var("SEAQUEL_DATA_DIR").unwrap_or_else(|_| "./data".to_string());
+    let path = std::path::PathBuf::from(base).join("git");
+    let _ = std::fs::create_dir_all(&path);
+    path
+}
+
+fn resolve_git_path(repo_path: &str) -> std::path::PathBuf {
+    git_base_dir().join(repo_path.trim_start_matches('/'))
+}
+
+struct GitApiError(StatusCode, crate::git::GitError);
+
+impl From<crate::git::GitError> for GitApiError {
+    fn from(err: crate::git::GitError) -> Self {
+        let status = match err.code.as_str() {
+            "REPO_OPEN_ERROR" => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        GitApiError(status, err)
+    }
+}
+
+impl IntoResponse for GitApiError {
+    fn into_response(self) -> Response {
+        (self.0, Json(self.1)).into_response()
+    }
+}
+
+async fn run_git<T, F>(f: F) -> Result<T, GitApiError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, crate::git::GitError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|_| {
+            GitApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                crate::git::GitError {
+                    message: "git task panicked".to_string(),
+                    code: "INTERNAL_ERROR".to_string(),
+                },
+            )
+        })?
+        .map_err(GitApiError::from)
+}
+
+// ── Git request / response types ──────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct GitCloneRequest {
+    url: String,
+    path: String,
+    credentials: Option<crate::git::GitCredentials>,
+}
+
+#[derive(serde::Deserialize)]
+struct GitInitRequest {
+    path: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GitPullRequest {
+    path: String,
+    credentials: Option<crate::git::GitCredentials>,
+}
+
+#[derive(serde::Deserialize)]
+struct GitPushRequest {
+    path: String,
+    credentials: Option<crate::git::GitCredentials>,
+}
+
+#[derive(serde::Deserialize)]
+struct GitStatusQuery {
+    path: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GitCommitRequest {
+    path: String,
+    message: String,
+}
+
+#[derive(serde::Serialize)]
+struct GitCommitResponse {
+    commit_id: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GitStageRequest {
+    path: String,
+    file_path: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GitDiscardRequest {
+    path: String,
+    file_path: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GitResolveRequest {
+    path: String,
+    file_path: String,
+    resolution: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GitConflictQuery {
+    path: String,
+    file_path: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GitSetRemoteRequest {
+    path: String,
+    url: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GitRemoteUrlQuery {
+    path: String,
+}
+
+#[derive(serde::Serialize)]
+struct GitRemoteUrlResponse {
+    url: Option<String>,
+}
+
+// ── Git handlers ──────────────────────────────────────────────────────────────
+
+async fn handle_git_clone(Json(req): Json<GitCloneRequest>) -> Result<StatusCode, GitApiError> {
+    let p = resolve_git_path(&req.path).to_string_lossy().to_string();
+    run_git(move || crate::git::git_clone_repo(req.url, p, req.credentials)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn handle_git_init(Json(req): Json<GitInitRequest>) -> Result<StatusCode, GitApiError> {
+    let p = resolve_git_path(&req.path).to_string_lossy().to_string();
+    run_git(move || crate::git::git_init_repo(p)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn handle_git_pull(
+    Json(req): Json<GitPullRequest>,
+) -> Result<Json<crate::git::SyncResult>, GitApiError> {
+    let p = resolve_git_path(&req.path).to_string_lossy().to_string();
+    let result = run_git(move || crate::git::git_pull_repo(p, req.credentials)).await?;
+    Ok(Json(result))
+}
+
+async fn handle_git_push(
+    Json(req): Json<GitPushRequest>,
+) -> Result<Json<crate::git::SyncResult>, GitApiError> {
+    let p = resolve_git_path(&req.path).to_string_lossy().to_string();
+    let result = run_git(move || crate::git::git_push_repo(p, req.credentials)).await?;
+    Ok(Json(result))
+}
+
+async fn handle_git_status(
+    Query(q): Query<GitStatusQuery>,
+) -> Result<Json<crate::git::RepoStatus>, GitApiError> {
+    let p = resolve_git_path(&q.path).to_string_lossy().to_string();
+    let result = run_git(move || crate::git::git_get_repo_status(p)).await?;
+    Ok(Json(result))
+}
+
+async fn handle_git_commit(
+    Json(req): Json<GitCommitRequest>,
+) -> Result<Json<GitCommitResponse>, GitApiError> {
+    let p = resolve_git_path(&req.path).to_string_lossy().to_string();
+    let commit_id = run_git(move || crate::git::git_commit_changes(p, req.message)).await?;
+    Ok(Json(GitCommitResponse { commit_id }))
+}
+
+async fn handle_git_stage(Json(req): Json<GitStageRequest>) -> Result<StatusCode, GitApiError> {
+    let p = resolve_git_path(&req.path).to_string_lossy().to_string();
+    run_git(move || crate::git::git_stage_file(p, req.file_path)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn handle_git_discard(
+    Json(req): Json<GitDiscardRequest>,
+) -> Result<StatusCode, GitApiError> {
+    let p = resolve_git_path(&req.path).to_string_lossy().to_string();
+    run_git(move || crate::git::git_discard_file(p, req.file_path)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn handle_git_resolve(
+    Json(req): Json<GitResolveRequest>,
+) -> Result<StatusCode, GitApiError> {
+    let p = resolve_git_path(&req.path).to_string_lossy().to_string();
+    run_git(move || crate::git::git_resolve_conflict(p, req.file_path, req.resolution)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn handle_git_conflict(
+    Query(q): Query<GitConflictQuery>,
+) -> Result<Json<crate::git::ConflictContent>, GitApiError> {
+    let p = resolve_git_path(&q.path).to_string_lossy().to_string();
+    let result = run_git(move || crate::git::git_get_conflict_content(p, q.file_path)).await?;
+    Ok(Json(result))
+}
+
+async fn handle_git_set_remote(
+    Json(req): Json<GitSetRemoteRequest>,
+) -> Result<StatusCode, GitApiError> {
+    let p = resolve_git_path(&req.path).to_string_lossy().to_string();
+    run_git(move || crate::git::git_set_remote(p, req.url)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn handle_git_remote_url(
+    Query(q): Query<GitRemoteUrlQuery>,
+) -> Result<Json<GitRemoteUrlResponse>, GitApiError> {
+    let p = resolve_git_path(&q.path).to_string_lossy().to_string();
+    let url = run_git(move || crate::git::git_get_remote_url(p)).await?;
+    Ok(Json(GitRemoteUrlResponse { url }))
+}
+
 
 // ── Router builder ────────────────────────────────────────────────────────────
 
@@ -482,6 +707,18 @@ pub fn build_router(db_state: Arc<ConnectionManager>, secret_state: Arc<SecretSt
         .route("/api/ssh/tunnel/{tunnel_id}", delete(handle_close_tunnel))
         .route("/api/ssh/tunnel/{tunnel_id}/status", get(handle_tunnel_status))
         .route("/api/ssh/tunnels", get(handle_list_tunnels))
+        .route("/api/git/clone", post(handle_git_clone))
+        .route("/api/git/init", post(handle_git_init))
+        .route("/api/git/pull", post(handle_git_pull))
+        .route("/api/git/push", post(handle_git_push))
+        .route("/api/git/status", get(handle_git_status))
+        .route("/api/git/commit", post(handle_git_commit))
+        .route("/api/git/stage", post(handle_git_stage))
+        .route("/api/git/discard", post(handle_git_discard))
+        .route("/api/git/resolve", post(handle_git_resolve))
+        .route("/api/git/conflict", get(handle_git_conflict))
+        .route("/api/git/remote", post(handle_git_set_remote))
+        .route("/api/git/remote-url", get(handle_git_remote_url))
         .layer(CorsLayer::permissive())
         .fallback_service(serve_dir)
         .with_state(state)
