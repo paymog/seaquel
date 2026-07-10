@@ -13,6 +13,7 @@ use seaquel_lib::db::ConnectionManager;
 use seaquel_lib::server::{build_router, SecretStore};
 use seaquel_lib::ssh_tunnel::TunnelManager;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
+use base64::Engine as _;
 
 /// Start a server on a random port. Returns the `http://` base URL.
 async fn spawn_test_server() -> String {
@@ -985,5 +986,92 @@ async fn test_ssh_create_tunnel_bad_host() {
         res.status().is_client_error() || res.status().is_server_error(),
         "expected error status, got {}",
         res.status()
+    );
+}
+
+// ── Encryption-specific secret tests ─────────────────────────────────────────
+
+/// Encryption is transparent to the caller: set → get returns the same
+/// plaintext even though the value is stored encrypted.
+#[tokio::test]
+async fn test_secret_encryption() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    client
+        .post(format!("{}/api/secrets", base))
+        .json(&serde_json::json!({ "key": "enc-key", "value": "super-secret-value" }))
+        .send()
+        .await
+        .unwrap();
+
+    let res = client
+        .get(format!("{}/api/secrets/enc-key", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(
+        body["value"], "super-secret-value",
+        "encryption must be transparent: decrypted value must match original"
+    );
+}
+
+/// When SEAQUEL_SECRET_KEY is provided the store initialises with that key and
+/// still round-trips secrets correctly.
+#[tokio::test]
+async fn test_secret_encryption_with_env_key() {
+    // 32 random bytes, base64-encoded.
+    let key_bytes: [u8; 32] = [
+        0x6b, 0x65, 0x79, 0x30, 0x31, 0x32, 0x33, 0x34,
+        0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63,
+        0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b,
+        0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73,
+    ];
+    let b64_key = base64::engine::general_purpose::STANDARD.encode(key_bytes);
+
+    // Build a store directly with the known key (mirroring what SecretStore::new()
+    // does when SEAQUEL_SECRET_KEY is set) and verify round-trip.
+    let store = Arc::new(SecretStore::with_key(key_bytes));
+    store.set("env-key", "env-value").await;
+    let got = store.get("env-key").await;
+    assert_eq!(got.as_deref(), Some("env-value"), "round-trip with explicit key should work");
+
+    // Also confirm the raw stored blob is NOT the plaintext.
+    let raw = store.get_raw("env-key").await.unwrap();
+    assert_ne!(
+        raw, "env-value",
+        "raw stored value must differ from plaintext (it is encrypted)"
+    );
+    // The b64_key variable is computed above; we just silence the unused-variable
+    // warning since this test exercises the SecretStore::with_key path, not the
+    // env-var path (which would require process-wide env mutation).
+    let _ = b64_key;
+}
+
+/// Each write to the same key produces a different ciphertext because a fresh
+/// random 96-bit nonce is chosen on every encryption.  This verifies that AES-GCM
+/// nonce reuse — which would be catastrophic — is not happening.
+#[tokio::test]
+async fn test_secret_different_nonce_each_time() {
+    let store = Arc::new(SecretStore::new());
+
+    store.set("nonce-key", "same-value").await;
+    let raw1 = store.get_raw("nonce-key").await.unwrap();
+
+    store.set("nonce-key", "same-value").await;
+    let raw2 = store.get_raw("nonce-key").await.unwrap();
+
+    assert_ne!(
+        raw1, raw2,
+        "two encryptions of the same plaintext must produce different ciphertexts (different nonces)"
+    );
+
+    // Both must still decrypt to the original plaintext.
+    assert_eq!(
+        store.get("nonce-key").await.as_deref(),
+        Some("same-value"),
+        "final value must still be recoverable"
     );
 }

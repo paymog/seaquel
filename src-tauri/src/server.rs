@@ -4,6 +4,10 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::{Aes256Gcm, Key, Nonce};
+use base64::Engine as _;
+use rand::RngCore;
 
 use axum::{
     extract::{
@@ -11,6 +15,7 @@ use axum::{
         Path, Query, State,
     },
     http::StatusCode,
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
     Json, Router,
@@ -18,6 +23,8 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
+
+use crate::auth::AuthConfig;
 
 use crate::db::{
     duckdb::DuckdbDriver, mssql::MssqlDriver, mysql::MysqlDriver, postgres::PostgresDriver,
@@ -29,29 +36,156 @@ use crate::ssh_tunnel::{TunnelConfig, TunnelError, TunnelManager, TunnelResult};
 
 // ── Secret store ─────────────────────────────────────────────────────────────
 
-#[derive(Default)]
+/// Private container for the mutable core of [`SecretStore`].  Holding both
+/// the cipher and the map under a single lock makes key rotation atomic: no
+/// window where the cipher is updated but stored ciphertexts still match the
+/// old key (or vice-versa).
+struct SecretStoreInner {
+    cipher: Aes256Gcm,
+    /// Each value is base64(12-byte random nonce ‖ AES-256-GCM ciphertext).
+    secrets: HashMap<String, String>,
+}
+
+/// Thread-safe, in-memory secret store with AES-256-GCM envelope encryption.
+///
+/// The master key is loaded from the `SEAQUEL_SECRET_KEY` environment variable
+/// (base64-encoded 32 bytes).  If the variable is absent a random key is
+/// generated at startup; those secrets **will not survive a restart**.
+///
+/// ## Key rotation
+/// Call [`SecretStore::rotate_key`] with the new 32-byte key.  It re-encrypts
+/// every stored value under the new key in a single write-lock transaction so
+/// reads are never served a stale ciphertext.  After rotation update
+/// `SEAQUEL_SECRET_KEY` and restart to make the new key durable.
 pub struct SecretStore {
-    secrets: tokio::sync::RwLock<HashMap<String, String>>,
+    inner: tokio::sync::RwLock<SecretStoreInner>,
 }
 
 impl SecretStore {
     pub fn new() -> Self {
-        Self::default()
+        let key_bytes = Self::load_or_generate_key();
+        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+        let cipher = Aes256Gcm::new(key);
+        Self {
+            inner: tokio::sync::RwLock::new(SecretStoreInner {
+                cipher,
+                secrets: HashMap::new(),
+            }),
+        }
+    }
+
+    /// Creates a `SecretStore` with an explicit key (useful in tests).
+    pub fn with_key(key_bytes: [u8; 32]) -> Self {
+        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+        let cipher = Aes256Gcm::new(key);
+        Self {
+            inner: tokio::sync::RwLock::new(SecretStoreInner {
+                cipher,
+                secrets: HashMap::new(),
+            }),
+        }
+    }
+
+    fn load_or_generate_key() -> [u8; 32] {
+        if let Ok(b64) = std::env::var("SEAQUEL_SECRET_KEY") {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(b64.trim())
+                .expect("SEAQUEL_SECRET_KEY must be valid base64");
+            assert!(
+                bytes.len() == 32,
+                "SEAQUEL_SECRET_KEY must decode to exactly 32 bytes, got {}",
+                bytes.len()
+            );
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&bytes);
+            return key;
+        }
+        log::warn!("SEAQUEL_SECRET_KEY not set; encrypted secrets will not survive restart");
+        let mut key = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut key);
+        key
+    }
+
+    fn encrypt_value(cipher: &Aes256Gcm, value: &str) -> String {
+        let mut nonce_bytes = [0u8; 12];
+        rand::thread_rng().fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        let ciphertext = cipher
+            .encrypt(nonce, value.as_bytes())
+            .expect("AES-256-GCM encryption failed");
+        let mut combined = nonce_bytes.to_vec();
+        combined.extend_from_slice(&ciphertext);
+        base64::engine::general_purpose::STANDARD.encode(&combined)
+    }
+
+    fn decrypt_raw(cipher: &Aes256Gcm, stored: &str) -> Option<String> {
+        let combined = base64::engine::general_purpose::STANDARD
+            .decode(stored)
+            .ok()?;
+        if combined.len() < 12 {
+            return None;
+        }
+        let (nonce_bytes, ciphertext) = combined.split_at(12);
+        let nonce = Nonce::from_slice(nonce_bytes);
+        let plaintext = cipher.decrypt(nonce, ciphertext).ok()?;
+        String::from_utf8(plaintext).ok()
     }
 
     pub async fn set(&self, key: &str, value: &str) {
-        self.secrets
-            .write()
-            .await
-            .insert(key.to_string(), value.to_string());
+        let mut inner = self.inner.write().await;
+        let stored = Self::encrypt_value(&inner.cipher, value);
+        inner.secrets.insert(key.to_string(), stored);
     }
 
     pub async fn get(&self, key: &str) -> Option<String> {
-        self.secrets.read().await.get(key).cloned()
+        let inner = self.inner.read().await;
+        let stored = inner.secrets.get(key)?;
+        Self::decrypt_raw(&inner.cipher, stored)
     }
 
     pub async fn delete(&self, key: &str) -> bool {
-        self.secrets.write().await.remove(key).is_some()
+        self.inner.write().await.secrets.remove(key).is_some()
+    }
+
+    /// Rotate the master key: atomically re-encrypts every stored secret with
+    /// the new key and updates the in-memory cipher.  No reads are served a
+    /// stale ciphertext because both steps happen inside the same write lock.
+    pub async fn rotate_key(&self, new_key_bytes: [u8; 32]) {
+        let new_key = Key::<Aes256Gcm>::from_slice(&new_key_bytes);
+        let new_cipher = Aes256Gcm::new(new_key);
+
+        let mut inner = self.inner.write().await;
+
+        // Collect (key, stored_blob) pairs to avoid holding a mutable borrow on
+        // inner.secrets while also reading inner.cipher (split-borrow through
+        // RwLockWriteGuard's DerefMut is not supported by the borrow checker).
+        let entries: Vec<(String, String)> = inner
+            .secrets
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
+        for (key, stored) in &entries {
+            // decrypt with the *old* cipher (borrow dropped when plaintext is bound)
+            if let Some(plaintext) = Self::decrypt_raw(&inner.cipher, stored) {
+                // re-encrypt with the new cipher; inner.cipher not borrowed here
+                if let Some(slot) = inner.secrets.get_mut(key) {
+                    *slot = Self::encrypt_value(&new_cipher, &plaintext);
+                }
+            }
+            // On decryption failure: leave the entry as-is.  After `inner.cipher`
+            // is replaced below it will be unreadable — acceptable for a corrupted
+            // entry that was already unreadable.
+        }
+
+        inner.cipher = new_cipher;
+    }
+
+    /// Returns the raw base64-encoded encrypted blob for `key`.
+    /// Used in tests to verify that nonces differ between successive writes.
+    #[doc(hidden)] // diagnostic helper; not part of the public contract
+    pub async fn get_raw(&self, key: &str) -> Option<String> {
+        self.inner.read().await.secrets.get(key).cloned()
     }
 }
 // ── App state ─────────────────────────────────────────────────────────────────
@@ -63,6 +197,7 @@ pub struct AppState {
     pub db: Arc<ConnectionManager>,
     pub secrets: Arc<SecretStore>,
     pub tunnels: Arc<TunnelManager>,
+    pub auth: Arc<AuthConfig>,
 }
 
 impl axum::extract::FromRef<AppState> for Arc<ConnectionManager> {
@@ -80,6 +215,12 @@ impl axum::extract::FromRef<AppState> for Arc<SecretStore> {
 impl axum::extract::FromRef<AppState> for Arc<TunnelManager> {
     fn from_ref(state: &AppState) -> Self {
         Arc::clone(&state.tunnels)
+    }
+}
+
+impl axum::extract::FromRef<AppState> for Arc<AuthConfig> {
+    fn from_ref(state: &AppState) -> Self {
+        Arc::clone(&state.auth)
     }
 }
 
