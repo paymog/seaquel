@@ -44,7 +44,7 @@ pub async fn db_connect(
         .connections
         .write()
         .await
-        .insert(connection_id.clone(), driver);
+        .insert(connection_id.clone(), Arc::from(driver));
 
     info!(activity = "db.connect", driver = driver_name.as_str(), connection_id = connection_id.as_str(); "Connected");
     Ok(ConnectResult { connection_id })

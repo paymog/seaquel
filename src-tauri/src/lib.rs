@@ -1,5 +1,8 @@
 pub mod db;
 
+#[cfg(feature = "server")]
+pub mod server;
+
 #[cfg(feature = "tauri")]
 mod git;
 #[cfg(feature = "tauri")]

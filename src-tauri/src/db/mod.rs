@@ -389,7 +389,7 @@ pub(crate) use impl_sqlx_driver;
 
 /// Single connection manager for all drivers
 pub struct ConnectionManager {
-    pub connections: RwLock<HashMap<String, Box<dyn Driver>>>,
+    pub connections: RwLock<HashMap<String, Arc<dyn Driver>>>,
     /// Cancellation flags for in-flight streaming queries, keyed by a client-
     /// supplied query ID. `db_query_stream` registers a flag on entry and
     /// removes it on exit; `db_cancel_stream` flips the flag so the running

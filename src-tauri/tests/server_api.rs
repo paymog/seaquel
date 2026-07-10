@@ -1,162 +1,22 @@
-//! Integration tests for the seaquel-server HTTP API.
+//! Integration tests for the seaquel-server HTTP + WebSocket API.
 //!
 //! Each test starts an axum server on a random OS-assigned port and exercises
-//! the endpoints with reqwest against an in-memory SQLite database.
+//! the endpoints with reqwest (HTTP) and tokio-tungstenite (WebSocket) against
+//! an in-memory SQLite database.
 
 #![cfg(feature = "server")]
 
 use std::sync::Arc;
 
+use futures::{SinkExt, StreamExt};
 use seaquel_lib::db::ConnectionManager;
+use seaquel_lib::server::build_router;
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 
-// Inline the router builder so we don't need the bin crate in scope.
-// We reach into the server binary by declaring a module path.  Because
-// `server.rs` is a `[[bin]]` target (not a library), the cleanest
-// approach is to re-implement a small test harness that builds the
-// same router by calling the public `build_router` function.
-//
-// Cargo compiles `tests/` against the *library* crate, so we cannot
-// import `seaquel::bin::server` directly.  Instead we duplicate the
-// minimal router setup here using the public library types.
-
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    routing::post,
-    Json, Router,
-};
-use tower_http::cors::CorsLayer;
-
-use seaquel_lib::db::{
-    duckdb::DuckdbDriver, mssql::MssqlDriver, mysql::MysqlDriver, postgres::PostgresDriver,
-    sqlite::SqliteDriver, BatchStatement, ConnectConfig, ConnectResult, DbError, Driver,
-    DriverType, ExecuteResult, QueryResult,
-};
-
-// ── Minimal duplicate of server's error/handler layer for tests ───────────────
-
-struct ApiError(StatusCode, DbError);
-impl From<DbError> for ApiError {
-    fn from(e: DbError) -> Self {
-        let s = match e.code.as_str() {
-            "CONNECTION_NOT_FOUND" => StatusCode::NOT_FOUND,
-            "CONNECTION_ERROR" | "QUERY_ERROR" | "EXECUTE_ERROR" => StatusCode::BAD_REQUEST,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        ApiError(s, e)
-    }
-}
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        (self.0, Json(self.1)).into_response()
-    }
-}
-
-async fn connect_driver_local(config: &ConnectConfig) -> Result<Box<dyn Driver>, DbError> {
-    let driver: Box<dyn Driver> = match config.driver {
-        DriverType::Postgres => Box::new(PostgresDriver::connect(config).await?),
-        DriverType::Mysql => Box::new(MysqlDriver::connect(config).await?),
-        DriverType::Sqlite => Box::new(SqliteDriver::connect(config).await?),
-        DriverType::Mssql => Box::new(MssqlDriver::connect(config).await?),
-        DriverType::Duckdb => Box::new(DuckdbDriver::connect(config)?),
-    };
-    Ok(driver)
-}
-
-#[derive(serde::Deserialize)]
-struct QueryRequest {
-    connection_id: String,
-    sql: String,
-    values: Vec<serde_json::Value>,
-}
-#[derive(serde::Deserialize)]
-struct ExecuteRequest {
-    connection_id: String,
-    sql: String,
-    values: Vec<serde_json::Value>,
-}
-#[derive(serde::Deserialize)]
-struct DisconnectRequest {
-    connection_id: String,
-}
-#[derive(serde::Deserialize)]
-struct TransactionRequest {
-    connection_id: String,
-    statements: Vec<BatchStatement>,
-}
-
-async fn handle_connect(
-    State(mgr): State<Arc<ConnectionManager>>,
-    Json(cfg): Json<ConnectConfig>,
-) -> Result<Json<ConnectResult>, ApiError> {
-    let name = format!("{:?}", cfg.driver);
-    let id = format!("{}-{}", name.to_lowercase(), uuid::Uuid::new_v4());
-    let driver = connect_driver_local(&cfg).await?;
-    mgr.connections.write().await.insert(id.clone(), driver);
-    Ok(Json(ConnectResult { connection_id: id }))
-}
-
-async fn handle_query(
-    State(mgr): State<Arc<ConnectionManager>>,
-    Json(req): Json<QueryRequest>,
-) -> Result<Json<QueryResult>, ApiError> {
-    let conns = mgr.connections.read().await;
-    let driver = conns
-        .get(&req.connection_id)
-        .ok_or_else(|| DbError::connection_not_found(&req.connection_id))?;
-    Ok(Json(driver.query(&req.sql, req.values).await?))
-}
-
-async fn handle_execute(
-    State(mgr): State<Arc<ConnectionManager>>,
-    Json(req): Json<ExecuteRequest>,
-) -> Result<Json<ExecuteResult>, ApiError> {
-    let conns = mgr.connections.read().await;
-    let driver = conns
-        .get(&req.connection_id)
-        .ok_or_else(|| DbError::connection_not_found(&req.connection_id))?;
-    Ok(Json(driver.execute(&req.sql, req.values).await?))
-}
-
-async fn handle_disconnect(
-    State(mgr): State<Arc<ConnectionManager>>,
-    Json(req): Json<DisconnectRequest>,
-) -> Result<Json<()>, ApiError> {
-    let mut conns = mgr.connections.write().await;
-    if let Some(d) = conns.remove(&req.connection_id) {
-        d.close().await?;
-    }
-    Ok(Json(()))
-}
-
-async fn handle_transaction(
-    State(mgr): State<Arc<ConnectionManager>>,
-    Json(req): Json<TransactionRequest>,
-) -> Result<Json<()>, ApiError> {
-    let conns = mgr.connections.read().await;
-    let driver = conns
-        .get(&req.connection_id)
-        .ok_or_else(|| DbError::connection_not_found(&req.connection_id))?;
-    driver.transaction(req.statements).await?;
-    Ok(Json(()))
-}
-
-fn test_router(state: Arc<ConnectionManager>) -> Router {
-    Router::new()
-        .route("/api/db/connect", post(handle_connect))
-        .route("/api/db/query", post(handle_query))
-        .route("/api/db/execute", post(handle_execute))
-        .route("/api/db/disconnect", post(handle_disconnect))
-        .route("/api/db/transaction", post(handle_transaction))
-        .layer(CorsLayer::permissive())
-        .with_state(state)
-}
-
-/// Start a server on a random port. Returns the base URL.
+/// Start a server on a random port. Returns the `http://` base URL.
 async fn spawn_test_server() -> String {
     let state = Arc::new(ConnectionManager::new());
-    let app = test_router(state);
+    let app = build_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
@@ -167,7 +27,7 @@ async fn spawn_test_server() -> String {
     format!("http://{}", addr)
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── HTTP lifecycle tests ───────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_sqlite_full_lifecycle() {
@@ -247,7 +107,6 @@ async fn test_sqlite_full_lifecycle() {
     assert_eq!(res.status(), 200);
     let body: serde_json::Value = res.json().await.expect("select * body");
     assert_eq!(body["rows"].as_array().unwrap().len(), 1, "one row");
-    // columns: id, name
     let name_col = body["columns"]
         .as_array()
         .unwrap()
@@ -347,4 +206,232 @@ async fn test_transaction() {
         .expect("query");
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["rows"][0][0], "row1");
+}
+
+// ── WebSocket streaming tests ─────────────────────────────────────────────────
+
+/// Connect to SQLite, stream a query, assert batch + done events arrive.
+#[tokio::test]
+async fn test_stream_basic() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // Connect
+    let body: serde_json::Value = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cid = body["connection_id"].as_str().unwrap().to_string();
+
+    // Create table and insert rows
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "CREATE TABLE t (x INTEGER)",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "INSERT INTO t VALUES (1), (2), (3)",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Open WebSocket
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
+        .await
+        .expect("ws connect");
+
+    // Send stream request
+    ws.send(WsMessage::Text(
+        serde_json::to_string(&serde_json::json!({
+            "query_id": "q-basic",
+            "connection_id": cid,
+            "sql": "SELECT * FROM t",
+            "values": []
+        }))
+        .unwrap().into(),
+    ))
+    .await
+    .unwrap();
+
+    // Collect all events until done or close
+    let mut got_batch = false;
+    let mut got_done = false;
+    while let Some(msg) = ws.next().await {
+        match msg.unwrap() {
+            WsMessage::Text(text) => {
+                let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+                match v["type"].as_str().unwrap() {
+                    "batch" => got_batch = true,
+                    "done" => {
+                        got_done = true;
+                        break;
+                    }
+                    other => panic!("unexpected event type: {}", other),
+                }
+            }
+            WsMessage::Close(_) => break,
+            _ => {}
+        }
+    }
+
+    assert!(got_batch, "should receive at least one batch event");
+    assert!(got_done, "should receive done event");
+}
+
+/// Send a cancel message mid-stream and verify the connection remains usable.
+#[tokio::test]
+async fn test_stream_cancel() {
+    let base = spawn_test_server().await;
+    let client = reqwest::Client::new();
+
+    // Connect
+    let body: serde_json::Value = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cid = body["connection_id"].as_str().unwrap().to_string();
+
+    // Seed data
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "CREATE TABLE t (x INTEGER)",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "INSERT INTO t VALUES (1), (2), (3)",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    // Open WebSocket and start stream
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
+        .await
+        .unwrap();
+
+    ws.send(WsMessage::Text(
+        serde_json::to_string(&serde_json::json!({
+            "query_id": "q-cancel",
+            "connection_id": cid,
+            "sql": "SELECT * FROM t",
+            "values": []
+        }))
+        .unwrap().into(),
+    ))
+    .await
+    .unwrap();
+
+    // Send cancel immediately after starting
+    ws.send(WsMessage::Text(
+        serde_json::to_string(&serde_json::json!({"type": "cancel"})).unwrap().into(),
+    ))
+    .await
+    .unwrap();
+
+    // Drain until Done or Close — the server must terminate cleanly
+    loop {
+        match ws.next().await {
+            Some(Ok(WsMessage::Text(text))) => {
+                let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+                if v["type"] == "done" {
+                    break;
+                }
+                // batch events before the cancel landed are fine
+            }
+            Some(Ok(WsMessage::Close(_))) | None => break,
+            _ => {}
+        }
+    }
+
+    // Connection must still be usable after cancel
+    let res = client
+        .post(format!("{}/api/db/query", base))
+        .json(&serde_json::json!({
+            "connection_id": cid,
+            "sql": "SELECT count(*) AS n FROM t",
+            "values": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "connection still usable after cancel");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["rows"][0][0], 3, "row count intact after cancel");
+}
+
+/// Opening a stream with a connection_id that doesn't exist must yield an
+/// error event (not a panic or hang).
+#[tokio::test]
+async fn test_stream_nonexistent_connection() {
+    let base = spawn_test_server().await;
+
+    let ws_url = base.replace("http://", "ws://") + "/api/db/stream";
+    let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
+        .await
+        .unwrap();
+
+    ws.send(WsMessage::Text(
+        serde_json::to_string(&serde_json::json!({
+            "query_id": "q-noconn",
+            "connection_id": "does-not-exist",
+            "sql": "SELECT 1",
+            "values": []
+        }))
+        .unwrap().into(),
+    ))
+    .await
+    .unwrap();
+
+    // First text frame must be an error event with CONNECTION_NOT_FOUND
+    let mut got_error = false;
+    while let Some(msg) = ws.next().await {
+        match msg.unwrap() {
+            WsMessage::Text(text) => {
+                let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(v["type"], "error", "expected error event, got: {}", v);
+                assert_eq!(
+                    v["code"], "CONNECTION_NOT_FOUND",
+                    "wrong error code: {}",
+                    v
+                );
+                got_error = true;
+                break;
+            }
+            WsMessage::Close(_) => break,
+            _ => {}
+        }
+    }
+
+    assert!(got_error, "should have received an error event");
 }
