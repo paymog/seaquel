@@ -1,0 +1,27 @@
+# Runtime-only Dockerfile. Expects pre-built artifacts in the build context:
+#   ./seaquel-server  — Rust binary (compiled for the target arch)
+#   ./build-server/   — frontend static files (arch-independent)
+#
+# The workflow compiles Rust and the frontend on x86 runners, then uses this
+# Dockerfile to package them. No compilation happens inside Docker, so
+# --platform linux/arm64 via QEMU is fast (just apt-get + COPY).
+FROM debian:bookworm-slim
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates libssl3 libgcc-s1 && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY seaquel-server ./seaquel-server
+COPY build-server ./static
+
+ENV SEAQUEL_BIND_ADDR=0.0.0.0:3000
+ENV SEAQUEL_STATIC_DIR=/app/static
+ENV SEAQUEL_DATA_DIR=/app/data
+ENV SEAQUEL_ADMIN_PASSWORD=admin
+ENV RUST_LOG=info
+
+RUN mkdir -p /app/data
+VOLUME ["/app/data"]
+
+EXPOSE 3000
+CMD ["./seaquel-server"]
