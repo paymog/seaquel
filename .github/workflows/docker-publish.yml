@@ -74,10 +74,10 @@ jobs:
 
       # Create and push a multi-arch manifest that points at both arch-specific images.
       - name: Create multi-arch manifest
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          for tag in ${{ steps.meta.outputs.tags }}; do
-            docker buildx imagetools create \
-              -t "$tag" \
-              "$tag-amd64" \
-              "$tag-arm64"
-          done
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            docker buildx imagetools create -t "$tag" "$tag-amd64" "$tag-arm64"
+          done <<< "$TAGS"
