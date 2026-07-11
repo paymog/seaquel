@@ -75,6 +75,7 @@ jobs:
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
+          flavor: suffix=-${{ matrix.arch }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -86,7 +87,7 @@ jobs:
           file: Dockerfile.prebuilt
           platforms: linux/${{ matrix.arch }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}-${{ matrix.arch }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=docker-${{ matrix.arch }}
           cache-to: type=gha,scope=docker-${{ matrix.arch }},mode=max
