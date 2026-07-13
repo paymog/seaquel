@@ -159,56 +159,83 @@ export class SchemaTabManager extends BaseTabManager<SchemaTab> {
 
   /**
    * Load column and index metadata for all tables in the background.
-   * Updates the schema state progressively as each table's metadata is loaded.
+   *
+   * Tables that already have column metadata (e.g. restored from cache) are
+   * skipped entirely. Remaining tables are processed in bounded-concurrency
+   * batches so we don't overwhelm the connection pool or trigger thousands of
+   * individual reactive state updates.
    */
   async loadTableMetadataInBackground(
     connectionId: string,
     tables: SchemaTable[],
     adapter: DatabaseAdapter,
     providerConnectionId?: string,
+    force?: boolean,
   ): Promise<void> {
     if (!providerConnectionId) return;
 
-    // Get provider once for all tables
     const connectionType = this.state.connections.find((c) => c.id === connectionId)?.type;
     const provider = await this.providers.getForType(connectionType ?? "");
 
-    void log.debug(`Loading metadata for ${tables.length} tables on ${connectionId}`);
-    // Process tables in parallel but update state as each completes
-    const promises = tables.map(async (table, index) => {
-      try {
-        const updatedTable = await this.fetchTableMetadata(
-          provider,
-          providerConnectionId,
-          adapter,
-          table,
-        );
-
-        // Update the schema state with the new table metadata
-        const currentSchemas = this.state.schemas[connectionId];
-        if (currentSchemas) {
-          const updatedSchemas = [...currentSchemas];
-          updatedSchemas[index] = updatedTable;
-          this.state.schemas = {
-            ...this.state.schemas,
-            [connectionId]: updatedSchemas,
-          };
-        }
-      } catch (error) {
-        void log.error(`Metadata load failed for ${connectionId}`);
-        handleError(
-          createError(
-            "SCHEMA_LOAD_FAILED",
-            error instanceof Error ? error.message : String(error),
-            `Failed to load metadata for ${table.schema}.${table.name}`,
-            { table: table.name, schema: table.schema },
-          ),
-          { silent: true },
-        );
+    // Only load metadata for tables that don't already have columns
+    // (unless force is true, e.g. manual schema refresh)
+    const pending: { table: SchemaTable; index: number }[] = [];
+    for (let i = 0; i < tables.length; i++) {
+      if (force || !tables[i].columns || tables[i].columns.length === 0) {
+        pending.push({ table: tables[i], index: i });
       }
-    });
+    }
 
-    await Promise.allSettled(promises);
+    if (pending.length === 0) {
+      void log.debug(`All ${tables.length} tables already have metadata for ${connectionId}`);
+      return;
+    }
+
+    void log.debug(`Loading metadata for ${pending.length}/${tables.length} tables on ${connectionId}`);
+
+    // Process in bounded-concurrency batches; one state update per batch
+    const BATCH_SIZE = 50;
+    for (let start = 0; start < pending.length; start += BATCH_SIZE) {
+      const batch = pending.slice(start, start + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map(({ table }) =>
+          this.fetchTableMetadata(provider, providerConnectionId, adapter, table),
+        ),
+      );
+
+      const currentSchemas = this.state.schemas[connectionId];
+      if (!currentSchemas) continue;
+
+      const updatedSchemas = [...currentSchemas];
+      let changed = false;
+      for (let j = 0; j < results.length; j++) {
+        const { table, index } = batch[j];
+        const result = results[j];
+        if (result.status === "fulfilled") {
+          updatedSchemas[index] = result.value;
+          changed = true;
+        } else {
+          void log.error(`Metadata load failed for ${connectionId}/${table.schema}.${table.name}`);
+          handleError(
+            createError(
+              "SCHEMA_LOAD_FAILED",
+              result.reason instanceof Error ? result.reason.message : String(result.reason),
+              `Failed to load metadata for ${table.schema}.${table.name}`,
+              { table: table.name, schema: table.schema },
+            ),
+            { silent: true },
+          );
+        }
+      }
+
+      if (changed) {
+        this.state.schemas = {
+          ...this.state.schemas,
+          [connectionId]: updatedSchemas,
+        };
+      }
+    }
+
     void log.debug(`Metadata loaded for ${connectionId}`);
   }
 }

@@ -309,12 +309,14 @@ class UseDatabase {
         schemas: SchemaTable[],
         adapter: DatabaseAdapter,
         providerConnectionId?: string,
+        force?: boolean,
       ) => {
         return this.schemaTabs.loadTableMetadataInBackground(
           connectionId,
           schemas,
           adapter,
           providerConnectionId,
+          force,
         );
       },
       () => {

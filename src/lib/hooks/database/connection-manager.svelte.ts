@@ -18,6 +18,7 @@ import {
   swapDatabaseInConnectionString,
   rewriteConnectionStringForTunnel,
 } from "$lib/utils/connection-string";
+import { getCachedSchema, setCachedSchema } from "$lib/utils/schema-cache";
 
 type ConnectionInput = Omit<DatabaseConnection, "id" | "projectId" | "labelIds"> & {
   projectId?: string;
@@ -58,6 +59,7 @@ export class ConnectionManager {
       schemas: SchemaTable[],
       adapter: DatabaseAdapter,
       providerConnectionId?: string,
+      force?: boolean,
     ) => Promise<void>,
     private onCreateInitialTab: () => void,
     private onActiveConnectionChanged: () => void = () => {},
@@ -204,6 +206,41 @@ export class ConnectionManager {
   }
 
   /**
+   * Fetch fresh schema data from the database, optionally merge with existing
+   * column metadata, store in state + cache. Returns the fetched schema list.
+   */
+  private async fetchAndStoreSchema(
+    connectionId: string,
+    connection: Pick<DatabaseConnection, "type" | "host" | "port" | "databaseName">,
+    providerConnectionId: string,
+    options?: { mergeExistingColumns?: boolean },
+  ): Promise<SchemaTable[]> {
+    const adapter = getAdapter(connection.type);
+    const provider = await this.providers.getForType(connection.type);
+    const result = await provider.select(providerConnectionId, adapter.getSchemaQuery());
+    let schemas = adapter.parseSchemaResult(result as unknown[]);
+
+    if (options?.mergeExistingColumns) {
+      const existing = this.state.schemas[connectionId] ?? [];
+      schemas = schemas.map((newTable) => {
+        const old = existing.find(
+          (t) => t.name === newTable.name && t.schema === newTable.schema,
+        );
+        return old
+          ? { ...newTable, columns: old.columns, indexes: old.indexes }
+          : newTable;
+      });
+    }
+
+    this.state.schemas = {
+      ...this.state.schemas,
+      [connectionId]: schemas,
+    };
+    setCachedSchema(connection, schemas);
+    return schemas;
+  }
+
+  /**
    * Add a new database connection.
    */
   async add(connection: ConnectionInput): Promise<string> {
@@ -254,43 +291,63 @@ export class ConnectionManager {
 
       this.stateRestoration.initializeConnectionMaps(newConnection.id);
 
-      // Load schema - wrap in try-catch to handle failures gracefully
+      // Load schema — cache-first for instant UI, background refresh for freshness
       const adapter = getAdapter(newConnection.type);
-      let schemasWithTables: SchemaTable[];
-      try {
-        const schemaProvider = await this.providers.getForType(newConnection.type);
-        const schemasWithTablesDbResult = await schemaProvider.select(
-          providerConnectionId,
-          adapter.getSchemaQuery(),
+      const cachedSchemas = getCachedSchema(newConnection);
+
+      if (cachedSchemas) {
+        // Show cached data immediately for instant UI
+        this.state.schemas = {
+          ...this.state.schemas,
+          [newConnection.id]: cachedSchemas,
+        };
+        this.setActiveForProject(newConnection.id, projectId);
+
+        // Fetch fresh schema in the background
+        void (async () => {
+          try {
+            const fresh = await this.fetchAndStoreSchema(
+              newConnection.id,
+              newConnection,
+              providerConnectionId,
+              { mergeExistingColumns: true },
+            );
+            void this.onSchemaLoaded(newConnection.id, fresh, adapter, providerConnectionId);
+            void log.info(`Schema refreshed for ${newConnection.id}: ${fresh.length} tables`);
+          } catch (error) {
+            void log.warn(`Background schema refresh failed for ${newConnection.id}: ${String(error)}`);
+          }
+        })();
+      } else {
+        // No cache: fetch synchronously (blocking) so the connection fails fast on error
+        let schemasWithTables: SchemaTable[];
+        try {
+          schemasWithTables = await this.fetchAndStoreSchema(
+            newConnection.id,
+            newConnection,
+            providerConnectionId,
+          );
+        } catch (error) {
+          // Cleanup: remove the connection we just added
+          this.state.connections = this.state.connections.filter((c) => c.id !== newConnection.id);
+          this.stateRestoration.cleanupConnectionMaps(newConnection.id);
+          const cleanupProvider = await this.providers.getForType(newConnection.type);
+          await cleanupProvider.disconnect(providerConnectionId).catch(() => {});
+          throw new Error(`Failed to load database schema: ${String(error)}`);
+        }
+
+        this.setActiveForProject(newConnection.id, projectId);
+
+        // Load column metadata asynchronously in the background
+        void this.onSchemaLoaded(
+          newConnection.id,
+          schemasWithTables,
+          adapter,
+          newConnection.providerConnectionId,
         );
-        schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
-      } catch (error) {
-        // Cleanup: remove the connection we just added
-        this.state.connections = this.state.connections.filter((c) => c.id !== newConnection.id);
-        this.stateRestoration.cleanupConnectionMaps(newConnection.id);
-        const cleanupProvider = await this.providers.getForType(newConnection.type);
-        await cleanupProvider.disconnect(providerConnectionId).catch(() => {});
-        throw new Error(`Failed to load database schema: ${String(error)}`);
+
+        void log.info(`Schema loaded for ${newConnection.id}: ${schemasWithTables.length} tables`);
       }
-
-      // Only set active connection after schema loading succeeds
-      this.setActiveForProject(newConnection.id, projectId);
-
-      // Store tables immediately (without column metadata) so UI is responsive
-      this.state.schemas = {
-        ...this.state.schemas,
-        [newConnection.id]: schemasWithTables,
-      };
-
-      // Load column metadata asynchronously in the background
-      void this.onSchemaLoaded(
-        newConnection.id,
-        schemasWithTables,
-        adapter,
-        newConnection.providerConnectionId,
-      );
-
-      void log.info(`Schema loaded for ${newConnection.id}: ${schemasWithTables.length} tables`);
 
       // Create initial query tab for new connection
       this.onCreateInitialTab();
@@ -422,37 +479,52 @@ export class ConnectionManager {
 
       this.stateRestoration.ensureConnectionMapsExist(connectionId);
 
-      // Fetch schemas - wrap in try-catch to handle failures gracefully
-      const adapter = getAdapter(existingConnection.type);
-      let schemasWithTables: SchemaTable[];
-      try {
-        const schemaProvider = await this.providers.getForType(existingConnection.type);
-        const schemasWithTablesDbResult = await schemaProvider.select(
-          providerConnectionId,
-          adapter.getSchemaQuery(),
-        );
-        schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
-      } catch (error) {
-        // Revert: set providerConnectionId back to undefined on the connection
-        this.state.connections = this.state.connections.map((c) =>
-          c.id === connectionId ? { ...c, providerConnectionId: undefined } : c,
-        );
-        const cleanupProvider = await this.providers.getForType(existingConnection.type);
-        await cleanupProvider.disconnect(providerConnectionId).catch(() => {});
-        throw new Error(`Failed to load database schema: ${String(error)}`);
+      // Load schema — cache-first for instant UI, background refresh for freshness
+      const adapter = getAdapter(updatedConnection.type);
+      const cachedSchemas = getCachedSchema(updatedConnection);
+
+      if (cachedSchemas) {
+        this.state.schemas = {
+          ...this.state.schemas,
+          [connectionId]: cachedSchemas,
+        };
+        this.setActiveForProject(connectionId, existingConnection.projectId);
+
+        // Fetch fresh schema in the background
+        void (async () => {
+          try {
+            const fresh = await this.fetchAndStoreSchema(
+              connectionId,
+              updatedConnection,
+              providerConnectionId,
+              { mergeExistingColumns: true },
+            );
+            void this.onSchemaLoaded(connectionId, fresh, adapter, providerConnectionId);
+          } catch (error) {
+            void log.warn(`Background schema refresh failed for ${connectionId}: ${String(error)}`);
+          }
+        })();
+      } else {
+        let schemasWithTables: SchemaTable[];
+        try {
+          schemasWithTables = await this.fetchAndStoreSchema(
+            connectionId,
+            updatedConnection,
+            providerConnectionId,
+          );
+        } catch (error) {
+          // Revert: set providerConnectionId back to undefined on the connection
+          this.state.connections = this.state.connections.map((c) =>
+            c.id === connectionId ? { ...c, providerConnectionId: undefined } : c,
+          );
+          const cleanupProvider = await this.providers.getForType(existingConnection.type);
+          await cleanupProvider.disconnect(providerConnectionId).catch(() => {});
+          throw new Error(`Failed to load database schema: ${String(error)}`);
+        }
+
+        void this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
+        this.setActiveForProject(connectionId, existingConnection.projectId);
       }
-
-      // Store tables immediately (without column metadata) so UI is responsive
-      this.state.schemas = {
-        ...this.state.schemas,
-        [connectionId]: schemasWithTables,
-      };
-
-      // Load column metadata asynchronously in the background
-      void this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
-
-      // Set this as the active connection (only after schema loading succeeds)
-      this.setActiveForProject(connectionId, existingConnection.projectId);
 
       // Create initial query tab if no tabs exist for the project
       const projectId = existingConnection.projectId;
@@ -924,39 +996,20 @@ export class ConnectionManager {
       throw new Error("Connection is not active");
     }
 
-    const adapter = getAdapter(connection.type);
-    const provider = await this.providers.getForType(connection.type);
-    const schemasWithTablesDbResult = await provider.select(
+    const mergedSchemas = await this.fetchAndStoreSchema(
+      connectionId,
+      connection,
       connection.providerConnectionId,
-      adapter.getSchemaQuery(),
+      { mergeExistingColumns: true },
     );
-
-    const schemasWithTables = adapter.parseSchemaResult(schemasWithTablesDbResult as unknown[]);
-
-    // Preserve existing column/index metadata for tables that already exist
-    // so that derived values like hasPrimaryKey don't briefly become false
-    // while new metadata loads.
-    const existingSchemas = this.state.schemas[connectionId] ?? [];
-    const mergedSchemas = schemasWithTables.map((newTable) => {
-      const existing = existingSchemas.find(
-        (t) => t.name === newTable.name && t.schema === newTable.schema,
-      );
-      return existing
-        ? { ...newTable, columns: existing.columns, indexes: existing.indexes }
-        : newTable;
-    });
-
-    this.state.schemas = {
-      ...this.state.schemas,
-      [connectionId]: mergedSchemas,
-    };
 
     // Reload column metadata and wait for it to complete
     await this.onSchemaLoaded(
       connectionId,
       mergedSchemas,
-      adapter,
+      getAdapter(connection.type),
       connection.providerConnectionId,
+      true, // force: reload column metadata even if already present
     );
   }
 

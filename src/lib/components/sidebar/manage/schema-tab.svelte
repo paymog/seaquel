@@ -17,7 +17,20 @@
 
 	let expandedSchemas = new SvelteSet<string>();
 	let schemaSearchQuery = $state("");
+	let debouncedSearchQuery = $state("");
 	let isRefreshingSchema = $state(false);
+	let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+	$effect(() => {
+		const q = schemaSearchQuery;
+		if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+		searchDebounceTimer = setTimeout(() => {
+			debouncedSearchQuery = q;
+		}, 150);
+		return () => {
+			if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+		};
+	});
 
 	// Drop/Truncate table state
 	let dropTableTarget = $state<{ schema: string; name: string; type: "table" | "view" | "materialized-view" } | null>(null);
@@ -111,9 +124,11 @@
 		}
 	};
 
+	const MAX_RENDERED_GROUPS = 200;
+
 	const tablesBySchema = $derived.by(() => {
-		const searchLower = schemaSearchQuery.toLowerCase();
-		const filtered = schemaSearchQuery
+		const searchLower = debouncedSearchQuery.toLowerCase();
+		const filtered = debouncedSearchQuery
 			? db.state.activeSchema.filter(table =>
 				table.name.toLowerCase().includes(searchLower) ||
 				(table.schema || "").toLowerCase().includes(searchLower)
@@ -121,14 +136,28 @@
 			: db.state.activeSchema;
 
 		const grouped = new Map<string, typeof db.state.activeSchema>();
-		filtered.forEach((table) => {
+		for (const table of filtered) {
 			const schema = table.schema || "default";
-			if (!grouped.has(schema)) {
-				grouped.set(schema, []);
+			if (grouped.has(schema)) {
+				grouped.get(schema)!.push(table);
+			} else if (grouped.size < MAX_RENDERED_GROUPS) {
+				grouped.set(schema, [table]);
 			}
-			grouped.get(schema)!.push(table);
-		});
+		}
 		return grouped;
+	});
+
+	const totalSchemaCount = $derived.by(() => {
+		const searchLower = debouncedSearchQuery.toLowerCase();
+		if (!debouncedSearchQuery) return new Set(db.state.activeSchema.map(t => t.schema || "default")).size;
+		return new Set(
+			db.state.activeSchema
+				.filter(table =>
+					table.name.toLowerCase().includes(searchLower) ||
+					(table.schema || "").toLowerCase().includes(searchLower)
+				)
+				.map(t => t.schema || "default")
+		).size;
 	});
 
 	const handleRefreshSchema = async () => {
@@ -185,6 +214,11 @@
 		</Tooltip.Root>
 	</div>
 </div>
+{#if totalSchemaCount > MAX_RENDERED_GROUPS}
+	<div class="px-4 pb-1 text-xs text-muted-foreground">
+		Showing {tablesBySchema.size} of {totalSchemaCount} schemas — refine search to narrow
+	</div>
+{/if}
 <Sidebar.Group>
 	<Sidebar.GroupContent class="px-2">
 		<Sidebar.Menu>
@@ -276,7 +310,7 @@
 				</Collapsible>
 			{:else}
 				<div class="text-center py-4 text-muted-foreground px-2">
-					{#if schemaSearchQuery}
+					{#if debouncedSearchQuery}
 						<p class="text-xs">{m.sidebar_no_schema_search()} <button class="text-foreground underline underline-offset-4 hover:text-primary" onclick={() => { schemaSearchQuery = ""; }}>{m.sidebar_no_schema_clear_search()}</button></p>
 					{:else}
 						<p class="text-xs">{m.sidebar_no_schema()} <button class="text-foreground underline underline-offset-4 hover:text-primary" onclick={() => {
