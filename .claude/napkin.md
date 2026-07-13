@@ -7,6 +7,7 @@
 | 2026-07-13 | self | Left the local SeaQuel smoke container running, so test-image cleanup failed | Track each detached smoke container and stop it immediately after the final assertion. |
 | 2026-07-13 | self | Created a git worktree for feature work but ran all edits against the main checkout path (`~/code/seaquel/...`); the worktree stayed clean and the main tree collected the diff | When working in a worktree, every tool path must point INTO the worktree dir (`~/code/seaquel/.worktrees/<name>/...`). Verify with `git status` in the worktree after the first edit. |
 | 2026-07-13 | self | Used `page.fill` in Browser automation; the harness exposes filling through `tab.fill` | Use the documented `tab` helpers for browser interactions; `page` is raw Puppeteer. |
+| 2026-07-13 | self | Trusted the filtered `cargo test` summary without checking that it ran zero tests | Read the raw test artifact when filters are involved; server-only tests require `--no-default-features --features server`. |
 
 ## User Preferences
 - Keep feature work on meaningful branches.
