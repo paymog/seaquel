@@ -366,12 +366,10 @@ export class ServerKeyringService implements KeyringService {
   }
 
   isAvailable(): boolean {
-    // The self-hosted server's secret store is in-memory and shared across every
-    // user of the single-admin instance, so it is neither a durable nor a private
-    // "keychain". Report unavailable so the UI never offers to save DB/SSH passwords
-    // there; passwords are supplied per session instead. (AI keys and the license key
-    // use the secret store directly and are unaffected by this flag.)
-    return false;
+    // The secret store now persists to disk (AES-256-GCM encrypted) and the
+    // single-admin auth model gates access behind a bearer token, so it is a
+    // reasonable place to store DB/SSH passwords for the self-hosted instance.
+    return true;
   }
 }
 

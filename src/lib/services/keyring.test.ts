@@ -137,8 +137,8 @@ describe("ServerKeyringService", () => {
     });
   });
 
-  it("isAvailable returns false (server secret store is not a durable keychain)", () => {
-    expect(svc.isAvailable()).toBe(false);
+  it("isAvailable returns true (server secret store is encrypted and persistent)", () => {
+    expect(svc.isAvailable()).toBe(true);
   });
 });
 

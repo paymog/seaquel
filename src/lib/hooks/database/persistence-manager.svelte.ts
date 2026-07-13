@@ -40,6 +40,12 @@ import {
   aiChatsRepo,
 } from "$lib/storage";
 import { getKeyringService } from "$lib/services/keyring";
+import { isServer } from "$lib/utils/environment";
+import {
+  serverLoadConnections,
+  serverSaveConnection,
+  serverDeleteConnection,
+} from "$lib/services/server-connections";
 import { log } from "$lib/utils/logger";
 
 /**
@@ -801,7 +807,7 @@ export class PersistenceManager {
   ): Promise<void> {
     await withErrorHandling(
       async () => {
-        const db = await getDatabase();
+        const db = isServer() ? null : await getDatabase();
 
         const persistedConnection: PersistedConnection = {
           id: connection.id,
@@ -828,7 +834,11 @@ export class PersistenceManager {
           activeAIModel: connection.activeAIModel,
         };
 
-        await connectionsRepo.save(db, persistedConnection);
+        if (db) {
+          await connectionsRepo.save(db, persistedConnection);
+        } else {
+          await serverSaveConnection(persistedConnection);
+        }
 
         // Save passwords to keyring if enabled
         const keyring = getKeyringService();
@@ -866,8 +876,12 @@ export class PersistenceManager {
   async removePersistedConnection(connectionId: string): Promise<void> {
     await withErrorHandling(
       async () => {
-        const db = await getDatabase();
-        await connectionsRepo.remove(db, connectionId);
+        if (isServer()) {
+          await serverDeleteConnection(connectionId);
+        } else {
+          const db = await getDatabase();
+          await connectionsRepo.remove(db, connectionId);
+        }
 
         // Delete passwords from keyring
         const keyring = getKeyringService();
@@ -889,6 +903,9 @@ export class PersistenceManager {
 
   async loadPersistedConnections(): Promise<PersistedConnection[]> {
     try {
+      if (isServer()) {
+        return await serverLoadConnections();
+      }
       const db = await getDatabase();
       return await connectionsRepo.loadAll(db);
     } catch (error) {

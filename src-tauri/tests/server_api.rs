@@ -11,8 +11,7 @@ use std::sync::Arc;
 use futures::{SinkExt, StreamExt};
 use seaquel_lib::auth::AuthConfig;
 use seaquel_lib::db::ConnectionManager;
-use seaquel_lib::server::{build_router, SecretStore};
-use seaquel_lib::server::SessionRegistry;
+use seaquel_lib::server::{build_router, ConnectionStore, SecretStore, SessionRegistry};
 use seaquel_lib::ssh_tunnel::TunnelManager;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use base64::Engine as _;
@@ -25,8 +24,13 @@ async fn spawn_test_server() -> (String, String) {
     let tunnel_state = Arc::new(TunnelManager::new());
     let auth_state = Arc::new(AuthConfig::from_env());
     let session_state = Arc::new(SessionRegistry::new());
+    let conn_path = std::env::temp_dir().join(format!(
+        "seaquel-test-conn-{}.json",
+        uuid::Uuid::new_v4()
+    ));
+    let connection_state = Arc::new(ConnectionStore::new(conn_path));
     let token = auth_state.create_token();
-    let app = build_router(db_state, secret_state, tunnel_state, auth_state, session_state);
+    let app = build_router(db_state, secret_state, tunnel_state, auth_state, session_state, connection_state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
@@ -1243,4 +1247,146 @@ async fn test_cross_session_connection_isolation() {
         .await
         .expect("query");
     assert_eq!(res.status(), 200, "session A can access its own connection");
+}
+
+// ── Connection store tests ───────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_connection_lifecycle() {
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
+
+    // List is initially empty
+    let res = client
+        .get(format!("{}/api/connections", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body.is_array(), "expected JSON array");
+    assert_eq!(body.as_array().unwrap().len(), 0, "expected empty list");
+
+    // Save a connection
+    let conn = serde_json::json!({
+        "id": "conn-1",
+        "name": "My Postgres",
+        "type": "postgres",
+        "host": "localhost",
+        "port": 5432,
+        "databaseName": "mydb",
+        "username": "admin",
+        "projectId": "default",
+        "labelIds": []
+    });
+    let res = client
+        .post(format!("{}/api/connections", base))
+        .json(&conn)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "save should return 200");
+
+    // List now has one connection
+    let res = client
+        .get(format!("{}/api/connections", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "expected 1 connection");
+    assert_eq!(arr[0]["id"], "conn-1");
+    assert_eq!(arr[0]["name"], "My Postgres");
+    assert_eq!(arr[0]["host"], "localhost");
+
+    // Overwrite with updated data
+    let conn_updated = serde_json::json!({
+        "id": "conn-1",
+        "name": "Renamed",
+        "type": "postgres",
+        "host": "db.example.com",
+        "port": 5432,
+        "databaseName": "prod",
+        "username": "admin",
+        "projectId": "default",
+        "labelIds": ["label-a"]
+    });
+    let res = client
+        .post(format!("{}/api/connections", base))
+        .json(&conn_updated)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+
+    // Verify the update
+    let res = client
+        .get(format!("{}/api/connections", base))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "still 1 connection after overwrite");
+    assert_eq!(arr[0]["name"], "Renamed");
+    assert_eq!(arr[0]["host"], "db.example.com");
+
+    // Save a second connection
+    let conn2 = serde_json::json!({
+        "id": "conn-2",
+        "name": "SQLite Local",
+        "type": "sqlite",
+        "projectId": "default",
+        "labelIds": []
+    });
+    client
+        .post(format!("{}/api/connections", base))
+        .json(&conn2)
+        .send()
+        .await
+        .unwrap();
+
+    // List has two
+    let res = client
+        .get(format!("{}/api/connections", base))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body.as_array().unwrap().len(), 2, "expected 2 connections");
+
+    // Delete conn-1
+    let res = client
+        .delete(format!("{}/api/connections/conn-1", base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 204, "delete should return 204");
+
+    // Only conn-2 remains
+    let res = client
+        .get(format!("{}/api/connections", base))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    let arr = body.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "expected 1 connection after delete");
+    assert_eq!(arr[0]["id"], "conn-2");
+}
+
+#[tokio::test]
+async fn test_connection_save_without_id_returns_400() {
+    let (base, token) = spawn_test_server().await;
+    let client = auth_client(&token);
+
+    let res = client
+        .post(format!("{}/api/connections", base))
+        .json(&serde_json::json!({ "name": "no-id" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400, "missing id should return 400");
 }

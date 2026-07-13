@@ -2,6 +2,7 @@
 //! binary and the integration tests can share `build_router` / `run_server`.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use aes_gcm::aead::{Aead, KeyInit};
@@ -45,6 +46,9 @@ struct SecretStoreInner {
     cipher: Aes256Gcm,
     /// Each value is base64(12-byte random nonce ‖ AES-256-GCM ciphertext).
     secrets: HashMap<String, String>,
+    /// When set, the `secrets` map is persisted to this file on every mutation
+    /// and loaded on startup so encrypted secrets survive restarts.
+    file_path: Option<PathBuf>,
 }
 
 /// Thread-safe, in-memory secret store with AES-256-GCM envelope encryption.
@@ -71,6 +75,7 @@ impl SecretStore {
             inner: tokio::sync::RwLock::new(SecretStoreInner {
                 cipher,
                 secrets: HashMap::new(),
+                file_path: None,
             }),
         }
     }
@@ -83,7 +88,48 @@ impl SecretStore {
             inner: tokio::sync::RwLock::new(SecretStoreInner {
                 cipher,
                 secrets: HashMap::new(),
+                file_path: None,
             }),
+        }
+    }
+
+    /// Creates a persistent `SecretStore` that loads encrypted secrets from
+    /// `file_path` on startup and writes the full map back on every mutation.
+    /// The key is derived from `SEAQUEL_SECRET_KEY` (or generated randomly if
+    /// unset — in which case persisted secrets will be unreadable after restart).
+    pub fn with_persistence(file_path: PathBuf) -> Self {
+        let key_bytes = Self::load_or_generate_key();
+        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+        let cipher = Aes256Gcm::new(key);
+        let secrets = Self::load_secrets_from_file(&file_path);
+        Self {
+            inner: tokio::sync::RwLock::new(SecretStoreInner {
+                cipher,
+                secrets,
+                file_path: Some(file_path),
+            }),
+        }
+    }
+
+    /// Load the encrypted secrets map from a JSON file.  Returns an empty map
+    /// if the file does not exist or is corrupt.
+    fn load_secrets_from_file(path: &std::path::Path) -> HashMap<String, String> {
+        match std::fs::read_to_string(path) {
+            Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
+            Err(_) => HashMap::new(),
+        }
+    }
+
+    /// Persist the encrypted secrets map to disk (if a file path is configured).
+    /// Called while holding the write lock so the file never lags behind memory.
+    fn persist_secrets(inner: &SecretStoreInner) {
+        if let Some(ref path) = inner.file_path {
+            if let Ok(json) = serde_json::to_string(&inner.secrets) {
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(path, json);
+            }
         }
     }
 
@@ -136,6 +182,7 @@ impl SecretStore {
         let mut inner = self.inner.write().await;
         let stored = Self::encrypt_value(&inner.cipher, value);
         inner.secrets.insert(key.to_string(), stored);
+        Self::persist_secrets(&inner);
     }
 
     pub async fn get(&self, key: &str) -> Option<String> {
@@ -145,7 +192,12 @@ impl SecretStore {
     }
 
     pub async fn delete(&self, key: &str) -> bool {
-        self.inner.write().await.secrets.remove(key).is_some()
+        let mut inner = self.inner.write().await;
+        let removed = inner.secrets.remove(key).is_some();
+        if removed {
+            Self::persist_secrets(&inner);
+        }
+        removed
     }
 
     /// Rotate the master key: atomically re-encrypts every stored secret with
@@ -189,6 +241,61 @@ impl SecretStore {
         self.inner.read().await.secrets.get(key).cloned()
     }
 }
+
+// ── Connection store ─────────────────────────────────────────────────────────
+
+/// File-persisted JSON store for connection metadata (no secrets — passwords
+/// live in [`SecretStore`]).  The server is a transparent passthrough: it
+/// stores and returns opaque JSON objects keyed by their `id` field.
+pub struct ConnectionStore {
+    inner: tokio::sync::RwLock<HashMap<String, serde_json::Value>>,
+    file_path: PathBuf,
+}
+
+impl ConnectionStore {
+    pub fn new(file_path: PathBuf) -> Self {
+        let connections = Self::load_from_file(&file_path);
+        Self {
+            inner: tokio::sync::RwLock::new(connections),
+            file_path,
+        }
+    }
+
+    fn load_from_file(path: &std::path::Path) -> HashMap<String, serde_json::Value> {
+        match std::fs::read_to_string(path) {
+            Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
+            Err(_) => HashMap::new(),
+        }
+    }
+
+    fn persist(&self, connections: &HashMap<String, serde_json::Value>) {
+        if let Ok(json) = serde_json::to_string_pretty(connections) {
+            if let Some(parent) = self.file_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&self.file_path, json);
+        }
+    }
+
+    pub async fn list(&self) -> Vec<serde_json::Value> {
+        self.inner.read().await.values().cloned().collect()
+    }
+
+    pub async fn save(&self, id: String, connection: serde_json::Value) {
+        let mut inner = self.inner.write().await;
+        inner.insert(id, connection);
+        self.persist(&inner);
+    }
+
+    pub async fn delete(&self, id: &str) -> bool {
+        let mut inner = self.inner.write().await;
+        let removed = inner.remove(id).is_some();
+        if removed {
+            self.persist(&inner);
+        }
+        removed
+    }
+}
 // ── App state ─────────────────────────────────────────────────────────────────
 
 /// Combined application state; sub-states are extracted via `FromRef` so
@@ -200,6 +307,7 @@ pub struct AppState {
     pub tunnels: Arc<TunnelManager>,
     pub auth: Arc<AuthConfig>,
     pub sessions: Arc<SessionRegistry>,
+    pub connections: Arc<ConnectionStore>,
 }
 
 impl axum::extract::FromRef<AppState> for Arc<ConnectionManager> {
@@ -229,6 +337,12 @@ impl axum::extract::FromRef<AppState> for Arc<AuthConfig> {
 impl axum::extract::FromRef<AppState> for Arc<SessionRegistry> {
     fn from_ref(state: &AppState) -> Self {
         Arc::clone(&state.sessions)
+    }
+}
+
+impl axum::extract::FromRef<AppState> for Arc<ConnectionStore> {
+    fn from_ref(state: &AppState) -> Self {
+        Arc::clone(&state.connections)
     }
 }
 
@@ -716,6 +830,36 @@ async fn handle_delete_secret(
     StatusCode::NO_CONTENT
 }
 
+// ── Connection store handlers ─────────────────────────────────────────────────
+
+async fn handle_list_connections(
+    State(store): State<Arc<ConnectionStore>>,
+) -> impl IntoResponse {
+    Json(store.list().await)
+}
+
+/// Accepts the full connection object as opaque JSON; upserts by `id`.
+async fn handle_save_connection(
+    State(store): State<Arc<ConnectionStore>>,
+    Json(conn): Json<serde_json::Value>,
+) -> Response {
+    match conn.get("id").and_then(|v| v.as_str()) {
+        Some(id) => {
+            store.save(id.to_string(), conn).await;
+            StatusCode::OK.into_response()
+        }
+        None => StatusCode::BAD_REQUEST.into_response(),
+    }
+}
+
+async fn handle_delete_connection(
+    State(store): State<Arc<ConnectionStore>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    store.delete(&id).await;
+    StatusCode::NO_CONTENT
+}
+
 
 // ── SSH tunnel handlers ───────────────────────────────────────────────────────
 
@@ -1011,6 +1155,7 @@ pub fn build_router(
     tunnel_state: Arc<TunnelManager>,
     auth_state: Arc<AuthConfig>,
     session_state: Arc<SessionRegistry>,
+    connection_state: Arc<ConnectionStore>,
 ) -> Router {
     let static_dir =
         std::env::var("SEAQUEL_STATIC_DIR").unwrap_or_else(|_| "./static".to_string());
@@ -1024,6 +1169,7 @@ pub fn build_router(
         tunnels: tunnel_state,
         auth: auth_state,
         sessions: session_state,
+        connections: connection_state,
     };
 
     Router::new()
@@ -1038,6 +1184,9 @@ pub fn build_router(
         .route("/api/secrets", post(handle_set_secret))
         .route("/api/secrets/{key}", get(handle_get_secret))
         .route("/api/secrets/{key}", delete(handle_delete_secret))
+        .route("/api/connections", get(handle_list_connections))
+        .route("/api/connections", post(handle_save_connection))
+        .route("/api/connections/{id}", delete(handle_delete_connection))
         .route("/api/ssh/tunnel", post(handle_create_tunnel))
         .route("/api/ssh/tunnel/{tunnel_id}", delete(handle_close_tunnel))
         .route("/api/ssh/tunnel/{tunnel_id}/status", get(handle_tunnel_status))
@@ -1064,12 +1213,18 @@ pub async fn run_server() {
     let bind_addr =
         std::env::var("SEAQUEL_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_string());
 
+    let data_dir = std::path::PathBuf::from(
+        std::env::var("SEAQUEL_DATA_DIR").unwrap_or_else(|_| "./data".to_string()),
+    );
+    let _ = std::fs::create_dir_all(&data_dir);
+
     let state = Arc::new(ConnectionManager::new());
-    let secrets = Arc::new(SecretStore::new());
+    let secrets = Arc::new(SecretStore::with_persistence(data_dir.join("secrets.json")));
     let tunnels = Arc::new(TunnelManager::new());
     let auth = Arc::new(AuthConfig::from_env());
     let sessions = Arc::new(SessionRegistry::new());
-    let app = build_router(state, secrets, tunnels, auth, sessions);
+    let connections = Arc::new(ConnectionStore::new(data_dir.join("connections.json")));
+    let app = build_router(state, secrets, tunnels, auth, sessions, connections);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
