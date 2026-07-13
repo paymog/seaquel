@@ -53,14 +53,24 @@ export function buildConnectionString(formData: ConnectionFormData): string {
  * Get connection data object from form data, suitable for passing to db.connections.add/reconnect/update.
  */
 export function getConnectionData(formData: ConnectionFormData) {
-  let connString = formData.connectionString;
-  if (connString) {
-    connString = connString.replace("postgresql://", "postgres://");
-  } else {
-    connString = buildConnectionString(formData);
-  }
+  const isFileBasedDb = formData.type === "sqlite" || formData.type === "duckdb";
 
-  if (!connString || connString.split(":").length !== 3) {
+  // Structured fields are the source of truth once collected. A pasted connection
+  // string only seeds those fields (via parseConnectionString) — it can go stale the
+  // moment the user edits Host/Port/Database/Username in the details step, so never
+  // prefer it over the current fields when we can rebuild. Otherwise a db-less pasted
+  // string (e.g. postgres://user@host:5432) would drop the database the user typed and
+  // Postgres would fall back to using the username as the database name.
+  const haveStructuredFields = isFileBasedDb
+    ? Boolean(formData.databaseName)
+    : Boolean(formData.host && formData.databaseName);
+
+  let connString: string;
+  if (haveStructuredFields) {
+    connString = buildConnectionString(formData);
+  } else if (formData.connectionString) {
+    connString = formData.connectionString.replace("postgresql://", "postgres://");
+  } else {
     connString = buildConnectionString(formData);
   }
 
