@@ -1,4 +1,4 @@
-import type { ConnectionFormData } from "$lib/types";
+import type { ConnectionFormData, DatabaseType } from "$lib/types";
 import { databaseTypes } from "$lib/stores/connection-wizard.svelte.js";
 import { getKeyringService } from "$lib/services/keyring";
 
@@ -211,4 +211,51 @@ export function hasAllCredentials(formData: ConnectionFormData): boolean {
   }
 
   return true;
+}
+
+/**
+ * Return a connection string pointing at a different logical database in the
+ * same server. Swaps the database name in the URL path while preserving
+ * credentials, host, port, and query params (e.g. sslmode).
+ *
+ * For non-URL connection strings (SQLite/DuckDB file paths) the input is
+ * returned unchanged — those engines have no server-level database to switch.
+ * If the string can't be parsed as a URL, it's also returned unchanged so a
+ * malformed stored value never blocks a switch attempt.
+ */
+export function swapDatabaseInConnectionString(
+  connStr: string | undefined,
+  databaseName: string,
+  type: DatabaseType,
+): string | undefined {
+  if (!connStr) return connStr;
+  if (type === "sqlite" || type === "duckdb") return connStr;
+  try {
+    const url = new URL(connStr.replace("postgresql://", "postgres://"));
+    url.pathname = `/${databaseName}`;
+    return url.toString();
+  } catch {
+    return connStr;
+  }
+}
+
+/**
+ * Rewrite a URL connection string to route through a local SSH tunnel forward
+ * (127.0.0.1:localPort), preserving credentials, path, and query params.
+ * Normalizes the `postgresql://` scheme to `postgres://` for URL parsing.
+ * Returns the input unchanged when it isn't a parseable URL.
+ */
+export function rewriteConnectionStringForTunnel(
+  connStr: string | undefined,
+  localPort: number,
+): string | undefined {
+  if (!connStr) return connStr;
+  try {
+    const url = new URL(connStr.replace("postgresql://", "postgres://"));
+    url.hostname = "127.0.0.1";
+    url.port = String(localPort);
+    return url.toString();
+  } catch {
+    return connStr;
+  }
 }

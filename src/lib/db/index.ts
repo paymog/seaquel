@@ -83,6 +83,14 @@ export interface DatabaseAdapter {
   /** SQL query to list available schemas */
   getSchemasQuery?(): string;
 
+  /**
+   * SQL query to list logical databases in the connected server (e.g. a Postgres
+   * cluster hosts multiple databases). Only engines that support switching the
+   * active database at the server level implement this; returns connectable,
+   * non-template database names.
+   */
+  getDatabasesQuery?(): string;
+
   /** Generate ALTER TABLE statements to transform originalDef into newDef */
   generateAlterTableSql?(
     originalDef: import("$lib/types").CreateTableDefinition,

@@ -88,6 +88,12 @@ export class PostgresAdapter implements DatabaseAdapter {
 		ORDER BY schema_name, table_name`;
   }
 
+  getDatabasesQuery(): string {
+    // datallowconn excludes databases that refuse connections (e.g. template0);
+    // NOT datistemplate drops user-visible templates like template1.
+    return `SELECT datname FROM pg_database WHERE datallowconn AND NOT datistemplate ORDER BY datname`;
+  }
+
   getColumnsQuery(table: string, schema: string): string {
     return `SELECT
 			column_name,

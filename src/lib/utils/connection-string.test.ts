@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ConnectionFormData } from "$lib/types";
-import { buildConnectionString, getConnectionData } from "./connection-string";
+import {
+  buildConnectionString,
+  getConnectionData,
+  swapDatabaseInConnectionString,
+  rewriteConnectionStringForTunnel,
+} from "./connection-string";
 
 function form(overrides: Partial<ConnectionFormData> = {}): ConnectionFormData {
   return {
@@ -63,5 +68,50 @@ describe("getConnectionData", () => {
       form({ type: "sqlite", host: "", databaseName: "/tmp/app.db" }),
     );
     expect(connectionString).toBe("sqlite:///tmp/app.db");
+  });
+});
+
+describe("swapDatabaseInConnectionString", () => {
+  it("swaps the database in the URL path, preserving credentials/host/params", () => {
+    const swapped = swapDatabaseInConnectionString(
+      "postgres://admin:secret@gn-db.rds.amazonaws.com:5432/app?sslmode=require",
+      "analytics",
+      "postgres",
+    );
+    expect(swapped).toBe(
+      "postgres://admin:secret@gn-db.rds.amazonaws.com:5432/analytics?sslmode=require",
+    );
+  });
+
+  it("normalizes a postgresql:// scheme and keeps it parseable", () => {
+    const swapped = swapDatabaseInConnectionString(
+      "postgresql://admin@host/dev",
+      "prod",
+      "postgres",
+    );
+    expect(swapped).toBe("postgres://admin@host/prod");
+  });
+
+  it("returns file-based (sqlite/duckdb) strings unchanged", () => {
+    const conn = "sqlite:///tmp/app.db";
+    expect(swapDatabaseInConnectionString(conn, "other", "sqlite")).toBe(conn);
+  });
+
+  it("returns undefined for undefined input", () => {
+    expect(swapDatabaseInConnectionString(undefined, "x", "postgres")).toBeUndefined();
+  });
+});
+
+describe("rewriteConnectionStringForTunnel", () => {
+  it("rewrites host/port to the local tunnel forward, keeping path and params", () => {
+    const rewritten = rewriteConnectionStringForTunnel(
+      "postgres://admin:secret@gn-db.rds.amazonaws.com:5432/app?sslmode=require",
+      49152,
+    );
+    expect(rewritten).toBe("postgres://admin:secret@127.0.0.1:49152/app?sslmode=require");
+  });
+
+  it("returns undefined for undefined input", () => {
+    expect(rewriteConnectionStringForTunnel(undefined, 49152)).toBeUndefined();
   });
 });

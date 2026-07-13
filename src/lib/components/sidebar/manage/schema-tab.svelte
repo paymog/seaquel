@@ -10,6 +10,7 @@
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 	import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 	import DeleteConfirmDialog from "$lib/components/delete-confirm-dialog.svelte";
+	import DatabaseSwitcher from "$lib/components/database-switcher.svelte";
 	import { m } from "$lib/paraglide/messages.js";
 
 	const db = useDatabase();
@@ -148,6 +149,7 @@
 	};
 </script>
 
+<DatabaseSwitcher />
 <div class="px-4 py-2">
 	<div class="flex items-center gap-1">
 		<div class="relative flex-1">

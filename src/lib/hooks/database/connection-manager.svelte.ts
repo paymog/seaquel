@@ -14,6 +14,10 @@ import { getKeyringService } from "$lib/services/keyring";
 import { SvelteSet } from "svelte/reactivity";
 import type { SharedRepoManager } from "./shared-repo-manager.svelte.js";
 import { log } from "$lib/utils/logger";
+import {
+  swapDatabaseInConnectionString,
+  rewriteConnectionStringForTunnel,
+} from "$lib/utils/connection-string";
 
 type ConnectionInput = Omit<DatabaseConnection, "id" | "projectId" | "labelIds"> & {
   projectId?: string;
@@ -180,13 +184,9 @@ export class ConnectionManager {
         remotePort: connection.port,
       });
 
-      let effectiveConnectionString = connection.connectionString;
-      if (effectiveConnectionString) {
-        const url = new URL(effectiveConnectionString.replace("postgresql://", "postgres://"));
-        url.hostname = "127.0.0.1";
-        url.port = String(tunnelResult.localPort);
-        effectiveConnectionString = url.toString();
-      }
+      const effectiveConnectionString = connection.connectionString
+        ? rewriteConnectionStringForTunnel(connection.connectionString, tunnelResult.localPort)
+        : connection.connectionString;
 
       void log.info(`SSH tunnel established for ${connectionId}`);
       toast.success(`SSH tunnel established on port ${tunnelResult.localPort}`);
@@ -314,7 +314,11 @@ export class ConnectionManager {
   /**
    * Reconnect to an existing connection.
    */
-  async reconnect(connectionId: string, connection: ConnectionInput): Promise<string> {
+  async reconnect(
+    connectionId: string,
+    connection: ConnectionInput,
+    options?: { reuseExistingTunnel?: boolean },
+  ): Promise<string> {
     void log.info(`Reconnecting: ${connectionId}`);
     const existingConnection = this.state.connections.find((c) => c.id === connectionId);
     if (!existingConnection) {
@@ -323,27 +327,45 @@ export class ConnectionManager {
 
     this.connectingIds.add(connectionId);
     try {
-      // Close existing tunnel if any
+      // When switching logical databases within the same server, the existing SSH
+      // tunnel (a forward to the server's host:port) is still valid — reuse it so
+      // we don't need SSH credentials again. Otherwise tear down and rebuild.
       const existingTunnelId = this.tunnelIds.get(connectionId);
-      if (existingTunnelId) {
-        try {
-          await closeSshTunnel(existingTunnelId);
-        } catch {
-          // Ignore cleanup errors
-        }
-        this.tunnelIds.delete(connectionId);
-      }
+      const canReuseTunnel =
+        !!options?.reuseExistingTunnel &&
+        !!existingTunnelId &&
+        !!existingConnection.tunnelLocalPort;
 
-      const { effectiveConnectionString: rawConnectionString, tunnelLocalPort } =
-        await this.setupSshTunnel(
-          connection,
-          {
-            sshPassword: connection.sshPassword,
-            sshKeyPath: connection.sshKeyPath,
-            sshKeyPassphrase: connection.sshKeyPassphrase,
-          },
-          connectionId,
-        );
+      let rawConnectionString: string | undefined;
+      let tunnelLocalPort: number | undefined;
+
+      if (canReuseTunnel) {
+        tunnelLocalPort = existingConnection.tunnelLocalPort;
+        rawConnectionString = connection.connectionString
+          ? rewriteConnectionStringForTunnel(connection.connectionString, tunnelLocalPort!)
+          : connection.connectionString;
+      } else {
+        // Close existing tunnel if any
+        if (existingTunnelId) {
+          try {
+            await closeSshTunnel(existingTunnelId);
+          } catch {
+            // Ignore cleanup errors
+          }
+          this.tunnelIds.delete(connectionId);
+        }
+
+        ({ effectiveConnectionString: rawConnectionString, tunnelLocalPort } =
+          await this.setupSshTunnel(
+            connection,
+            {
+              sshPassword: connection.sshPassword,
+              sshKeyPath: connection.sshKeyPath,
+              sshKeyPassphrase: connection.sshKeyPassphrase,
+            },
+            connectionId,
+          ));
+      }
 
       // Inject password into connection string if provided separately
       let effectiveConnectionString = rawConnectionString;
@@ -384,6 +406,7 @@ export class ConnectionManager {
         username: connection.username,
         password: connection.password,
         sslMode: connection.sslMode,
+        databaseName: connection.databaseName,
         connectionString: connection.connectionString,
         tunnelLocalPort,
         sshTunnel: connection.sshTunnel,
@@ -451,6 +474,64 @@ export class ConnectionManager {
     } finally {
       this.connectingIds.delete(connectionId);
     }
+  }
+
+  /**
+   * List logical databases available in the connected server (e.g. all
+   * databases in a Postgres cluster). Returns an empty array when the engine
+   * doesn't expose multiple databases per server or the connection is inactive.
+   */
+  async getAvailableDatabases(connectionId: string): Promise<string[]> {
+    const connection = this.state.connections.find((c) => c.id === connectionId);
+    if (!connection?.providerConnectionId) return [];
+    const adapter = getAdapter(connection.type);
+    if (!adapter.getDatabasesQuery) return [];
+    const provider = await this.providers.getForType(connection.type);
+    const rows = await provider.select<{ datname: string }>(
+      connection.providerConnectionId,
+      adapter.getDatabasesQuery(),
+    );
+    return rows.map((r) => r.datname).filter(Boolean);
+  }
+
+  /**
+   * Switch the active connection to a different logical database in the same
+   * server. Postgres has no in-connection `USE`, so this opens a fresh
+   * connection to the target database while reusing the existing SSH tunnel
+   * (the forward targets the server's host:port, database-independent).
+   */
+  async switchDatabase(connectionId: string, databaseName: string): Promise<void> {
+    const existing = this.state.connections.find((c) => c.id === connectionId);
+    if (!existing) throw new Error(`Connection with id ${connectionId} not found`);
+    if (!existing.providerConnectionId) throw new Error("Connection is not active");
+    if (existing.databaseName === databaseName) return;
+
+    const newConnectionString = swapDatabaseInConnectionString(
+      existing.connectionString,
+      databaseName,
+      existing.type,
+    );
+
+    await this.reconnect(
+      connectionId,
+      {
+        name: existing.name,
+        type: existing.type,
+        host: existing.host,
+        port: existing.port,
+        databaseName,
+        username: existing.username,
+        password: existing.password,
+        sslMode: existing.sslMode,
+        connectionString: newConnectionString,
+        sshTunnel: existing.sshTunnel,
+        sshKeyPath: existing.sshTunnel?.keyPath,
+        savePassword: existing.savePassword,
+        saveSshPassword: existing.saveSshPassword,
+        saveSshKeyPassphrase: existing.saveSshKeyPassphrase,
+      },
+      { reuseExistingTunnel: true },
+    );
   }
 
   /**
