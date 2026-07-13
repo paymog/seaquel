@@ -17,3 +17,5 @@
 
 ## Domain Notes
 - The self-hosted SeaQuel server listens on port 3000 and uses `SEAQUEL_ADMIN_PASSWORD` for its shared admin login.
+- Connection form: structured fields (Host/Port/Database/Username) are the source of truth. `getConnectionData` in `src/lib/utils/connection-string.ts` must rebuild the connection string from those fields — a stale pasted `formData.connectionString` (seeded by `parseConnectionString` in the method step) otherwise wins and can drop the database, so Postgres falls back to using the username as the db name.
+- `ServerKeyringService` (self-hosted web mode) is backed by an in-memory, single-admin secret store — not a durable or private keychain. `isAvailable()` returns false so the UI does not offer "save password in keychain"; DB/SSH passwords are supplied per session. AI keys and license key use the secret store directly regardless.
