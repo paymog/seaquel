@@ -23,7 +23,7 @@
 		const ok = await login(password);
 		loading = false;
 		if (ok) {
-			goto("/");
+			window.location.assign("/");
 		} else {
 			error = "Invalid password";
 		}

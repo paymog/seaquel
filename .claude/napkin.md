@@ -8,6 +8,7 @@
 | 2026-07-13 | self | Created a git worktree for feature work but ran all edits against the main checkout path (`~/code/seaquel/...`); the worktree stayed clean and the main tree collected the diff | When working in a worktree, every tool path must point INTO the worktree dir (`~/code/seaquel/.worktrees/<name>/...`). Verify with `git status` in the worktree after the first edit. |
 | 2026-07-13 | self | Used `page.fill` in Browser automation; the harness exposes filling through `tab.fill` | Use the documented `tab` helpers for browser interactions; `page` is raw Puppeteer. |
 | 2026-07-13 | self | Trusted the filtered `cargo test` summary without checking that it ran zero tests | Read the raw test artifact when filters are involved; server-only tests require `--no-default-features --features server`. |
+| 2026-07-13 | self | Used a non-default project ID in an isolated server connection fixture, making an otherwise-loaded connection invisible in the project-filtered UI | Use `DEFAULT_PROJECT_ID` (`default-seaquel`) for fixture connections that should appear in the default project. |
 
 ## User Preferences
 - Keep feature work on meaningful branches.
