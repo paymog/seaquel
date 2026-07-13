@@ -2,12 +2,12 @@
 #   ./seaquel-server  — Rust binary (compiled for the target arch)
 #   ./build-server/   — frontend static files (arch-independent)
 #
-# The workflow compiles Rust and the frontend on x86 runners, then uses this
-# Dockerfile to package them. No compilation happens inside Docker, so
-# --platform linux/arm64 via QEMU is fast (just apt-get + COPY).
-FROM debian:bookworm-slim
+# The workflow compiles Rust on Ubuntu 24.04, so the runtime must use the same
+# glibc baseline. No compilation happens inside Docker, keeping ARM packaging
+# fast under QEMU.
+FROM ubuntu:24.04
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates libssl3 libgcc-s1 && \
+    apt-get install -y --no-install-recommends ca-certificates libssl3t64 libgcc-s1 && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
