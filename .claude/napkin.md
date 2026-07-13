@@ -6,6 +6,7 @@
 | 2026-07-13 | user | Repaired the SeaQuel image from a temporary clone instead of the user's existing checkout | Make source changes in `/Users/paymahn/code/seaquel` (`../../seaquel` from infra2); use temporary clones only when no local checkout exists. |
 | 2026-07-13 | self | Left the local SeaQuel smoke container running, so test-image cleanup failed | Track each detached smoke container and stop it immediately after the final assertion. |
 | 2026-07-13 | self | Created a git worktree for feature work but ran all edits against the main checkout path (`~/code/seaquel/...`); the worktree stayed clean and the main tree collected the diff | When working in a worktree, every tool path must point INTO the worktree dir (`~/code/seaquel/.worktrees/<name>/...`). Verify with `git status` in the worktree after the first edit. |
+| 2026-07-13 | self | Used `page.fill` in Browser automation; the harness exposes filling through `tab.fill` | Use the documented `tab` helpers for browser interactions; `page` is raw Puppeteer. |
 
 ## User Preferences
 - Keep feature work on meaningful branches.
