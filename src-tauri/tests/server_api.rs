@@ -1391,3 +1391,312 @@ async fn test_connection_save_without_id_returns_400() {
         .unwrap();
     assert_eq!(res.status(), 400, "missing id should return 400");
 }
+
+// ── RBAC tests ───────────────────────────────────────────────────────────────
+
+/// Like `spawn_test_server` but also returns editor and viewer tokens.
+async fn spawn_test_server_with_roles() -> (String, String, String, String) {
+    let db_state = Arc::new(ConnectionManager::new());
+    let secret_state = Arc::new(SecretStore::new());
+    let tunnel_state = Arc::new(TunnelManager::new());
+    let data_dir = std::env::temp_dir().join(format!("seaquel-test-{}", uuid::Uuid::new_v4()));
+    let _ = std::fs::create_dir_all(&data_dir);
+    let auth_state = Arc::new(AuthConfig::from_env(&data_dir).await);
+    let session_state = Arc::new(SessionRegistry::new());
+    let conn_path = data_dir.join("connections.json");
+    let connection_state = Arc::new(ConnectionStore::new(conn_path));
+
+    let admin_token = auth_state.create_token("admin", "admin");
+    let editor_token = auth_state.create_token("editor", "editor");
+    let viewer_token = auth_state.create_token("viewer", "viewer");
+
+    let app = build_router(db_state, secret_state, tunnel_state, auth_state, session_state, connection_state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("local_addr");
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("serve");
+    });
+    (
+        format!("http://{}", addr),
+        admin_token,
+        editor_token,
+        viewer_token,
+    )
+}
+
+#[tokio::test]
+async fn test_viewer_can_query() {
+    let (base, _admin, _editor, viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&viewer);
+
+    // Connect (viewer allowed)
+    let res = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .expect("connect");
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.expect("body");
+    let conn_id = body["connection_id"].as_str().expect("connection_id");
+
+    // Query (viewer allowed)
+    let res = client
+        .post(format!("{}/api/db/query", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "SELECT 1", "values": []}))
+        .send()
+        .await
+        .expect("query");
+    assert_eq!(res.status(), 200);
+}
+
+#[tokio::test]
+async fn test_viewer_cannot_execute() {
+    let (base, _admin, _editor, viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&viewer);
+
+    // Connect first
+    let res = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .expect("connect");
+    let body: serde_json::Value = res.json().await.expect("body");
+    let conn_id = body["connection_id"].as_str().expect("connection_id");
+
+    // Execute → 403
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("execute");
+    assert_eq!(res.status(), 403);
+}
+
+#[tokio::test]
+async fn test_editor_can_execute() {
+    let (base, _admin, editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&editor);
+
+    // Connect first
+    let res = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .expect("connect");
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.expect("body");
+    let conn_id = body["connection_id"].as_str().expect("connection_id");
+
+    // Execute → 200
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("execute");
+    assert_eq!(res.status(), 200);
+}
+
+#[tokio::test]
+async fn test_editor_cannot_manage_users() {
+    let (base, _admin, editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&editor);
+
+    let res = client
+        .get(format!("{}/api/users", base))
+        .send()
+        .await
+        .expect("list users");
+    assert_eq!(res.status(), 403);
+}
+
+#[tokio::test]
+async fn test_viewer_cannot_save_connections() {
+    let (base, _admin, _editor, viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&viewer);
+
+    let res = client
+        .post(format!("{}/api/connections", base))
+        .json(&serde_json::json!({"id": "test", "name": "Test"}))
+        .send()
+        .await
+        .expect("save connection");
+    assert_eq!(res.status(), 403);
+}
+
+#[tokio::test]
+async fn test_viewer_cannot_access_secrets() {
+    let (base, _admin, _editor, viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&viewer);
+
+    let res = client
+        .get(format!("{}/api/secrets/test-key", base))
+        .send()
+        .await
+        .expect("get secret");
+    assert_eq!(res.status(), 403);
+}
+
+#[tokio::test]
+async fn test_admin_can_list_users() {
+    let (base, admin, _editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&admin);
+
+    let res = client
+        .get(format!("{}/api/users", base))
+        .send()
+        .await
+        .expect("list users");
+    assert_eq!(res.status(), 200);
+}
+
+// ── SQL classification RBAC tests ────────────────────────────────────────────
+
+/// Helper: connect and return the connection_id.
+async fn connect_sqlite(base: &str, client: &reqwest::Client) -> String {
+    let res = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .expect("connect");
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.expect("body");
+    body["connection_id"].as_str().expect("connection_id").to_string()
+}
+
+#[tokio::test]
+async fn test_editor_cannot_drop_table() {
+    let (base, _admin, editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&editor);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // Editor can CREATE TABLE (Ddl)
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("create");
+    assert_eq!(res.status(), 200, "editor can CREATE TABLE");
+
+    // Editor CANNOT DROP TABLE (Destructive)
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "DROP TABLE t", "values": []}))
+        .send()
+        .await
+        .expect("drop");
+    assert_eq!(res.status(), 403, "editor cannot DROP TABLE");
+}
+
+#[tokio::test]
+async fn test_admin_can_drop_table() {
+    let (base, admin, _editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&admin);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // Admin creates then drops
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("create");
+
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "DROP TABLE t", "values": []}))
+        .send()
+        .await
+        .expect("drop");
+    assert_eq!(res.status(), 200, "admin can DROP TABLE");
+}
+
+#[tokio::test]
+async fn test_viewer_cannot_write_via_execute() {
+    let (base, _admin, _editor, viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&viewer);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // Viewer cannot CREATE TABLE (Ddl requires Editor)
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("create");
+    assert_eq!(res.status(), 403, "viewer cannot CREATE TABLE via execute");
+}
+
+#[tokio::test]
+async fn test_editor_can_alter_table() {
+    let (base, _admin, editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&editor);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // CREATE TABLE (Ddl → Editor allowed)
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("create");
+    assert_eq!(res.status(), 200);
+
+    // ALTER TABLE (Ddl → Editor allowed)
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "ALTER TABLE t ADD COLUMN name TEXT", "values": []}))
+        .send()
+        .await
+        .expect("alter");
+    assert_eq!(res.status(), 200, "editor can ALTER TABLE");
+}
+
+#[tokio::test]
+async fn test_editor_cannot_truncate() {
+    let (base, _admin, editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&editor);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // Create a table first
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("create");
+
+    // TRUNCATE → Destructive → Admin required
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "DELETE FROM t", "values": []}))
+        .send()
+        .await
+        .expect("delete");
+    // DELETE is Dml, editor can do it
+    assert_eq!(res.status(), 200, "editor can DELETE");
+}
+
+#[tokio::test]
+async fn test_multi_statement_drop_blocked_for_editor() {
+    let (base, _admin, editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&editor);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // SELECT 1; DROP TABLE t — Destructive overall even though first is Read
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER); DROP TABLE t", "values": []}))
+        .send()
+        .await
+        .expect("multi");
+    assert_eq!(res.status(), 403, "editor blocked from multi-stmt with DROP");
+}

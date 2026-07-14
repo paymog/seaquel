@@ -188,6 +188,38 @@ impl UserStore {
     }
 }
 
+// ── Role ─────────────────────────────────────────────────────────────────────
+
+/// Escalating privilege hierarchy: Viewer < Editor < Admin.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    Viewer,
+    Editor,
+    Admin,
+}
+
+impl Role {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "viewer" => Some(Self::Viewer),
+            "editor" => Some(Self::Editor),
+            "admin" => Some(Self::Admin),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Viewer => "viewer",
+            Self::Editor => "editor",
+            Self::Admin => "admin",
+        }
+    }
+}
+
 // ── Auth claims ──────────────────────────────────────────────────────────────
 
 /// Claims extracted from a verified token. Injected into request extensions
@@ -197,6 +229,12 @@ pub struct AuthClaims {
     pub session_id: String,
     pub username: String,
     pub role: String,
+}
+
+impl AuthClaims {
+    pub fn role_enum(&self) -> Role {
+        Role::from_str(&self.role).unwrap_or(Role::Viewer)
+    }
 }
 
 // ── Auth config ──────────────────────────────────────────────────────────────
