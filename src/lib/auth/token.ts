@@ -1,9 +1,12 @@
 /**
  * Auth token storage utilities for the self-hosted web app.
- * Tokens are stored in localStorage and attached to all API requests.
+ * Tokens and user metadata are stored in localStorage and attached to
+ * all API requests.
  */
 
 const TOKEN_KEY = "seaquel_auth_token";
+const USER_KEY = "seaquel_auth_user";
+const ROLE_KEY = "seaquel_auth_role";
 
 export function getAuthToken(): string | null {
   if (typeof localStorage === "undefined") return null;
@@ -16,10 +19,32 @@ export function setAuthToken(token: string): void {
 
 export function clearAuthToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(ROLE_KEY);
 }
 
 export function isAuthenticated(): boolean {
   return !!getAuthToken();
+}
+
+/** Store the authenticated user's username + role alongside the token. */
+export function setAuthUser(username: string, role: string): void {
+  localStorage.setItem(USER_KEY, username);
+  localStorage.setItem(ROLE_KEY, role);
+}
+
+export function getAuthUser(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage.getItem(USER_KEY);
+}
+
+export function getAuthRole(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage.getItem(ROLE_KEY);
+}
+
+export function isAdmin(): boolean {
+  return getAuthRole() === "admin";
 }
 
 /**

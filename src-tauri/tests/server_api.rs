@@ -22,14 +22,13 @@ async fn spawn_test_server() -> (String, String) {
     let db_state = Arc::new(ConnectionManager::new());
     let secret_state = Arc::new(SecretStore::new());
     let tunnel_state = Arc::new(TunnelManager::new());
-    let auth_state = Arc::new(AuthConfig::from_env());
+    let data_dir = std::env::temp_dir().join(format!("seaquel-test-{}", uuid::Uuid::new_v4()));
+    let _ = std::fs::create_dir_all(&data_dir);
+    let auth_state = Arc::new(AuthConfig::from_env(&data_dir).await);
     let session_state = Arc::new(SessionRegistry::new());
-    let conn_path = std::env::temp_dir().join(format!(
-        "seaquel-test-conn-{}.json",
-        uuid::Uuid::new_v4()
-    ));
+    let conn_path = data_dir.join("connections.json");
     let connection_state = Arc::new(ConnectionStore::new(conn_path));
-    let token = auth_state.create_token();
+    let token = auth_state.create_token("admin", "admin");
     let app = build_router(db_state, secret_state, tunnel_state, auth_state, session_state, connection_state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -1108,7 +1107,7 @@ async fn test_login_correct_password() {
 
     let res = client
         .post(format!("{}/api/auth/login", base))
-        .json(&serde_json::json!({"password": "admin"}))
+        .json(&serde_json::json!({"username": "admin", "password": "admin"}))
         .send()
         .await
         .expect("login request");
@@ -1116,6 +1115,8 @@ async fn test_login_correct_password() {
     assert_eq!(res.status(), 200);
     let body: serde_json::Value = res.json().await.expect("login body");
     assert!(body["token"].as_str().is_some(), "token present");
+    assert_eq!(body["username"], "admin");
+    assert_eq!(body["role"], "admin");
 }
 
 #[tokio::test]
@@ -1125,7 +1126,7 @@ async fn test_login_wrong_password() {
 
     let res = client
         .post(format!("{}/api/auth/login", base))
-        .json(&serde_json::json!({"password": "wrong"}))
+        .json(&serde_json::json!({"username": "admin", "password": "wrong"}))
         .send()
         .await
         .expect("login request");
@@ -1214,7 +1215,7 @@ async fn test_cross_session_connection_isolation() {
     let plain_client = reqwest::Client::new();
     let login_res = plain_client
         .post(format!("{}/api/auth/login", base))
-        .json(&serde_json::json!({"password": "admin"}))
+        .json(&serde_json::json!({"username": "admin", "password": "admin"}))
         .send()
         .await
         .expect("login");

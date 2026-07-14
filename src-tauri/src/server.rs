@@ -18,14 +18,14 @@ use axum::{
     http::StatusCode,
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use futures::{SinkExt, StreamExt};
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
-use crate::auth::AuthConfig;
+use crate::auth::{AuthClaims, AuthConfig, UserInfo};
 
 
 use crate::db::{
@@ -398,12 +398,15 @@ struct GetSecretResponse {
 
 #[derive(serde::Deserialize)]
 struct LoginRequest {
+    username: String,
     password: String,
 }
 
 #[derive(serde::Serialize)]
 struct LoginResponse {
     token: String,
+    username: String,
+    role: String,
 }
 
 // ── Session scoping ────────────────────────────────────────────────────────────
@@ -423,6 +426,22 @@ impl axum::extract::FromRequestParts<AppState> for SessionId {
         parts
             .extensions
             .get::<SessionId>()
+            .cloned()
+            .ok_or(StatusCode::UNAUTHORIZED)
+    }
+}
+
+/// Extractor for the authenticated user's claims (username, role, session).
+impl axum::extract::FromRequestParts<AppState> for AuthClaims {
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<AuthClaims>()
             .cloned()
             .ok_or(StatusCode::UNAUTHORIZED)
     }
@@ -506,13 +525,14 @@ async fn auth_middleware(
         })
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let session_id = state
+    let claims = state
         .auth
         .verify_token(token)
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    // Inject session_id into request extensions so handlers can scope connections.
-    req.extensions_mut().insert(SessionId(session_id));
+    // Inject session_id and full claims into request extensions.
+    req.extensions_mut().insert(SessionId(claims.session_id.clone()));
+    req.extensions_mut().insert(claims);
 
     Ok(next.run(req).await)
 }
@@ -521,12 +541,99 @@ async fn handle_login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
-    if state.auth.verify_password(&req.password) {
-        Ok(Json(LoginResponse {
-            token: state.auth.create_token(),
-        }))
+    let role = state
+        .auth
+        .verify_credentials(&req.username, &req.password)
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let token = state.auth.create_token(&req.username, &role);
+    Ok(Json(LoginResponse {
+        token,
+        username: req.username,
+        role,
+    }))
+}
+
+// ── User management ──────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct CreateUserRequest {
+    username: String,
+    password: String,
+    role: String,
+}
+
+#[derive(serde::Deserialize)]
+struct UpdateUserRequest {
+    password: Option<String>,
+    role: Option<String>,
+}
+
+async fn handle_list_users(
+    claims: AuthClaims,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<UserInfo>>, StatusCode> {
+    if claims.role != "admin" {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let users = state.auth.users().list().await;
+    Ok(Json(users))
+}
+
+async fn handle_create_user(
+    claims: AuthClaims,
+    State(state): State<AppState>,
+    Json(req): Json<CreateUserRequest>,
+) -> Result<Json<UserInfo>, StatusCode> {
+    if claims.role != "admin" {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if !state.auth.users().add(&req.username, &req.password, &req.role).await {
+        return Err(StatusCode::CONFLICT);
+    }
+    Ok(Json(UserInfo {
+        username: req.username,
+        role: req.role,
+    }))
+}
+
+async fn handle_update_user(
+    claims: AuthClaims,
+    State(state): State<AppState>,
+    Path(username): Path<String>,
+    Json(req): Json<UpdateUserRequest>,
+) -> Result<StatusCode, StatusCode> {
+    if claims.role != "admin" {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if state
+        .auth
+        .users()
+        .update(&username, req.password.as_deref(), req.role.as_deref())
+        .await
+    {
+        Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+async fn handle_delete_user(
+    claims: AuthClaims,
+    State(state): State<AppState>,
+    Path(username): Path<String>,
+) -> Result<StatusCode, StatusCode> {
+    if claims.role != "admin" {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if claims.username == username {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if state.auth.users().remove(&username).await {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(StatusCode::NOT_FOUND)
     }
 }
 
@@ -1174,6 +1281,10 @@ pub fn build_router(
 
     Router::new()
         .route("/api/auth/login", post(handle_login))
+        .route("/api/users", get(handle_list_users))
+        .route("/api/users", post(handle_create_user))
+        .route("/api/users/{username}", put(handle_update_user))
+        .route("/api/users/{username}", delete(handle_delete_user))
         .route("/api/db/connect", post(handle_connect))
         .route("/api/db/query", post(handle_query))
         .route("/api/db/execute", post(handle_execute))
@@ -1221,7 +1332,7 @@ pub async fn run_server() {
     let state = Arc::new(ConnectionManager::new());
     let secrets = Arc::new(SecretStore::with_persistence(data_dir.join("secrets.json")));
     let tunnels = Arc::new(TunnelManager::new());
-    let auth = Arc::new(AuthConfig::from_env());
+    let auth = Arc::new(AuthConfig::from_env(&data_dir).await);
     let sessions = Arc::new(SessionRegistry::new());
     let connections = Arc::new(ConnectionStore::new(data_dir.join("connections.json")));
     let app = build_router(state, secrets, tunnels, auth, sessions, connections);
