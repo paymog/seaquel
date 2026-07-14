@@ -26,6 +26,7 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::auth::{AuthClaims, AuthConfig, Role, UserInfo};
+use crate::sql_classify::{classify_sql, SqlClass};
 
 
 use crate::db::{
@@ -693,6 +694,30 @@ impl IntoResponse for ApiError {
     }
 }
 
+/// Classify SQL and check the caller's role is sufficient. Returns
+/// `FORBIDDEN` (wrapped in `ApiError`) if the role is too low.
+fn check_sql_permission(claims: &AuthClaims, sql: &str) -> Result<(), ApiError> {
+    let class = classify_sql(sql);
+    let min_role = match class {
+        SqlClass::Read => Role::Viewer,
+        SqlClass::Dml | SqlClass::Ddl => Role::Editor,
+        SqlClass::Destructive | SqlClass::Unknown => Role::Admin,
+    };
+    if claims.role_enum() < min_role {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            DbError {
+                message: format!(
+                    "Your role ({}) cannot execute {:?} statements (requires {:?})",
+                    claims.role, class, min_role
+                ),
+                code: "FORBIDDEN".to_string(),
+            },
+        ));
+    }
+    Ok(())
+}
+
 // ── Driver factory ────────────────────────────────────────────────────────────
 
 async fn connect_driver(config: &ConnectConfig) -> Result<Box<dyn Driver>, DbError> {
@@ -731,8 +756,10 @@ async fn handle_query(
     State(manager): State<Arc<ConnectionManager>>,
     State(sessions): State<Arc<SessionRegistry>>,
     session: SessionId,
+    claims: AuthClaims,
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<QueryResult>, ApiError> {
+    check_sql_permission(&claims, &req.sql)?;
     if !sessions.verify(&session.0, &req.connection_id).await {
         return Err(ApiError(StatusCode::NOT_FOUND, DbError::connection_not_found(&req.connection_id)));
     }
@@ -748,9 +775,10 @@ async fn handle_execute(
     State(manager): State<Arc<ConnectionManager>>,
     State(sessions): State<Arc<SessionRegistry>>,
     session: SessionId,
-    _claims: EditorClaims,
+    claims: AuthClaims,
     Json(req): Json<ExecuteRequest>,
 ) -> Result<Json<ExecuteResult>, ApiError> {
+    check_sql_permission(&claims, &req.sql)?;
     if !sessions.verify(&session.0, &req.connection_id).await {
         return Err(ApiError(StatusCode::NOT_FOUND, DbError::connection_not_found(&req.connection_id)));
     }
@@ -790,9 +818,13 @@ async fn handle_transaction(
     State(manager): State<Arc<ConnectionManager>>,
     State(sessions): State<Arc<SessionRegistry>>,
     session: SessionId,
-    _claims: EditorClaims,
+    claims: AuthClaims,
     Json(req): Json<TransactionRequest>,
 ) -> Result<Json<()>, ApiError> {
+    // Classify all statements; enforce the most restrictive requirement.
+    for stmt in &req.statements {
+        check_sql_permission(&claims, &stmt.sql)?;
+    }
     if !sessions.verify(&session.0, &req.connection_id).await {
         return Err(ApiError(StatusCode::NOT_FOUND, DbError::connection_not_found(&req.connection_id)));
     }
