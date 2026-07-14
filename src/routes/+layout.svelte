@@ -28,6 +28,7 @@
     import { isTauri } from "$lib/utils/environment";
     import { isServer } from "$lib/utils/environment";
     import { isAuthenticated } from "$lib/auth/token";
+    import { roleStore } from "$lib/auth/role.svelte";
     import { goto } from "$app/navigation";
     import { initLogger } from "$lib/utils/logger";
     import { initializeDemo } from "$lib/demo/init";
@@ -58,6 +59,9 @@
             goto("/login");
             return;
         }
+
+        // Initialize role store for RBAC
+        roleStore.init();
 
         const commonInit = [
             initLogger(),

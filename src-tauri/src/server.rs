@@ -25,7 +25,7 @@ use futures::{SinkExt, StreamExt};
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
-use crate::auth::{AuthClaims, AuthConfig, UserInfo};
+use crate::auth::{AuthClaims, AuthConfig, Role, UserInfo};
 
 
 use crate::db::{
@@ -447,6 +447,52 @@ impl axum::extract::FromRequestParts<AppState> for AuthClaims {
     }
 }
 
+/// Extractor that requires at least `Editor` role. Returns 403 otherwise.
+pub struct EditorClaims(pub AuthClaims);
+
+impl axum::extract::FromRequestParts<AppState> for EditorClaims {
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let claims = parts
+            .extensions
+            .get::<AuthClaims>()
+            .cloned()
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+        if claims.role_enum() >= Role::Editor {
+            Ok(EditorClaims(claims))
+        } else {
+            Err(StatusCode::FORBIDDEN)
+        }
+    }
+}
+
+/// Extractor that requires `Admin` role. Returns 403 otherwise.
+pub struct AdminClaims(pub AuthClaims);
+
+impl axum::extract::FromRequestParts<AppState> for AdminClaims {
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let claims = parts
+            .extensions
+            .get::<AuthClaims>()
+            .cloned()
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+        if claims.role_enum() >= Role::Admin {
+            Ok(AdminClaims(claims))
+        } else {
+            Err(StatusCode::FORBIDDEN)
+        }
+    }
+}
+
 /// Tracks which connections belong to which session, preventing cross-session
 /// access even if a connection_id leaks.
 #[derive(Default)]
@@ -571,24 +617,18 @@ struct UpdateUserRequest {
 }
 
 async fn handle_list_users(
-    claims: AuthClaims,
     State(state): State<AppState>,
+    _claims: AdminClaims,
 ) -> Result<Json<Vec<UserInfo>>, StatusCode> {
-    if claims.role != "admin" {
-        return Err(StatusCode::FORBIDDEN);
-    }
     let users = state.auth.users().list().await;
     Ok(Json(users))
 }
 
 async fn handle_create_user(
-    claims: AuthClaims,
     State(state): State<AppState>,
+    _claims: AdminClaims,
     Json(req): Json<CreateUserRequest>,
 ) -> Result<Json<UserInfo>, StatusCode> {
-    if claims.role != "admin" {
-        return Err(StatusCode::FORBIDDEN);
-    }
     if !state.auth.users().add(&req.username, &req.password, &req.role).await {
         return Err(StatusCode::CONFLICT);
     }
@@ -599,14 +639,12 @@ async fn handle_create_user(
 }
 
 async fn handle_update_user(
-    claims: AuthClaims,
     State(state): State<AppState>,
+    claims: AdminClaims,
     Path(username): Path<String>,
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    if claims.role != "admin" {
-        return Err(StatusCode::FORBIDDEN);
-    }
+    let _ = &claims; // admin verified by extractor
     if state
         .auth
         .users()
@@ -620,14 +658,11 @@ async fn handle_update_user(
 }
 
 async fn handle_delete_user(
-    claims: AuthClaims,
     State(state): State<AppState>,
+    claims: AdminClaims,
     Path(username): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    if claims.role != "admin" {
-        return Err(StatusCode::FORBIDDEN);
-    }
-    if claims.username == username {
+    if claims.0.username == username {
         return Err(StatusCode::BAD_REQUEST);
     }
     if state.auth.users().remove(&username).await {
@@ -713,6 +748,7 @@ async fn handle_execute(
     State(manager): State<Arc<ConnectionManager>>,
     State(sessions): State<Arc<SessionRegistry>>,
     session: SessionId,
+    _claims: EditorClaims,
     Json(req): Json<ExecuteRequest>,
 ) -> Result<Json<ExecuteResult>, ApiError> {
     if !sessions.verify(&session.0, &req.connection_id).await {
@@ -754,6 +790,7 @@ async fn handle_transaction(
     State(manager): State<Arc<ConnectionManager>>,
     State(sessions): State<Arc<SessionRegistry>>,
     session: SessionId,
+    _claims: EditorClaims,
     Json(req): Json<TransactionRequest>,
 ) -> Result<Json<()>, ApiError> {
     if !sessions.verify(&session.0, &req.connection_id).await {
@@ -912,6 +949,7 @@ async fn stream_handler(socket: WebSocket, manager: Arc<ConnectionManager>, sess
 // ── Secret handlers ───────────────────────────────────────────────────────────
 
 async fn handle_set_secret(
+    _claims: AdminClaims,
     State(store): State<Arc<SecretStore>>,
     Json(req): Json<SetSecretRequest>,
 ) -> impl IntoResponse {
@@ -920,6 +958,7 @@ async fn handle_set_secret(
 }
 
 async fn handle_get_secret(
+    _claims: AdminClaims,
     State(store): State<Arc<SecretStore>>,
     Path(key): Path<String>,
 ) -> impl IntoResponse {
@@ -930,6 +969,7 @@ async fn handle_get_secret(
 }
 
 async fn handle_delete_secret(
+    _claims: AdminClaims,
     State(store): State<Arc<SecretStore>>,
     Path(key): Path<String>,
 ) -> impl IntoResponse {
@@ -947,6 +987,7 @@ async fn handle_list_connections(
 
 /// Accepts the full connection object as opaque JSON; upserts by `id`.
 async fn handle_save_connection(
+    _claims: AdminClaims,
     State(store): State<Arc<ConnectionStore>>,
     Json(conn): Json<serde_json::Value>,
 ) -> Response {
@@ -960,6 +1001,7 @@ async fn handle_save_connection(
 }
 
 async fn handle_delete_connection(
+    _claims: AdminClaims,
     State(store): State<Arc<ConnectionStore>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
@@ -996,6 +1038,7 @@ impl From<TunnelError> for SshApiError {
 }
 
 async fn handle_create_tunnel(
+    _claims: AdminClaims,
     State(tunnels): State<Arc<TunnelManager>>,
     Json(config): Json<TunnelConfig>,
 ) -> Result<Json<TunnelResult>, SshApiError> {
@@ -1004,6 +1047,7 @@ async fn handle_create_tunnel(
 }
 
 async fn handle_close_tunnel(
+    _claims: AdminClaims,
     State(tunnels): State<Arc<TunnelManager>>,
     Path(tunnel_id): Path<String>,
 ) -> impl IntoResponse {
@@ -1161,19 +1205,20 @@ struct GitRemoteUrlResponse {
 
 // ── Git handlers ──────────────────────────────────────────────────────────────
 
-async fn handle_git_clone(Json(req): Json<GitCloneRequest>) -> Result<StatusCode, GitApiError> {
+async fn handle_git_clone(_claims: EditorClaims, Json(req): Json<GitCloneRequest>) -> Result<StatusCode, GitApiError> {
     let p = resolve_git_path(&req.path).to_string_lossy().to_string();
     run_git(move || crate::git::git_clone_repo(req.url, p, req.credentials)).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn handle_git_init(Json(req): Json<GitInitRequest>) -> Result<StatusCode, GitApiError> {
+async fn handle_git_init(_claims: EditorClaims, Json(req): Json<GitInitRequest>) -> Result<StatusCode, GitApiError> {
     let p = resolve_git_path(&req.path).to_string_lossy().to_string();
     run_git(move || crate::git::git_init_repo(p)).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 async fn handle_git_pull(
+    _claims: EditorClaims,
     Json(req): Json<GitPullRequest>,
 ) -> Result<Json<crate::git::SyncResult>, GitApiError> {
     let p = resolve_git_path(&req.path).to_string_lossy().to_string();
@@ -1182,6 +1227,7 @@ async fn handle_git_pull(
 }
 
 async fn handle_git_push(
+    _claims: EditorClaims,
     Json(req): Json<GitPushRequest>,
 ) -> Result<Json<crate::git::SyncResult>, GitApiError> {
     let p = resolve_git_path(&req.path).to_string_lossy().to_string();
@@ -1197,21 +1243,20 @@ async fn handle_git_status(
     Ok(Json(result))
 }
 
-async fn handle_git_commit(
-    Json(req): Json<GitCommitRequest>,
-) -> Result<Json<GitCommitResponse>, GitApiError> {
+async fn handle_git_commit(_claims: EditorClaims, Json(req): Json<GitCommitRequest>) -> Result<Json<GitCommitResponse>, GitApiError> {
     let p = resolve_git_path(&req.path).to_string_lossy().to_string();
     let commit_id = run_git(move || crate::git::git_commit_changes(p, req.message)).await?;
     Ok(Json(GitCommitResponse { commit_id }))
 }
 
-async fn handle_git_stage(Json(req): Json<GitStageRequest>) -> Result<StatusCode, GitApiError> {
+async fn handle_git_stage(_claims: EditorClaims, Json(req): Json<GitStageRequest>) -> Result<StatusCode, GitApiError> {
     let p = resolve_git_path(&req.path).to_string_lossy().to_string();
     run_git(move || crate::git::git_stage_file(p, req.file_path)).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 async fn handle_git_discard(
+    _claims: EditorClaims,
     Json(req): Json<GitDiscardRequest>,
 ) -> Result<StatusCode, GitApiError> {
     let p = resolve_git_path(&req.path).to_string_lossy().to_string();
@@ -1220,6 +1265,7 @@ async fn handle_git_discard(
 }
 
 async fn handle_git_resolve(
+    _claims: EditorClaims,
     Json(req): Json<GitResolveRequest>,
 ) -> Result<StatusCode, GitApiError> {
     let p = resolve_git_path(&req.path).to_string_lossy().to_string();
@@ -1236,6 +1282,7 @@ async fn handle_git_conflict(
 }
 
 async fn handle_git_set_remote(
+    _claims: EditorClaims,
     Json(req): Json<GitSetRemoteRequest>,
 ) -> Result<StatusCode, GitApiError> {
     let p = resolve_git_path(&req.path).to_string_lossy().to_string();

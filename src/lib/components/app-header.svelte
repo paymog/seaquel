@@ -8,6 +8,12 @@
     import DeleteConfirmDialog from "$lib/components/delete-confirm-dialog.svelte";
     import CheckIcon from "@lucide/svelte/icons/check";
     import { useDatabase } from "$lib/hooks/database.svelte.js";
+    import { isServer } from "$lib/utils/environment";
+    import { roleStore } from "$lib/auth/role.svelte";
+    import { logout } from "$lib/auth/api";
+    import UserManagementDialog from "./user-management-dialog.svelte";
+    import UsersIcon from "@lucide/svelte/icons/users";
+    import LogOutIcon from "@lucide/svelte/icons/log-out";
 
     import PlusIcon from "@lucide/svelte/icons/plus";
     import SparklesIcon from "@lucide/svelte/icons/sparkles";
@@ -50,6 +56,7 @@
     });
 
     let checkingForUpdates = $state(false);
+    let showUserManagement = $state(false);
 
     const checkForUpdates = async () => {
         checkingForUpdates = true;
@@ -332,6 +339,21 @@
                             {checkingForUpdates ? "Checking..." : "Check for Updates"}
                         </DropdownMenu.Item>
                     {/if}
+                    {#if isServer() && roleStore.isAdmin}
+                        <DropdownMenu.Item onclick={() => showUserManagement = true}>
+                            <UsersIcon class="size-4" />
+                            Users
+                        </DropdownMenu.Item>
+                    {/if}
+                    {#if isServer()}
+                        <DropdownMenu.Item
+                            class="text-destructive focus:text-destructive"
+                            onclick={() => { logout(); window.location.assign("/login"); }}
+                        >
+                            <LogOutIcon class="size-4" />
+                            Sign out
+                        </DropdownMenu.Item>
+                    {/if}
                     <DropdownMenu.Item onclick={() => openExternal("https://github.com/webstonehq/seaquel/issues")}>
                         <MessageSquareTextIcon class="size-4" />
                         Feedback
@@ -376,6 +398,8 @@
         </Dialog.Footer>
     </Dialog.Content>
 </Dialog.Root>
+
+<UserManagementDialog bind:open={showUserManagement} />
 
 <!-- Remove Project Dialog -->
 <DeleteConfirmDialog
