@@ -4,6 +4,8 @@ pub mod db;
 pub mod server;
 #[cfg(feature = "server")]
 pub mod auth;
+#[cfg(feature = "server")]
+pub mod sql_classify;
 
 #[cfg(any(feature = "tauri", feature = "server"))]
 pub mod git;

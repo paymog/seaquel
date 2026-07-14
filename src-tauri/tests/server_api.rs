@@ -1555,3 +1555,148 @@ async fn test_admin_can_list_users() {
         .expect("list users");
     assert_eq!(res.status(), 200);
 }
+
+// ── SQL classification RBAC tests ────────────────────────────────────────────
+
+/// Helper: connect and return the connection_id.
+async fn connect_sqlite(base: &str, client: &reqwest::Client) -> String {
+    let res = client
+        .post(format!("{}/api/db/connect", base))
+        .json(&serde_json::json!({"driver": "sqlite", "connection_string": ":memory:"}))
+        .send()
+        .await
+        .expect("connect");
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.expect("body");
+    body["connection_id"].as_str().expect("connection_id").to_string()
+}
+
+#[tokio::test]
+async fn test_editor_cannot_drop_table() {
+    let (base, _admin, editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&editor);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // Editor can CREATE TABLE (Ddl)
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("create");
+    assert_eq!(res.status(), 200, "editor can CREATE TABLE");
+
+    // Editor CANNOT DROP TABLE (Destructive)
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "DROP TABLE t", "values": []}))
+        .send()
+        .await
+        .expect("drop");
+    assert_eq!(res.status(), 403, "editor cannot DROP TABLE");
+}
+
+#[tokio::test]
+async fn test_admin_can_drop_table() {
+    let (base, admin, _editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&admin);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // Admin creates then drops
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("create");
+
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "DROP TABLE t", "values": []}))
+        .send()
+        .await
+        .expect("drop");
+    assert_eq!(res.status(), 200, "admin can DROP TABLE");
+}
+
+#[tokio::test]
+async fn test_viewer_cannot_write_via_execute() {
+    let (base, _admin, _editor, viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&viewer);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // Viewer cannot CREATE TABLE (Ddl requires Editor)
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("create");
+    assert_eq!(res.status(), 403, "viewer cannot CREATE TABLE via execute");
+}
+
+#[tokio::test]
+async fn test_editor_can_alter_table() {
+    let (base, _admin, editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&editor);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // CREATE TABLE (Ddl → Editor allowed)
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("create");
+    assert_eq!(res.status(), 200);
+
+    // ALTER TABLE (Ddl → Editor allowed)
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "ALTER TABLE t ADD COLUMN name TEXT", "values": []}))
+        .send()
+        .await
+        .expect("alter");
+    assert_eq!(res.status(), 200, "editor can ALTER TABLE");
+}
+
+#[tokio::test]
+async fn test_editor_cannot_truncate() {
+    let (base, _admin, editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&editor);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // Create a table first
+    client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER)", "values": []}))
+        .send()
+        .await
+        .expect("create");
+
+    // TRUNCATE → Destructive → Admin required
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "DELETE FROM t", "values": []}))
+        .send()
+        .await
+        .expect("delete");
+    // DELETE is Dml, editor can do it
+    assert_eq!(res.status(), 200, "editor can DELETE");
+}
+
+#[tokio::test]
+async fn test_multi_statement_drop_blocked_for_editor() {
+    let (base, _admin, editor, _viewer) = spawn_test_server_with_roles().await;
+    let client = auth_client(&editor);
+    let conn_id = connect_sqlite(&base, &client).await;
+
+    // SELECT 1; DROP TABLE t — Destructive overall even though first is Read
+    let res = client
+        .post(format!("{}/api/db/execute", base))
+        .json(&serde_json::json!({"connection_id": conn_id, "sql": "CREATE TABLE t (id INTEGER); DROP TABLE t", "values": []}))
+        .send()
+        .await
+        .expect("multi");
+    assert_eq!(res.status(), 403, "editor blocked from multi-stmt with DROP");
+}
