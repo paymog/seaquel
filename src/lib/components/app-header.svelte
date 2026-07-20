@@ -11,7 +11,6 @@
     import { isServer } from "$lib/utils/environment";
     import { roleStore } from "$lib/auth/role.svelte";
     import { logout } from "$lib/auth/api";
-    import UserManagementDialog from "./user-management-dialog.svelte";
     import UsersIcon from "@lucide/svelte/icons/users";
     import LogOutIcon from "@lucide/svelte/icons/log-out";
 
@@ -40,6 +39,7 @@
     import { isTauri } from "$lib/utils/environment";
     import { page } from "$app/state";
     import { resolve } from "$app/paths";
+    import { goto } from "$app/navigation";
     import UpdateBadge from "./update-badge.svelte";
     import { aiSettingsStore } from "$lib/stores/ai-settings.svelte.js";
 
@@ -56,7 +56,6 @@
     });
 
     let checkingForUpdates = $state(false);
-    let showUserManagement = $state(false);
 
     const checkForUpdates = async () => {
         checkingForUpdates = true;
@@ -340,7 +339,7 @@
                         </DropdownMenu.Item>
                     {/if}
                     {#if isServer() && roleStore.isAdmin}
-                        <DropdownMenu.Item onclick={() => showUserManagement = true}>
+                        <DropdownMenu.Item onclick={() => goto(resolve("/users"))}>
                             <UsersIcon class="size-4" />
                             Users
                         </DropdownMenu.Item>
@@ -399,7 +398,6 @@
     </Dialog.Content>
 </Dialog.Root>
 
-<UserManagementDialog bind:open={showUserManagement} />
 
 <!-- Remove Project Dialog -->
 <DeleteConfirmDialog
