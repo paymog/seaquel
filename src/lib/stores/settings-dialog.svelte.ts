@@ -1,6 +1,5 @@
 export type SettingsSection =
   | "app-info"
-  | "license"
   | "theme"
   | "themes"
   | "editor"
@@ -16,7 +15,6 @@ export type SettingsView = SettingsGroup | SettingsSection;
 // Map sections to their parent groups
 export const sectionToGroup: Record<SettingsSection, SettingsGroup> = {
   "app-info": "general",
-  license: "general",
   theme: "appearance",
   themes: "appearance",
   editor: "appearance",
@@ -30,7 +28,7 @@ export const sectionToGroup: Record<SettingsSection, SettingsGroup> = {
 
 // Map groups to their sections
 export const groupSections: Record<SettingsGroup, SettingsSection[]> = {
-  general: ["app-info", "license", "query-history"],
+  general: ["app-info", "query-history"],
   appearance: ["theme", "themes", "editor"],
   features: ["ai-feature", "learn", "pending-changes"],
   ai: ["ai-provider", "ai-privacy"],

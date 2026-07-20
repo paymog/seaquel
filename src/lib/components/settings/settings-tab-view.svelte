@@ -14,7 +14,6 @@
 	import SunMoonIcon from "@lucide/svelte/icons/sun-moon";
 	import SwatchBookIcon from "@lucide/svelte/icons/swatch-book";
 	import BlocksIcon from "@lucide/svelte/icons/blocks";
-	import KeyIcon from "@lucide/svelte/icons/key-round";
 	import SparklesIcon from "@lucide/svelte/icons/sparkles";
 	import ShieldIcon from "@lucide/svelte/icons/shield";
 	import HistoryIcon from "@lucide/svelte/icons/history";
@@ -25,7 +24,6 @@
 	import { useDatabase } from "$lib/hooks/database.svelte.js";
 
 	import AppInfoSection from "./general/app-info-section.svelte";
-	import LicenseSection from "./general/license-section.svelte";
 	import QueryHistorySection from "./general/query-history-section.svelte";
 	import ThemeSection from "./appearance/theme-section.svelte";
 	import ThemesSection from "./appearance/themes-section.svelte";
@@ -72,7 +70,6 @@
 		return (
 			{
 				"app-info": "general",
-				license: "general",
 				"query-history": "general",
 				theme: "appearance",
 				themes: "appearance",
@@ -107,7 +104,6 @@
 			icon: SettingsIcon,
 			items: [
 				{ id: "app-info", name: m.settings_app_info(), icon: InfoIcon },
-				...(isTauri() ? [{ id: "license" as const, name: m.settings_license(), icon: KeyIcon }] : []),
 				{ id: "query-history", name: m.settings_query_history(), icon: HistoryIcon },
 			],
 		},
@@ -167,7 +163,6 @@
 	// Map section IDs to their parent group
 	const sectionToGroup: Record<string, SettingsGroup> = {
 		"app-info": "general",
-		license: "general",
 		theme: "appearance",
 		themes: "appearance",
 		editor: "appearance",
@@ -307,10 +302,6 @@
 		}}>
 			{#if shouldShowSection("app-info")}
 				<AppInfoSection {tab} />
-			{/if}
-
-			{#if shouldShowSection("license")}
-				<LicenseSection />
 			{/if}
 
 			{#if shouldShowSection("query-history")}

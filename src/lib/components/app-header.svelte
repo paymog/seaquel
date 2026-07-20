@@ -24,7 +24,6 @@
     import { toast } from "svelte-sonner";
     import { errorToast } from "$lib/utils/toast";
     import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
-    import CircleDollarSignIcon from "@lucide/svelte/icons/circle-dollar-sign";
     import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
     import ListChecksIcon from "@lucide/svelte/icons/list-checks";
     import MessageSquareTextIcon from "@lucide/svelte/icons/message-square-text";
@@ -32,8 +31,6 @@
     import LanguageToggle from "./language-toggle.svelte";
     import { m } from "$lib/paraglide/messages.js";
     import { DEFAULT_PROJECT_ID } from "$lib/types";
-    import { Badge } from "$lib/components/ui/badge/index.js";
-    import { licenseStore } from "$lib/stores/license.svelte.js";
     import { updateStore } from "$lib/stores/update.svelte.js";
 
     import { isTauri } from "$lib/utils/environment";
@@ -236,16 +233,6 @@
 
         <!-- Right section: action buttons -->
         <div class="flex items-center gap-1 shrink-0">
-            {#if isTauri()}
-                <button
-                    class="cursor-pointer"
-                    onclick={() => db.settingsTabs.open("app", "license")}
-                >
-                    <Badge variant={licenseStore.status === "active" ? "default" : licenseStore.status === "expired" || licenseStore.status === "invalid" ? "destructive" : "secondary"}>
-                        {licenseStore.badgeLabel}
-                    </Badge>
-                </button>
-            {/if}
             {#if !isLearnPage && (db.state.activeConnection?.providerConnectionId)}
                 {#if db.state.activePendingChangesCount > 0}
                     <Button
@@ -323,15 +310,6 @@
                         <span class="text-muted-foreground text-xs shrink-0">Seaquel{appVersion ? ` v${appVersion}` : ""}</span>
                         <div class="h-px flex-1 bg-border"></div>
                     </div>
-                    {#if isTauri() && licenseStore.status !== "active"}
-                        <DropdownMenu.Item
-                            class="text-emerald-600 dark:text-emerald-400 focus:text-emerald-600 dark:focus:text-emerald-400"
-                            onclick={() => db.settingsTabs.open("app", "license")}
-                        >
-                            <CircleDollarSignIcon class="size-4" />
-                            Purchase License
-                        </DropdownMenu.Item>
-                    {/if}
                     {#if isTauri()}
                         <DropdownMenu.Item onclick={checkForUpdates} disabled={checkingForUpdates}>
                             <RefreshCwIcon class="size-4 {checkingForUpdates ? 'animate-spin' : ''}" />
