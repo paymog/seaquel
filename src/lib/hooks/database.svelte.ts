@@ -41,6 +41,7 @@ import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 import { pendingChangesSettingsStore } from "$lib/stores/pending-changes-settings.svelte";
 import { editorSettingsStore } from "$lib/stores/editor-settings.svelte";
 import { getDatabase } from "$lib/storage/db";
+import { AuthRequiredError } from "$lib/services/server-connections";
 
 /**
  * Main database context class that orchestrates all managers.
@@ -397,6 +398,7 @@ class UseDatabase {
 
       void log.info("App ready");
     } catch (error) {
+      if (error instanceof AuthRequiredError) throw error;
       void log.error("App initialization failed");
       console.error("Failed to initialize app:", error);
     } finally {

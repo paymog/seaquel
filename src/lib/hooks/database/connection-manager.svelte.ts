@@ -19,6 +19,7 @@ import {
   rewriteConnectionStringForTunnel,
 } from "$lib/utils/connection-string";
 import { getCachedSchema, setCachedSchema } from "$lib/utils/schema-cache";
+import { AuthRequiredError } from "$lib/services/server-connections";
 
 type ConnectionInput = Omit<DatabaseConnection, "id" | "projectId" | "labelIds"> & {
   projectId?: string;
@@ -144,6 +145,7 @@ export class ConnectionManager {
         connectionEntries.map((conn) => this.stateRestoration.loadConnectionData(conn.id)),
       );
     } catch (error) {
+      if (error instanceof AuthRequiredError) throw error;
       void log.error("Failed to load persisted connections:", error);
       // Silently fail - app will continue with no persisted connections
     } finally {

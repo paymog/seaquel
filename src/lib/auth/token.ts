@@ -38,8 +38,35 @@ export function clearAuthToken(): void {
   localStorage.removeItem(ROLE_KEY);
 }
 
+/** Set when an API call rejects the stored token (expired, rotated secret, etc.). */
+let authInvalidated = false;
+
+export function invalidateAuth(): void {
+  authInvalidated = true;
+  clearAuthToken();
+}
+
+export function consumeAuthInvalidation(): boolean {
+  const invalidated = authInvalidated;
+  authInvalidated = false;
+  return invalidated;
+}
+
+export function isTokenExpired(token: string): boolean {
+  const payload = decodeTokenPayload(token);
+  const exp = payload?.exp;
+  if (typeof exp !== "number") return true;
+  return exp <= Math.floor(Date.now() / 1000);
+}
+
 export function isAuthenticated(): boolean {
-  return !!getAuthToken();
+  const token = getAuthToken();
+  if (!token) return false;
+  if (isTokenExpired(token)) {
+    invalidateAuth();
+    return false;
+  }
+  return true;
 }
 
 /** Store the authenticated user's username + role alongside the token. */

@@ -2,7 +2,7 @@
 //!
 //! Users are stored in a file-persisted JSON store (`users.json`). Passwords
 //! are hashed with Argon2id. Login returns an HMAC-SHA256 signed token
-//! (24 h expiry) carrying the username, role, and a unique session ID. The
+//! (configurable expiry, default 30 days) carrying the username, role, and a unique session ID. The
 //! token must be sent as `Authorization: Bearer <token>` on all `/api/*`
 //! routes (except login).
 
@@ -18,8 +18,41 @@ use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 
 type HmacSha256 = Hmac<Sha256>;
-const TOKEN_TTL_SECS: u64 = 86_400; // 24 hours
+/// Default auth token lifetime: 30 days.
+const DEFAULT_TOKEN_TTL_SECS: u64 = 30 * 24 * 60 * 60;
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+/// Parse `SEAQUEL_AUTH_TOKEN_TTL_SECS` (seconds). Falls back to [`DEFAULT_TOKEN_TTL_SECS`].
+fn parse_token_ttl_secs(raw: Option<&str>) -> u64 {
+    match raw {
+        Some(s) => match s.trim().parse::<u64>() {
+            Ok(secs) if secs > 0 => secs,
+            Ok(_) => {
+                log::warn!(
+                    "SEAQUEL_AUTH_TOKEN_TTL_SECS must be > 0; using default ({} s)",
+                    DEFAULT_TOKEN_TTL_SECS
+                );
+                DEFAULT_TOKEN_TTL_SECS
+            }
+            Err(_) => {
+                log::warn!(
+                    "Invalid SEAQUEL_AUTH_TOKEN_TTL_SECS; using default ({} s)",
+                    DEFAULT_TOKEN_TTL_SECS
+                );
+                DEFAULT_TOKEN_TTL_SECS
+            }
+        },
+        None => DEFAULT_TOKEN_TTL_SECS,
+    }
+}
+
+fn token_ttl_from_env() -> u64 {
+    parse_token_ttl_secs(
+        std::env::var("SEAQUEL_AUTH_TOKEN_TTL_SECS")
+            .ok()
+            .as_deref(),
+    )
+}
 
 // ── Password hashing ─────────────────────────────────────────────────────────
 
@@ -242,17 +275,23 @@ impl AuthClaims {
 pub struct AuthConfig {
     secret_key: Vec<u8>,
     users: UserStore,
+    token_ttl_secs: u64,
 }
 
 impl AuthConfig {
     /// Initialise from environment. Derives a signing key from
-    /// `SEAQUEL_SECRET_KEY` (or generates a random one). Bootstraps an admin
+    /// `SEAQUEL_SECRET_KEY` (or generates a random one). Token lifetime from
+    /// `SEAQUEL_AUTH_TOKEN_TTL_SECS` (default 30 days). Bootstraps an admin
     /// user from `SEAQUEL_ADMIN_PASSWORD` if the user store is empty.
     pub async fn from_env(data_dir: &Path) -> Self {
         let secret_key = Self::derive_signing_key();
         let users = UserStore::with_persistence(data_dir.join("users.json"));
 
-        let config = Self { secret_key, users };
+        let config = Self {
+            secret_key,
+            users,
+            token_ttl_secs: token_ttl_from_env(),
+        };
         config.bootstrap_admin().await;
         config
     }
@@ -263,6 +302,7 @@ impl AuthConfig {
         Self {
             secret_key: Self::derive_signing_key(),
             users: UserStore::new(),
+            token_ttl_secs: DEFAULT_TOKEN_TTL_SECS,
         }
     }
 
@@ -300,7 +340,7 @@ impl AuthConfig {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let exp = now + TOKEN_TTL_SECS;
+        let exp = now + self.token_ttl_secs;
         let sid = uuid::Uuid::new_v4().to_string();
 
         let payload = format!(
@@ -460,5 +500,21 @@ mod tests {
         let names: Vec<_> = users.iter().map(|u| u.username.as_str()).collect();
         assert!(names.contains(&"alice"));
         assert!(names.contains(&"bob"));
+    }
+
+    #[test]
+    fn test_parse_token_ttl_secs_default() {
+        assert_eq!(parse_token_ttl_secs(None), DEFAULT_TOKEN_TTL_SECS);
+    }
+
+    #[test]
+    fn test_parse_token_ttl_secs_custom() {
+        assert_eq!(parse_token_ttl_secs(Some("3600")), 3600);
+    }
+
+    #[test]
+    fn test_parse_token_ttl_secs_invalid() {
+        assert_eq!(parse_token_ttl_secs(Some("nope")), DEFAULT_TOKEN_TTL_SECS);
+        assert_eq!(parse_token_ttl_secs(Some("0")), DEFAULT_TOKEN_TTL_SECS);
     }
 }

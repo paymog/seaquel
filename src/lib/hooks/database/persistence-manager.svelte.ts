@@ -45,6 +45,7 @@ import {
   serverLoadConnections,
   serverSaveConnection,
   serverDeleteConnection,
+  AuthRequiredError,
 } from "$lib/services/server-connections";
 import { log } from "$lib/utils/logger";
 
@@ -904,11 +905,26 @@ export class PersistenceManager {
   async loadPersistedConnections(): Promise<PersistedConnection[]> {
     try {
       if (isServer()) {
-        return await serverLoadConnections();
+        const serverConnections = await serverLoadConnections();
+        if (serverConnections.length > 0) return serverConnections;
+
+        // Server store empty — recover connections still in browser SQLite (pre-server or data loss).
+        const db = await getDatabase();
+        const localConnections = await connectionsRepo.loadAll(db);
+        if (localConnections.length === 0) return [];
+
+        void log.info(
+          `Recovering ${localConnections.length} connection(s) from browser storage to server`,
+        );
+        for (const conn of localConnections) {
+          await serverSaveConnection(conn);
+        }
+        return localConnections;
       }
       const db = await getDatabase();
       return await connectionsRepo.loadAll(db);
     } catch (error) {
+      if (error instanceof AuthRequiredError) throw error;
       void log.error("Failed to load persisted connections:", error);
       return [];
     }

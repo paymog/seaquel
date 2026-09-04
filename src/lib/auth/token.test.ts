@@ -7,6 +7,8 @@ import {
   getAuthRole,
   isAdmin,
   clearAuthToken,
+  isAuthenticated,
+  isTokenExpired,
 } from "./token";
 
 /** Build a token matching the server format: base64url(json).signature */
@@ -74,5 +76,26 @@ describe("clearAuthToken", () => {
     expect(getAuthToken()).toBeNull();
     expect(getAuthUser()).toBeNull();
     expect(getAuthRole()).toBeNull();
+  });
+});
+
+describe("isAuthenticated", () => {
+  it("returns false when token is expired", () => {
+    const token = makeToken({ exp: 1, sid: "s1", user: "alice", role: "admin" });
+    setAuthToken(token);
+    expect(isAuthenticated()).toBe(false);
+    expect(getAuthToken()).toBeNull();
+  });
+
+  it("returns true for a non-expired token", () => {
+    const token = makeToken({ exp: 9999999999, sid: "s1", user: "alice", role: "admin" });
+    setAuthToken(token);
+    expect(isAuthenticated()).toBe(true);
+  });
+});
+
+describe("isTokenExpired", () => {
+  it("returns true for expired tokens", () => {
+    expect(isTokenExpired(makeToken({ exp: 1 }))).toBe(true);
   });
 });

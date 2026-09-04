@@ -27,7 +27,7 @@
     import { tutorialProgressStore } from "$lib/stores/tutorial-progress.svelte.js";
     import { isTauri } from "$lib/utils/environment";
     import { isServer } from "$lib/utils/environment";
-    import { isAuthenticated } from "$lib/auth/token";
+    import { isAuthenticated, consumeAuthInvalidation } from "$lib/auth/token";
     import { roleStore } from "$lib/auth/role.svelte";
     import { goto } from "$app/navigation";
     import { initLogger } from "$lib/utils/logger";
@@ -58,6 +58,21 @@
         if (isServer() && !isAuthenticated() && page.url.pathname !== "/login") {
             goto("/login");
             return;
+        }
+
+        if (isServer()) {
+            try {
+                await db.whenReady();
+            } catch {
+                if (page.url.pathname !== "/login") {
+                    goto("/login");
+                    return;
+                }
+            }
+            if (consumeAuthInvalidation() && page.url.pathname !== "/login") {
+                goto("/login");
+                return;
+            }
         }
 
         // Initialize role store for RBAC

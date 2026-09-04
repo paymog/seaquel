@@ -7,18 +7,29 @@
  * (ServerKeyringService → `/api/secrets`), exactly as on desktop.
  */
 
-import { authHeaders } from "$lib/auth/token";
+import { authHeaders, invalidateAuth } from "$lib/auth/token";
 import type { PersistedConnection } from "$lib/hooks/database/types";
 import { log } from "$lib/utils/logger";
+
+export class AuthRequiredError extends Error {
+  constructor() {
+    super("Authentication required");
+    this.name = "AuthRequiredError";
+  }
+}
 
 /**
  * Fetch all connections from the server.
  */
 export async function serverLoadConnections(): Promise<PersistedConnection[]> {
   const res = await fetch("/api/connections", { headers: authHeaders() });
+  if (res.status === 401) {
+    invalidateAuth();
+    throw new AuthRequiredError();
+  }
   if (!res.ok) {
     void log.error(`serverLoadConnections: ${res.status} ${res.statusText}`);
-    return [];
+    throw new Error(`serverLoadConnections: ${res.status} ${res.statusText}`);
   }
   const data = (await res.json()) as Record<string, unknown>[];
   // The server stores opaque JSON objects; normalize to PersistedConnection.
