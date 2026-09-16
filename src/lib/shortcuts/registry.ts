@@ -80,7 +80,14 @@ export const shortcuts: ShortcutDefinition[] = [
   {
     id: "executeQuery",
     keys: { mod: true, key: "Enter" },
-    description: "Execute query",
+    description: "Execute current statement",
+    category: "editor",
+    handledExternally: true, // Handled by Monaco
+  },
+  {
+    id: "executeAll",
+    keys: { mod: true, shift: true, key: "Enter" },
+    description: "Execute all statements",
     category: "editor",
     handledExternally: true, // Handled by Monaco
   },

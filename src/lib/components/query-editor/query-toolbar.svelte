@@ -164,6 +164,9 @@
 						<DropdownMenu.Item onclick={onExecute}>
 							<PlayIcon class="size-4 me-2" />
 							{m.query_execute_all()}
+							{#if findShortcut('executeAll')}
+								<ShortcutKeys keys={findShortcut('executeAll')!.keys} class="ms-auto" />
+							{/if}
 						</DropdownMenu.Item>
 					{/if}
 					<DropdownMenu.Separator />

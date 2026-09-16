@@ -96,11 +96,15 @@
 	onMount(() => {
 		shortcuts.registerHandler('saveQuery', saveExport.handleSave);
 		shortcuts.registerHandler('formatSql', saveExport.handleFormat);
+		shortcuts.registerHandler('executeQuery', exec.handleExecuteCurrent);
+		shortcuts.registerHandler('executeAll', exec.handleExecute);
 	});
 
 	onDestroy(() => {
 		shortcuts.unregisterHandler('saveQuery');
 		shortcuts.unregisterHandler('formatSql');
+		shortcuts.unregisterHandler('executeQuery');
+		shortcuts.unregisterHandler('executeAll');
 	});
 </script>
 
@@ -283,6 +287,7 @@
 								bind:ref={monacoRef}
 								schema={db.state.activeSchema}
 								onExecute={exec.handleExecuteCurrent}
+								onExecuteAll={exec.handleExecute}
 								onToggleSidebar={() => sidebar.toggle()}
 								onAIInlinePrompt={aiSettingsStore.settings.enabled ? ai.handleOpen : undefined}
 								onChange={(newValue) => {

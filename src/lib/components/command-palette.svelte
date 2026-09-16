@@ -87,9 +87,22 @@
 
 	function executeQuery() {
 		const tab = db.state.activeQueryTab;
-		if (tab) {
-			runAndClose(() => db.queries.execute(tab.id));
-		}
+		if (!tab) return;
+		runAndClose(() => {
+			if (!shortcuts.invoke("executeQuery")) {
+				void db.queries.executeCurrent(tab.id, 0);
+			}
+		});
+	}
+
+	function executeAllQueries() {
+		const tab = db.state.activeQueryTab;
+		if (!tab) return;
+		runAndClose(() => {
+			if (!shortcuts.invoke("executeAll")) {
+				void db.queries.execute(tab.id);
+			}
+		});
 	}
 
 	function saveQuery() {
@@ -420,8 +433,13 @@
 				{#if hasQueryContent}
 					<Command.Item value="execute-query" onSelect={executeQuery}>
 						<Play class="size-4" />
-						<span>{m.command_execute_query()}</span>
+						<span>{m.query_execute_current()}</span>
 						<Command.Shortcut>{keys.mod}{keys.enter}</Command.Shortcut>
+					</Command.Item>
+					<Command.Item value="execute-all" onSelect={executeAllQueries}>
+						<Play class="size-4" />
+						<span>{m.query_execute_all()}</span>
+						<Command.Shortcut>{keys.mod}{keys.shift}{keys.enter}</Command.Shortcut>
 					</Command.Item>
 					<Command.Item value="save-query" onSelect={saveQuery}>
 						<Save class="size-4" />

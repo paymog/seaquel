@@ -17,6 +17,7 @@
 		ref = $bindable<MonacoEditorRef | null>(null),
 		schema = [] as SchemaTable[],
 		onExecute = () => {},
+		onExecuteAll,
 		onToggleSidebar = () => {},
 		onChange = (_value: string) => {},
 		onAIInlinePrompt,
@@ -26,6 +27,7 @@
 		ref?: MonacoEditorRef | null;
 		schema?: SchemaTable[];
 		onExecute?: () => void;
+		onExecuteAll?: () => void;
 		onToggleSidebar?: () => void;
 		onChange?: (value: string) => void;
 		onAIInlinePrompt?: (pos: { lineNumber: number; column: number }) => void;
@@ -182,10 +184,19 @@
 			}
 		});
 
-		// Add Cmd/Ctrl+Enter keybinding for query execution
+		// Add Cmd/Ctrl+Enter keybinding for current statement
 		editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
 			onExecute();
 		});
+
+		if (onExecuteAll) {
+			editor.addCommand(
+				monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter,
+				() => {
+					onExecuteAll();
+				}
+			);
+		}
 
 		// Add Cmd/Ctrl+B keybinding to toggle sidebar (override Monaco's default bracket jump)
 		editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB, () => {

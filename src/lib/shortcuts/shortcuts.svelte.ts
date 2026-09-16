@@ -16,6 +16,13 @@ class ShortcutManager {
     this.handlers.delete(id);
   }
 
+  invoke(id: string): boolean {
+    const handler = this.handlers.get(id);
+    if (!handler) return false;
+    handler();
+    return true;
+  }
+
   handleKeydown = (e: KeyboardEvent) => {
     // Skip if typing in an input/textarea (unless it's a global shortcut)
     const target = e.target as HTMLElement;
