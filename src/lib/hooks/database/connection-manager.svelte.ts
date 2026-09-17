@@ -144,6 +144,9 @@ export class ConnectionManager {
       await Promise.all(
         connectionEntries.map((conn) => this.stateRestoration.loadConnectionData(conn.id)),
       );
+
+      // Don't block ready: dots go green as each connect finishes.
+      this.autoReconnectAll();
     } catch (error) {
       if (error instanceof AuthRequiredError) throw error;
       void log.error("Failed to load persisted connections:", error);
@@ -225,12 +228,8 @@ export class ConnectionManager {
     if (options?.mergeExistingColumns) {
       const existing = this.state.schemas[connectionId] ?? [];
       schemas = schemas.map((newTable) => {
-        const old = existing.find(
-          (t) => t.name === newTable.name && t.schema === newTable.schema,
-        );
-        return old
-          ? { ...newTable, columns: old.columns, indexes: old.indexes }
-          : newTable;
+        const old = existing.find((t) => t.name === newTable.name && t.schema === newTable.schema);
+        return old ? { ...newTable, columns: old.columns, indexes: old.indexes } : newTable;
       });
     }
 
@@ -317,7 +316,9 @@ export class ConnectionManager {
             void this.onSchemaLoaded(newConnection.id, fresh, adapter, providerConnectionId);
             void log.info(`Schema refreshed for ${newConnection.id}: ${fresh.length} tables`);
           } catch (error) {
-            void log.warn(`Background schema refresh failed for ${newConnection.id}: ${String(error)}`);
+            void log.warn(
+              `Background schema refresh failed for ${newConnection.id}: ${String(error)}`,
+            );
           }
         })();
       } else {
@@ -376,7 +377,7 @@ export class ConnectionManager {
   async reconnect(
     connectionId: string,
     connection: ConnectionInput,
-    options?: { reuseExistingTunnel?: boolean },
+    options?: { reuseExistingTunnel?: boolean; setActive?: boolean },
   ): Promise<string> {
     void log.info(`Reconnecting: ${connectionId}`);
     const existingConnection = this.state.connections.find((c) => c.id === connectionId);
@@ -490,7 +491,9 @@ export class ConnectionManager {
           ...this.state.schemas,
           [connectionId]: cachedSchemas,
         };
-        this.setActiveForProject(connectionId, existingConnection.projectId);
+        if (options?.setActive !== false) {
+          this.setActiveForProject(connectionId, existingConnection.projectId);
+        }
 
         // Fetch fresh schema in the background
         void (async () => {
@@ -525,7 +528,9 @@ export class ConnectionManager {
         }
 
         void this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
-        this.setActiveForProject(connectionId, existingConnection.projectId);
+        if (options?.setActive !== false) {
+          this.setActiveForProject(connectionId, existingConnection.projectId);
+        }
       }
 
       // Create initial query tab if no tabs exist for the project
@@ -863,7 +868,7 @@ export class ConnectionManager {
    * Returns true if successful, false if credentials are missing or connection fails.
    * Use this to reconnect without showing a dialog when password is saved.
    */
-  async autoReconnect(connectionId: string): Promise<boolean> {
+  async autoReconnect(connectionId: string, options?: { setActive?: boolean }): Promise<boolean> {
     const connection = this.state.connections.find((c) => c.id === connectionId);
     if (!connection) {
       return false;
@@ -872,7 +877,7 @@ export class ConnectionManager {
     void log.info(`Auto-reconnect attempt: ${connectionId}`);
     this.connectingIds.add(connectionId);
     try {
-      return await this._autoReconnect(connectionId, connection);
+      return await this._autoReconnect(connectionId, connection, options);
     } finally {
       this.connectingIds.delete(connectionId);
     }
@@ -881,21 +886,26 @@ export class ConnectionManager {
   private async _autoReconnect(
     connectionId: string,
     connection: DatabaseConnection,
+    options?: { setActive?: boolean },
   ): Promise<boolean> {
     // SQLite and DuckDB don't require passwords, always auto-reconnect
     if (connection.type === "sqlite" || connection.type === "duckdb") {
       try {
-        await this.reconnect(connectionId, {
-          name: connection.name,
-          type: connection.type,
-          host: connection.host,
-          port: connection.port,
-          databaseName: connection.databaseName,
-          username: connection.username,
-          password: "",
-          sslMode: connection.sslMode,
-          connectionString: connection.connectionString,
-        });
+        await this.reconnect(
+          connectionId,
+          {
+            name: connection.name,
+            type: connection.type,
+            host: connection.host,
+            port: connection.port,
+            databaseName: connection.databaseName,
+            username: connection.username,
+            password: "",
+            sslMode: connection.sslMode,
+            connectionString: connection.connectionString,
+          },
+          options,
+        );
         return true;
       } catch {
         void log.warn(`Auto-reconnect failed: ${connectionId}`);
@@ -958,24 +968,28 @@ export class ConnectionManager {
 
     try {
       // Attempt reconnection
-      await this.reconnect(connectionId, {
-        name: connection.name,
-        type: connection.type,
-        host: connection.host,
-        port: connection.port,
-        databaseName: connection.databaseName,
-        username: connection.username,
-        password: password ?? "",
-        sslMode: connection.sslMode,
-        connectionString: connection.connectionString,
-        sshTunnel: connection.sshTunnel,
-        sshPassword,
-        sshKeyPath: connection.sshTunnel?.keyPath,
-        sshKeyPassphrase,
-        savePassword: connection.savePassword,
-        saveSshPassword: connection.saveSshPassword,
-        saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
-      });
+      await this.reconnect(
+        connectionId,
+        {
+          name: connection.name,
+          type: connection.type,
+          host: connection.host,
+          port: connection.port,
+          databaseName: connection.databaseName,
+          username: connection.username,
+          password: password ?? "",
+          sslMode: connection.sslMode,
+          connectionString: connection.connectionString,
+          sshTunnel: connection.sshTunnel,
+          sshPassword,
+          sshKeyPath: connection.sshTunnel?.keyPath,
+          sshKeyPassphrase,
+          savePassword: connection.savePassword,
+          saveSshPassword: connection.saveSshPassword,
+          saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
+        },
+        options,
+      );
 
       void log.info(`Auto-reconnect successful: ${connectionId}`);
       return true;
@@ -983,6 +997,22 @@ export class ConnectionManager {
       void log.warn(`Auto-reconnect failed: ${connectionId}`);
       return false;
     }
+  }
+
+  // ponytail: unbounded parallel reconnect; cap if orgs have hundreds of DBs
+  private autoReconnectAll(): void {
+    const pending = this.state.connections.filter((c) => !c.providerConnectionId);
+    if (pending.length === 0) return;
+    void log.info(`Auto-reconnect all: ${pending.length}`);
+    void Promise.all(pending.map((c) => this.autoReconnect(c.id, { setActive: false }))).then(
+      () => {
+        for (const c of this.state.connections) {
+          if (!c.providerConnectionId) continue;
+          if (this.state.activeConnectionIdByProject[c.projectId]) continue;
+          this.setActiveForProject(c.id, c.projectId);
+        }
+      },
+    );
   }
 
   /**

@@ -818,14 +818,9 @@ export class ProjectManager {
       persistedState.activeStatisticsTabId ?? null;
     this.state.activeWorkflowTabIdByProject[projectId] =
       persistedState.activeWorkflowTabId ?? persistedState.activeCanvasTabId ?? null;
-    // Restore the active connection ID if the connection exists (even if not yet reconnected).
-    // Auto-reconnect runs after restore and will establish providerConnectionId.
-    const restoredConnectionExists = persistedState.activeConnectionId
-      ? this.state.connections.some((c) => c.id === persistedState.activeConnectionId)
-      : false;
-    this.state.activeConnectionIdByProject[projectId] = restoredConnectionExists
-      ? persistedState.activeConnectionId
-      : null;
+    // Connections load after project state, so don't require them in memory yet.
+    // Auto-reconnect runs after load and fills in providerConnectionId.
+    this.state.activeConnectionIdByProject[projectId] = persistedState.activeConnectionId ?? null;
     this.state.activeView = persistedState.activeView;
 
     // Restore starter tabs
