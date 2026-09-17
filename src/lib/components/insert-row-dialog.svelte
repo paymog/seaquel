@@ -64,9 +64,7 @@ import { errorToast } from "$lib/utils/toast";
 		const result = await db.queries.insertRow(sourceTable, insertValues);
 
 		if (result.success) {
-			if (result.queued) {
-				toast.info("Insert added to pending changes");
-			} else {
+			if (!result.queued) {
 				toast.success(result.lastInsertId
 					? m.insert_row_success_with_id({ id: String(result.lastInsertId) })
 					: m.insert_row_success());

@@ -599,7 +599,6 @@ export class QueryExecutionManager {
         bindValues,
       );
       this.updateQueryTabState(tabId, { isExecuting: false });
-      toast.info("Statement added to pending changes");
       this.pendingChanges.openSheet();
       return;
     }
@@ -874,9 +873,7 @@ export class QueryExecutionManager {
       });
     }
 
-    // Show toast for queued statements
     if (queuedCount > 0) {
-      toast.info(`${queuedCount} statement${queuedCount > 1 ? "s" : ""} added to pending changes`);
       this.pendingChanges.openSheet();
     }
 

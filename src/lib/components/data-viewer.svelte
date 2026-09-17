@@ -248,9 +248,7 @@
 		);
 
 		if (result.success) {
-			if (result.queued) {
-				toast.info("Change added to pending changes");
-			} else {
+			if (!result.queued) {
 				void db.dataTabs.refresh(tabId);
 			}
 		} else {
@@ -267,9 +265,7 @@
 				tab.results.sourceTable,
 				rowToObject(row, tab.results.columns),
 			);
-			if (result.queued) {
-				toast.info("Delete added to pending changes");
-			} else {
+			if (!result.queued) {
 				void db.dataTabs.refresh(tabId);
 			}
 		} catch (error) {
@@ -310,9 +306,7 @@
 		);
 
 		if (result.success) {
-			if (result.queued) {
-				toast.info("Change added to pending changes");
-			} else {
+			if (!result.queued) {
 				void db.dataTabs.refresh(tabId);
 			}
 		} else {

@@ -41,9 +41,7 @@ export function createCellEditing(ctx: QueryEditorContext) {
     );
 
     if (result.success) {
-      if (result.queued) {
-        toast.info("Change added to pending changes");
-      } else {
+      if (!result.queued) {
         toast.success(m.query_cell_updated());
       }
     } else {
@@ -71,9 +69,7 @@ export function createCellEditing(ctx: QueryEditorContext) {
     );
 
     if (result.success) {
-      if (result.queued) {
-        toast.info("Delete added to pending changes");
-      } else {
+      if (!result.queued) {
         toast.success(m.query_row_deleted());
         await db.queries.execute(activeTabId);
       }
@@ -127,9 +123,7 @@ export function createCellEditing(ctx: QueryEditorContext) {
     );
 
     if (result.success) {
-      if (result.queued) {
-        toast.info("Change added to pending changes");
-      } else {
+      if (!result.queued) {
         toast.success(m.query_cell_updated());
       }
     } else {

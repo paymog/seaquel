@@ -228,9 +228,6 @@ export class CreateTableTabManager extends BaseTabManager<CreateTableTab> {
       for (const stmt of statements) {
         pendingChanges.add(connection.id, stmt.endsWith(";") ? stmt : stmt + ";", "other", origin);
       }
-      toast.info(
-        `${statements.length} statement${statements.length > 1 ? "s" : ""} added to pending changes`,
-      );
       pendingChanges.openSheet();
       return true;
     }

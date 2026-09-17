@@ -62,8 +62,6 @@
 				`DROP ${keyword} ${quoteId(schema)}.${quoteId(name)}`,
 			);
 			if (result.queued) {
-				const { toast } = await import("svelte-sonner");
-				toast.info(`Drop ${keyword.toLowerCase()} "${name}" added to pending changes`);
 				return;
 			}
 			// Close tabs referencing the dropped object
@@ -104,8 +102,6 @@
 		try {
 			const result = await db.queries.executeRawDdl(sql);
 			if (result.queued) {
-				const { toast } = await import("svelte-sonner");
-				toast.info(`Truncate table "${name}" added to pending changes`);
 				return;
 			}
 			const { toast } = await import("svelte-sonner");
