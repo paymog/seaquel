@@ -161,8 +161,8 @@
 }
 
 .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
-  background-color: var(--accent);
-  color: var(--accent-foreground);
+  background-color: var(--vscode-editorSuggestWidget-selectedBackground);
+  color: var(--vscode-editorSuggestWidget-selectedForeground);
 }
 
 .monaco-editor .suggest-widget .monaco-list .monaco-list-row:hover:not(.focused) {
