@@ -153,6 +153,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background-color: var(--popover);
+  font-family: ui-monospace, monospace;
 }
 
 .monaco-editor .suggest-widget .monaco-list .monaco-list-row {
@@ -171,6 +172,11 @@
 .monaco-editor .suggest-widget .details {
   border-left: 1px solid var(--border);
   background-color: var(--popover);
+}
+
+/* Bold match highlights change glyph width and overprint the label. */
+.monaco-editor .suggest-widget:not(.frozen) .monaco-highlighted-label .highlight {
+  font-weight: inherit !important;
 }
 
 /* Custom icons for suggest widget - hide default codicons and use SVG */
