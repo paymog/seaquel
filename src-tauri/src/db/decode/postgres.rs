@@ -1,11 +1,13 @@
 use rust_decimal::prelude::ToPrimitive;
 use serde_json::Value as JsonValue;
 use sqlx::{
-    postgres::types::{
-        PgBox, PgCircle, PgInterval, PgLine, PgLSeg, PgMoney, PgPath, PgPoint, PgPolygon,
-        PgTimeTz,
+    postgres::{
+        types::{
+            PgBox, PgCircle, PgInterval, PgLSeg, PgLine, PgMoney, PgPath, PgPoint, PgPolygon,
+            PgTimeTz,
+        },
+        PgValueFormat, PgValueRef,
     },
-    postgres::PgValueRef,
     types::{ipnetwork::IpNetwork, mac_address::MacAddress, BitVec},
     TypeInfo, Value, ValueRef,
 };
@@ -50,6 +52,15 @@ fn format_bitvec(b: &BitVec) -> String {
     b.iter().map(|bit| if bit { '1' } else { '0' }).collect()
 }
 
+fn format_xid(bytes: &[u8]) -> Option<String> {
+    Some(u32::from_be_bytes(bytes.try_into().ok()?).to_string())
+}
+
+fn format_lsn(bytes: &[u8]) -> Option<String> {
+    let lsn = u64::from_be_bytes(bytes.try_into().ok()?);
+    Some(format!("{:X}/{:X}", lsn >> 32, lsn as u32))
+}
+
 pub fn to_json(v: PgValueRef) -> Result<JsonValue, DbError> {
     if v.is_null() {
         return Ok(JsonValue::Null);
@@ -67,6 +78,32 @@ pub fn to_json(v: PgValueRef) -> Result<JsonValue, DbError> {
                 JsonValue::Null
             }
         }
+        "XID" => match v.format() {
+            PgValueFormat::Text => v
+                .as_str()
+                .ok()
+                .map(|value| JsonValue::String(value.to_string()))
+                .unwrap_or(JsonValue::Null),
+            PgValueFormat::Binary => v
+                .as_bytes()
+                .ok()
+                .and_then(format_xid)
+                .map(JsonValue::String)
+                .unwrap_or(JsonValue::Null),
+        },
+        "PG_LSN" => match v.format() {
+            PgValueFormat::Text => v
+                .as_str()
+                .ok()
+                .map(|value| JsonValue::String(value.to_string()))
+                .unwrap_or(JsonValue::Null),
+            PgValueFormat::Binary => v
+                .as_bytes()
+                .ok()
+                .and_then(format_lsn)
+                .map(JsonValue::String)
+                .unwrap_or(JsonValue::Null),
+        },
         "FLOAT4" => {
             if let Ok(v) = ValueRef::to_owned(&v).try_decode::<f32>() {
                 JsonValue::from(v)
@@ -303,5 +340,23 @@ where
         JsonValue::Array(items.into_iter().map(map).collect())
     } else {
         JsonValue::Null
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_lsn, format_xid};
+
+    #[test]
+    fn formats_xid_binary_value() {
+        assert_eq!(format_xid(&42_u32.to_be_bytes()), Some("42".to_string()));
+    }
+
+    #[test]
+    fn formats_pg_lsn_binary_value() {
+        assert_eq!(
+            format_lsn(&0x16_B374D848_u64.to_be_bytes()),
+            Some("16/B374D848".to_string())
+        );
     }
 }
