@@ -1,26 +1,27 @@
-import type { QueryTab, ExplainResult, ParsedQueryVisual } from "$lib/types";
+import type { QueryTab, ExplainResult, ParsedQueryVisual, QueryHistoryItem } from "$lib/types";
 import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
-import type { SharedQueryManager } from "./shared-query-manager.svelte.js";
+import type { ConnectionManager } from "./connection-manager.svelte.js";
 import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelte.js";
+import { saveQueryWorkspace } from "$lib/utils/query-workspace-storage.js";
 
 /**
  * Manages query tabs: add, remove, rename, update content.
- * Tabs are organized per-project.
+ * Tabs are personal workspace state (localStorage), not shared project persistence.
  */
 export class QueryTabManager extends BaseTabManager<QueryTab> {
-  private sharedQueryManager: SharedQueryManager | null = null;
+  private connections: ConnectionManager | null = null;
 
   constructor(
     state: DatabaseState,
     tabOrdering: TabOrderingManager,
-    schedulePersistence: (projectId: string | null) => void,
+    _scheduleProjectPersistence: (projectId: string | null) => void,
   ) {
-    super(state, tabOrdering, schedulePersistence);
+    super(state, tabOrdering, () => {});
   }
 
-  setSharedQueryManager(manager: SharedQueryManager): void {
-    this.sharedQueryManager = manager;
+  setConnectionManager(manager: ConnectionManager): void {
+    this.connections = manager;
   }
 
   protected get accessors(): TabStateAccessors<QueryTab> {
@@ -32,87 +33,100 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     };
   }
 
+  persistWorkspace(projectId?: string | null): void {
+    const id = projectId ?? this.state.activeProjectId;
+    if (!id) return;
+    const tabs = this.state.queryTabsByProject[id] ?? [];
+    saveQueryWorkspace(id, {
+      tabs: tabs.map((tab) => ({
+        id: tab.id,
+        name: tab.name,
+        query: tab.query,
+        queryId: tab.queryId,
+        connectionId: tab.connectionId,
+      })),
+      activeTabId: this.state.activeQueryTabIdByProject[id] ?? null,
+    });
+  }
+
+  /** @deprecated Query tabs no longer use shared project persistence */
+  private scheduleLocalPersistence(): void {
+    this.persistWorkspace();
+  }
+
+  remove(id: string): void {
+    super.remove(id);
+    this.persistWorkspace();
+  }
+
+  setActive(id: string): void {
+    super.setActive(id);
+    const tab = this.getProjectTabs().find((t) => t.id === id);
+    if (tab?.connectionId && this.connections) {
+      this.connections.setActive(tab.connectionId);
+    }
+    this.persistWorkspace();
+  }
+
+  assignConnection(tabId: string, connectionId: string): void {
+    if (!this.state.activeProjectId) return;
+    const tabs = this.getProjectTabs();
+    if (!tabs.some((t) => t.id === tabId)) return;
+    this.updateTab(tabId, (t) => ({ ...t, connectionId }));
+    this.persistWorkspace();
+  }
+
+  getTabConnection(tab: QueryTab | null | undefined) {
+    if (!tab?.connectionId) return null;
+    return this.state.connections.find((c) => c.id === tab.connectionId) ?? null;
+  }
+
   /**
-   * Add a new query tab.
+   * Add a new query tab, bound to the active connection when available.
    */
-  add(name?: string, query?: string, queryId?: string): string | null {
+  add(name?: string, query?: string, queryId?: string, connectionId?: string): string | null {
     if (!this.state.activeProjectId) return null;
 
     const tabs = this.getProjectTabs();
+    const boundConnectionId = connectionId ?? this.state.activeConnectionId ?? undefined;
     const newTab: QueryTab = $state({
       id: `tab-${crypto.randomUUID()}`,
       name: name || `Query ${tabs.length + 1}`,
       query: query || "",
       isExecuting: false,
       queryId,
+      connectionId: boundConnectionId,
     });
 
-    return this.appendTab(newTab);
+    const tabId = this.appendTab(newTab);
+    this.persistWorkspace();
+    return tabId;
   }
 
-  /**
-   * Rename a query tab.
-   */
-  async rename(id: string, newName: string): Promise<void> {
+  /** Rename is local-only; never mutates linked saved/shared queries. */
+  rename(id: string, newName: string): void {
     if (!this.state.activeProjectId) return;
-
-    const tabs = this.getProjectTabs();
-    const tab = tabs.find((t) => t.id === id);
-    if (tab) {
-      this.updateTab(id, (t) => ({ ...t, name: newName }));
-
-      // Also update linked query name if exists
-      if (tab.queryId && this.state.activeProjectId) {
-        const projectId = this.state.activeProjectId;
-        const queries = this.state.queriesByProject[projectId] ?? [];
-        const query = queries.find((q) => q.id === tab.queryId);
-        if (query) {
-          const updatedQueries = queries.map((q) =>
-            q.id === tab.queryId ? { ...q, name: newName, updatedAt: new Date() } : q,
-          );
-          this.state.queriesByProject = {
-            ...this.state.queriesByProject,
-            [projectId]: updatedQueries,
-          };
-
-          // If shared, also update the .sql file
-          if (query.shared && this.sharedQueryManager) {
-            const updatedQuery = updatedQueries.find((q) => q.id === tab.queryId);
-            if (updatedQuery) {
-              await this.sharedQueryManager.writeQueryFile(updatedQuery);
-            }
-          }
-        }
-      }
-
-      this.schedulePersistence(this.state.activeProjectId);
-    }
+    const tab = this.getProjectTabs().find((t) => t.id === id);
+    if (!tab || tab.name === newName) return;
+    this.updateTab(id, (t) => ({ ...t, name: newName }));
+    this.persistWorkspace();
   }
 
-  /**
-   * Check if a tab has unsaved changes.
-   */
   hasUnsavedChanges(tabId: string): boolean {
     const tab = this.state.queryTabs.find((t) => t.id === tabId);
     if (!tab) return false;
 
-    // Empty tabs are not considered "unsaved"
     if (!tab.query.trim()) return false;
 
-    // Tab linked to a query - compare content
     if (tab.queryId) {
       const query = this.state.projectQueries.find((q) => q.id === tab.queryId);
       if (!query) return true;
       return tab.query !== query.query;
     }
 
-    // Tab not linked to any query = unsaved
     return true;
   }
 
-  /**
-   * Update the query content in a tab.
-   */
   updateContent(id: string, query: string): void {
     if (!this.state.activeProjectId) return;
 
@@ -120,14 +134,10 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     const tab = tabs.find((t) => t.id === id);
     if (tab && tab.query !== query) {
       this.updateTab(id, (t) => ({ ...t, query }));
-      this.schedulePersistence(this.state.activeProjectId);
+      this.persistWorkspace();
     }
   }
 
-  /**
-   * Find a query tab by its query content and focus it, or create a new one if not found.
-   * Returns the tab ID.
-   */
   focusOrCreate(query: string, name?: string, setActiveView?: () => void): string | null {
     if (!this.state.activeProjectId) return null;
 
@@ -140,15 +150,11 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
       return existingTab.id;
     }
 
-    // Create new tab if not found
     const newTabId = this.add(name, query);
     setActiveView?.();
     return newTabId;
   }
 
-  /**
-   * Load a query into a tab (or switch to existing tab).
-   */
   loadQuery(queryId: string, setActiveView?: () => void): void {
     if (!this.state.activeProjectId) return;
 
@@ -156,7 +162,6 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     const query = queries.find((q) => q.id === queryId);
     if (!query) return;
 
-    // Check if a tab with this query is already open
     const tabs = this.getProjectTabs();
     const existingTab = tabs.find((t) => t.queryId === queryId);
 
@@ -164,7 +169,7 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
       this.setActive(existingTab.id);
       setActiveView?.();
     } else {
-      this.add(query.name, query.query, queryId);
+      this.add(query.name, query.query, queryId, this.state.activeConnectionId ?? undefined);
       setActiveView?.();
     }
   }
@@ -184,35 +189,37 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     this.loadQuery(queryId, setActiveView);
   }
 
-  /**
-   * Load a query from history into a tab (or switch to existing tab).
-   * Note: Query history is per-connection, so we need an active connection.
-   */
-  loadFromHistory(historyId: string, setActiveView?: () => void): void {
-    if (!this.state.activeProjectId || !this.state.activeConnectionId) return;
+  private findHistoryItem(historyId: string): QueryHistoryItem | undefined {
+    for (const history of Object.values(this.state.queryHistoryByConnection)) {
+      const item = history.find((h) => h.id === historyId);
+      if (item) return item;
+    }
+    return undefined;
+  }
 
-    const queryHistory = this.state.queryHistoryByConnection[this.state.activeConnectionId] ?? [];
-    const item = queryHistory.find((h) => h.id === historyId);
+  loadFromHistory(historyId: string, setActiveView?: () => void): void {
+    if (!this.state.activeProjectId) return;
+
+    const item = this.findHistoryItem(historyId);
     if (!item) return;
 
-    // Check if a tab with the exact same query is already open
     const tabs = this.getProjectTabs();
     const existingTab = tabs.find((t) => t.query.trim() === item.query.trim());
 
     if (existingTab) {
-      // Switch to existing tab
       this.setActive(existingTab.id);
       setActiveView?.();
     } else {
-      // Create new tab
-      this.add(`History: ${item.query.substring(0, 20)}...`, item.query);
+      this.add(
+        `History: ${item.query.substring(0, 20)}...`,
+        item.query,
+        undefined,
+        item.connectionId,
+      );
       setActiveView?.();
     }
   }
 
-  /**
-   * Set the explain result on a query tab.
-   */
   setExplainResult(
     tabId: string,
     result: ExplainResult,
@@ -225,12 +232,8 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
       ...t,
       explainResult: { result, sourceQuery, isAnalyze, isExecuting: false },
     }));
-    this.schedulePersistence(this.state.activeProjectId);
   }
 
-  /**
-   * Set the explain executing state on a query tab.
-   */
   setExplainExecuting(tabId: string, isExecuting: boolean, isAnalyze: boolean = false): void {
     if (!this.state.activeProjectId) return;
 
@@ -247,19 +250,11 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     }));
   }
 
-  /**
-   * Clear the explain result from a query tab.
-   */
   clearExplainResult(tabId: string): void {
     if (!this.state.activeProjectId) return;
-
     this.updateTab(tabId, (t) => ({ ...t, explainResult: undefined }));
-    this.schedulePersistence(this.state.activeProjectId);
   }
 
-  /**
-   * Set the visualize result on a query tab.
-   */
   setVisualizeResult(
     tabId: string,
     parsedQuery: ParsedQueryVisual | null,
@@ -272,16 +267,10 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
       ...t,
       visualizeResult: { parsedQuery, sourceQuery, parseError },
     }));
-    this.schedulePersistence(this.state.activeProjectId);
   }
 
-  /**
-   * Clear the visualize result from a query tab.
-   */
   clearVisualizeResult(tabId: string): void {
     if (!this.state.activeProjectId) return;
-
     this.updateTab(tabId, (t) => ({ ...t, visualizeResult: undefined }));
-    this.schedulePersistence(this.state.activeProjectId);
   }
 }

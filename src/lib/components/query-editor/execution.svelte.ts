@@ -16,6 +16,12 @@ export function createExecution(
 ) {
   const { db } = ctx;
 
+  function getTabDbType(): DatabaseType {
+    const tab = ctx.getActiveTab();
+    if (!tab?.connectionId) return "postgres";
+    return db.state.connections.find((c) => c.id === tab.connectionId)?.type ?? "postgres";
+  }
+
   let showDestructiveConfirm = $state(false);
   let destructiveStatements = $state<DestructiveStatement[]>([]);
   let pendingDestructiveAction = $state<(() => void) | null>(null);
@@ -55,7 +61,7 @@ export function createExecution(
     syncVisualBuilder();
 
     const query = activeTab.query;
-    const dbType = db.state.activeConnection?.type ?? "postgres";
+    const dbType = getTabDbType();
 
     const statements = splitSqlStatements(query, dbType);
     const dangerous = findDestructiveStatements(statements);
@@ -79,7 +85,7 @@ export function createExecution(
 
     const query = activeTab.query;
     const cursorOffset = ctx.getMonacoRef()?.getCursorOffset() ?? 0;
-    const dbType = db.state.activeConnection?.type ?? "postgres";
+    const dbType = getTabDbType();
 
     const currentStatement = getStatementAtOffset(query, cursorOffset, dbType);
     if (currentStatement) {

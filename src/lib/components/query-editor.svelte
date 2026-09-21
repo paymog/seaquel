@@ -58,6 +58,11 @@
 	const activeTabId = $derived(propTabId ?? db.state.activeQueryTabId);
 	const activeResultIndex = $derived(activeTab?.activeResultIndex ?? 0);
 	const activeResult = $derived(activeTab?.results?.[activeResultIndex] ?? null);
+	const tabConnectionSchema = $derived.by(() => {
+		const connectionId = activeTab?.connectionId;
+		if (!connectionId) return [];
+		return db.state.schemas[connectionId] ?? [];
+	});
 	const resultKey = $derived(
 		activeTabId && activeResultIndex !== undefined
 			? `${activeTabId}-${activeResultIndex}`
@@ -266,7 +271,7 @@
 						{#key activeTabId}
 							<VisualQueryPanel
 								schema={viewState.queryBuilderSchema}
-								monacoSchema={db.state.activeSchema ?? undefined}
+								monacoSchema={tabConnectionSchema.length > 0 ? tabConnectionSchema : undefined}
 								initialSql={activeTab.query}
 								bind:getSql={viewState.visualPanelGetSql}
 							/>
@@ -285,7 +290,7 @@
 							<MonacoEditor
 								bind:value={activeTab.query}
 								bind:ref={monacoRef}
-								schema={db.state.activeSchema}
+								schema={tabConnectionSchema}
 								onExecute={exec.handleExecuteCurrent}
 								onExecuteAll={exec.handleExecute}
 								onToggleSidebar={() => sidebar.toggle()}

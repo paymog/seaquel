@@ -6,7 +6,9 @@ import type { TabOrderingManager } from "./tab-ordering.svelte.js";
 import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelte.js";
 import { getAdapter } from "$lib/db";
 import type { ProviderRegistry } from "$lib/providers";
-import { resolveQuery } from "./resolve-query.js";
+import type { DatabaseConnection } from "$lib/types";
+import { errorToast } from "$lib/utils/toast";
+import { getQueryTabConnection, resolveQuery } from "./resolve-query.js";
 
 /**
  * Callback for setting explain result on a query tab.
@@ -76,14 +78,15 @@ export class ExplainTabManager extends BaseTabManager<ExplainTab> {
   private async performExplain(
     queryToExplain: string,
     analyze: boolean,
+    connection: DatabaseConnection,
     bindValues?: unknown[],
   ): Promise<ExplainResult> {
-    const adapter = getAdapter(this.state.activeConnection!.type);
-    const dbType = this.state.activeConnection!.type;
+    const adapter = getAdapter(connection.type);
+    const dbType = connection.type;
     const explainQuery = adapter.getExplainQuery(queryToExplain, analyze);
-    const providerConnectionId = this.state.activeConnection!.providerConnectionId;
+    const providerConnectionId = connection.providerConnectionId;
     if (!providerConnectionId) throw new Error("No connection established");
-    const provider = await this.providers.getForType(this.state.activeConnection?.type ?? "");
+    const provider = await this.providers.getForType(connection.type);
 
     let actualRowCount: number | undefined;
     let executionTime: number | undefined;
@@ -140,12 +143,12 @@ export class ExplainTabManager extends BaseTabManager<ExplainTab> {
     analyze: boolean = false,
     cursorOffset?: number,
   ): Promise<void> {
-    if (
-      !this.state.activeProjectId ||
-      !this.state.activeConnectionId ||
-      !this.state.activeConnection
-    )
+    if (!this.state.activeProjectId) return;
+    const connection = getQueryTabConnection(this.state, tabId);
+    if (!connection?.providerConnectionId) {
+      errorToast("Assign and connect a database before running EXPLAIN.");
       return;
+    }
     if (!this.setExplainResult || !this.setExplainExecuting) {
       console.warn("Embedded callbacks not set, falling back to tab-based explain");
       return this.execute(tabId, analyze, cursorOffset, parameterValues);
@@ -157,7 +160,7 @@ export class ExplainTabManager extends BaseTabManager<ExplainTab> {
     this.setExplainExecuting(tabId, true, analyze);
 
     const result = await withErrorHandling(
-      () => this.performExplain(resolved.query, analyze, resolved.bindValues),
+      () => this.performExplain(resolved.query, analyze, connection, resolved.bindValues),
       "QUERY_FAILED",
       "Explain failed",
     );
@@ -169,32 +172,26 @@ export class ExplainTabManager extends BaseTabManager<ExplainTab> {
     }
   }
 
-  /**
-   * Execute EXPLAIN or EXPLAIN ANALYZE on a query tab (tab-based version).
-   * If cursorOffset is provided, explains only the statement at that cursor position.
-   */
   async execute(
     tabId: string,
     analyze: boolean = false,
     cursorOffset?: number,
     parameterValues?: ParameterValue[],
   ): Promise<void> {
-    if (
-      !this.state.activeProjectId ||
-      !this.state.activeConnectionId ||
-      !this.state.activeConnection
-    )
+    if (!this.state.activeProjectId) return;
+    const connection = getQueryTabConnection(this.state, tabId);
+    if (!connection?.providerConnectionId) {
+      errorToast("Assign and connect a database before running EXPLAIN.");
       return;
+    }
 
     const resolved = this.resolveQuery(tabId, cursorOffset, parameterValues);
     if (!resolved) return;
 
-    // For display, use the original (unsubstituted) query
     const displayQuery = parameterValues
       ? (this.resolveQuery(tabId, cursorOffset)?.query ?? resolved.query)
       : resolved.query;
 
-    // Create a new explain tab
     const explainTabId = `explain-${crypto.randomUUID()}`;
     const queryPreview = displayQuery.substring(0, 30).replace(/\s+/g, " ").trim();
     const newExplainTab: ExplainTab = $state({
@@ -209,7 +206,7 @@ export class ExplainTabManager extends BaseTabManager<ExplainTab> {
     this.viewFallbackFn!("explain");
 
     const result = await withErrorHandling(
-      () => this.performExplain(resolved.query, analyze, resolved.bindValues),
+      () => this.performExplain(resolved.query, analyze, connection, resolved.bindValues),
       "QUERY_FAILED",
       "Explain failed",
     );

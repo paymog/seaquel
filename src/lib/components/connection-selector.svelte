@@ -16,12 +16,20 @@
 		return db.labels.getConnectionLabelsById(connectionId);
 	};
 
+	const assignActiveQueryTab = (connectionId: string) => {
+		if (db.state.activeQueryTabId) {
+			db.queryTabs.assignConnection(db.state.activeQueryTabId, connectionId);
+		}
+	};
+
 	const handleConnectionSelect = async (connection: typeof db.state.connections[0]) => {
 		if (connection.providerConnectionId) {
 			db.connections.setActive(connection.id);
+			assignActiveQueryTab(connection.id);
 		} else {
 			const autoReconnected = await db.connections.autoReconnect(connection.id);
 			if (autoReconnected) {
+				assignActiveQueryTab(connection.id);
 				return;
 			}
 			void db.connectionTabs.open({

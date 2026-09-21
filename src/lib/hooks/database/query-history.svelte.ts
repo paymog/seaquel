@@ -14,29 +14,28 @@ export class QueryHistoryManager {
   ) {}
 
   /**
-   * Add a query to the history for the active connection.
-   * Captures a snapshot of the connection's labels and name at execution time.
+   * Add a query to history for the connection that executed it.
    */
-  addToHistory(query: string, results: QueryResult) {
-    if (!this.state.activeConnectionId) return;
+  addToHistory(query: string, results: QueryResult, connectionId?: string) {
+    const targetConnectionId = connectionId ?? this.state.activeConnectionId;
+    if (!targetConnectionId) return;
 
-    const connectionId = this.state.activeConnectionId;
-    const queryHistory = this.state.queryHistoryByConnection[connectionId] ?? [];
-
-    // Create snapshots of labels and connection name at execution time
-    const connectionLabelsSnapshot = this.getConnectionLabels(connectionId).map((l) => ({ ...l }));
-    const connectionNameSnapshot = this.getConnectionName(connectionId);
+    const queryHistory = this.state.queryHistoryByConnection[targetConnectionId] ?? [];
+    const connectionLabelsSnapshot = this.getConnectionLabels(targetConnectionId).map((l) => ({
+      ...l,
+    }));
+    const connectionNameSnapshot = this.getConnectionName(targetConnectionId);
 
     this.state.queryHistoryByConnection = {
       ...this.state.queryHistoryByConnection,
-      [connectionId]: [
+      [targetConnectionId]: [
         {
           id: `hist-${crypto.randomUUID()}`,
           query,
           timestamp: new Date(),
           executionTime: results.executionTime,
           rowCount: results.affectedRows ?? results.totalRows,
-          connectionId,
+          connectionId: targetConnectionId,
           favorite: false,
           connectionLabelsSnapshot,
           connectionNameSnapshot,
@@ -44,7 +43,7 @@ export class QueryHistoryManager {
         ...queryHistory,
       ],
     };
-    this.schedulePersistence(connectionId);
+    this.schedulePersistence(targetConnectionId);
   }
 
   /**

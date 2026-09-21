@@ -286,7 +286,6 @@ class UseDatabase {
     );
     this.sharedQueries = new SharedQueryManager(this.state, this.sharedRepos);
     this.sharedDashboards = new SharedDashboardManager(this.state, this.sharedRepos);
-    this.queryTabs.setSharedQueryManager(this.sharedQueries);
 
     // Wire up file projection: managers delegate file I/O to shared managers
     this.savedQueries.setFileProjection({
@@ -328,6 +327,7 @@ class UseDatabase {
         this.ui.resetAISessionState();
       },
     );
+    this.queryTabs.setConnectionManager(this.connections);
 
     // Set up cross-manager callbacks
     this.projects.setRemoveConnectionCallback(

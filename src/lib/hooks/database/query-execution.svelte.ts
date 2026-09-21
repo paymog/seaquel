@@ -42,6 +42,27 @@ export class QueryExecutionManager {
     this.crud = new QueryCrudManager(state, providers, pendingChanges);
   }
 
+  private requireTabConnection(tabId: string): DatabaseConnection | null {
+    const projectId = this.state.activeProjectId;
+    if (!projectId) return null;
+    const tabs = this.state.queryTabsByProject[projectId] ?? [];
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab?.connectionId) {
+      errorToast("Assign a connection to this query tab before running SQL.");
+      return null;
+    }
+    const connection = this.state.connections.find((c) => c.id === tab.connectionId);
+    if (!connection) {
+      errorToast("The assigned connection no longer exists. Choose another connection.");
+      return null;
+    }
+    if (!connection.providerConnectionId) {
+      errorToast("Database connection is offline. Reconnect or assign another connection.");
+      return null;
+    }
+    return connection;
+  }
+
   /**
    * Look up a StatementResult *through* the Svelte 5 `$state` proxy so that
    * mutations on the returned reference are tracked and fire reactivity.
@@ -102,12 +123,19 @@ export class QueryExecutionManager {
    * Resolve the source table for a SELECT query, if any — used to enable
    * inline cell editing in the result viewer.
    */
-  private resolveSourceTable(baseQuery: string): QueryResult["sourceTable"] | undefined {
+  private resolveSourceTable(
+    baseQuery: string,
+    connection: DatabaseConnection,
+  ): QueryResult["sourceTable"] | undefined {
     const tableInfo = extractTableFromSelect(baseQuery);
     if (!tableInfo) return undefined;
 
     if (tableInfo.schema) {
-      const primaryKeys = this.getPrimaryKeysForTable(tableInfo.schema, tableInfo.table);
+      const primaryKeys = this.getPrimaryKeysForTable(
+        connection.id,
+        tableInfo.schema,
+        tableInfo.table,
+      );
       if (primaryKeys.length > 0) {
         return {
           schema: tableInfo.schema,
@@ -118,8 +146,7 @@ export class QueryExecutionManager {
       return undefined;
     }
 
-    // No schema specified in query — search all cached schemas for the table
-    const tables = this.state.schemas[this.state.activeConnectionId!] ?? [];
+    const tables = this.state.schemas[connection.id] ?? [];
     const match = tables.find((t) => t.name === tableInfo.table);
     if (!match) return undefined;
     const primaryKeys = match.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
@@ -131,18 +158,11 @@ export class QueryExecutionManager {
     };
   }
 
-  /**
-   * Resolve per-column source info via the SQL AST. Used by inline cell
-   * editing to route each edit to the underlying column's own table even when
-   * the query is a JOIN that renames duplicate columns to `id_2` etc. Returns
-   * undefined when the query isn't an explicit SELECT we can reason about
-   * (bare `*`, subqueries, unparseable SQL) — callers fall back to the single
-   * `sourceTable` in that case.
-   */
-  private resolveColumnSources(baseQuery: string): QueryResult["columnSources"] | undefined {
-    const connection = this.state.activeConnection;
-    if (!connection) return undefined;
-    const schemas = this.state.schemas[this.state.activeConnectionId!] ?? [];
+  private resolveColumnSources(
+    baseQuery: string,
+    connection: DatabaseConnection,
+  ): QueryResult["columnSources"] | undefined {
+    const schemas = this.state.schemas[connection.id] ?? [];
     return resolveColumnSources(baseQuery, connection.type, schemas);
   }
 
@@ -248,6 +268,7 @@ export class QueryExecutionManager {
     statementSql: string,
     baseQuery: string,
     pageSize: number,
+    connection: DatabaseConnection,
   ): StatementResult {
     return {
       columns: [],
@@ -256,8 +277,8 @@ export class QueryExecutionManager {
       totalRows: 0,
       executionTime: 0,
       queryType: detectQueryType(baseQuery),
-      sourceTable: this.resolveSourceTable(baseQuery),
-      columnSources: this.resolveColumnSources(baseQuery),
+      sourceTable: this.resolveSourceTable(baseQuery, connection),
+      columnSources: this.resolveColumnSources(baseQuery, connection),
       page: 1,
       pageSize,
       totalPages: 1,
@@ -331,9 +352,8 @@ export class QueryExecutionManager {
   /**
    * Get primary keys for a table.
    */
-  getPrimaryKeysForTable(schema: string, tableName: string): string[] {
-    if (!this.state.activeConnectionId) return [];
-    const tables = this.state.schemas[this.state.activeConnectionId] ?? [];
+  getPrimaryKeysForTable(connectionId: string, schema: string, tableName: string): string[] {
+    const tables = this.state.schemas[connectionId] ?? [];
     const table = tables.find((t) => t.name === tableName && t.schema === schema);
     if (!table) return [];
     return table.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
@@ -488,38 +508,8 @@ export class QueryExecutionManager {
     const totalPages =
       hasPagination || pageSize === 0 ? 1 : Math.max(1, Math.ceil(totalRows / pageSize));
 
-    // Try to extract source table info for CRUD operations
-    const tableInfo = extractTableFromSelect(baseQuery);
-    let sourceTable: QueryResult["sourceTable"] | undefined;
+    const sourceTable = this.resolveSourceTable(baseQuery, connection);
 
-    if (tableInfo) {
-      if (tableInfo.schema) {
-        const primaryKeys = this.getPrimaryKeysForTable(tableInfo.schema, tableInfo.table);
-        if (primaryKeys.length > 0) {
-          sourceTable = {
-            schema: tableInfo.schema,
-            name: tableInfo.table,
-            primaryKeys,
-          };
-        }
-      } else {
-        // No schema specified in query — search all cached schemas for the table
-        const tables = this.state.schemas[this.state.activeConnectionId!] ?? [];
-        const match = tables.find((t) => t.name === tableInfo.table);
-        if (match) {
-          const primaryKeys = match.columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
-          if (primaryKeys.length > 0) {
-            sourceTable = {
-              schema: match.schema,
-              name: match.name,
-              primaryKeys,
-            };
-          }
-        }
-      }
-    }
-
-    // Generate results
     return {
       columns: resultColumns,
       rows: columnarRows,
@@ -528,7 +518,7 @@ export class QueryExecutionManager {
       executionTime: Math.round(totalMs * 100) / 100,
       queryType,
       sourceTable,
-      columnSources: this.resolveColumnSources(baseQuery),
+      columnSources: this.resolveColumnSources(baseQuery, connection),
       page,
       pageSize,
       totalPages,
@@ -547,12 +537,8 @@ export class QueryExecutionManager {
   ): Promise<void> {
     if (!this.state.activeProjectId) return;
 
-    const connection = this.state.activeConnection;
-    const isConnected = !!connection?.providerConnectionId;
-    if (!connection || !isConnected) {
-      errorToast("Not connected to database. Please reconnect.");
-      return;
-    }
+    const connection = this.requireTabConnection(tabId);
+    if (!connection) return;
 
     // Resolve the statement at cursor once (without params) to get the original SQL
     const baseResolved = resolveQuery(this.state, tabId, cursorOffset);
@@ -612,7 +598,13 @@ export class QueryExecutionManager {
       // Seed a streaming result and install it in tab state BEFORE awaiting
       // the stream, so the UI shows an empty table + "streaming…" indicator
       // while rows are flowing in.
-      const seed = this.createStreamingSeed(0, originalSql, baseQuery, effectivePageSize);
+      const seed = this.createStreamingSeed(
+        0,
+        originalSql,
+        baseQuery,
+        effectivePageSize,
+        connection,
+      );
       this.updateQueryTabState(tabId, {
         results: [seed],
         activeResultIndex: 0,
@@ -641,7 +633,7 @@ export class QueryExecutionManager {
           // errored ones so the "rerun this query" UX doesn't resurrect
           // partial results as if they were real.
           if (page === 1) {
-            this.queryHistory.addToHistory(originalSql, finalResult);
+            this.queryHistory.addToHistory(originalSql, finalResult, connection.id);
           }
         }
       } catch (error) {
@@ -684,7 +676,7 @@ export class QueryExecutionManager {
 
       // Add to history
       if (page === 1) {
-        this.queryHistory.addToHistory(originalSql, results[0]);
+        this.queryHistory.addToHistory(originalSql, results[0], connection.id);
       }
     } catch (error) {
       void log.error(`Query execution failed on ${connection.id}`);
@@ -718,12 +710,8 @@ export class QueryExecutionManager {
   ): Promise<void> {
     if (!this.state.activeProjectId) return;
 
-    const connection = this.state.activeConnection;
-    const isConnected = !!connection?.providerConnectionId;
-    if (!connection || !isConnected) {
-      errorToast("Not connected to database. Please reconnect.");
-      return;
-    }
+    const connection = this.requireTabConnection(tabId);
+    if (!connection) return;
 
     const tabs = this.state.queryTabsByProject[this.state.activeProjectId] ?? [];
     const tab = tabs.find((t) => t.id === tabId);
@@ -809,6 +797,7 @@ export class QueryExecutionManager {
             stmt.sql,
             baseQueryForDetection,
             effectivePageSize,
+            connection,
           );
           const seedIndex = allResults.length;
           allResults.push(seed);
@@ -903,7 +892,7 @@ export class QueryExecutionManager {
     // results aren't a meaningful history entry the user would want to rerun.
     if (page === 1 && indexedResults.length > 0 && !anyStreamAbortedOrErrored) {
       const historyResult = indexedResults.find((r) => !r.isUtility) ?? indexedResults[0];
-      this.queryHistory.addToHistory(tab.query, historyResult);
+      this.queryHistory.addToHistory(tab.query, historyResult, connection.id);
     }
   }
 
@@ -959,9 +948,8 @@ export class QueryExecutionManager {
   ): Promise<void> {
     if (!this.state.activeProjectId) return;
 
-    const connection = this.state.activeConnection;
-    const isConnected = !!connection?.providerConnectionId;
-    if (!connection || !isConnected) return;
+    const connection = this.requireTabConnection(tabId);
+    if (!connection) return;
 
     const tabs = this.state.queryTabsByProject[this.state.activeProjectId] ?? [];
     const tab = tabs.find((t) => t.id === tabId);
@@ -983,6 +971,7 @@ export class QueryExecutionManager {
         existingResult.statementSql,
         baseQuery,
         pageSize,
+        connection,
       );
       const newResults = [...tab.results];
       newResults[resultIndex] = seed;

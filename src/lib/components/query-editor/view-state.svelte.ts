@@ -59,9 +59,16 @@ export function createViewState(ctx: QueryEditorContext, onCloseDiff?: () => voi
       : false,
   );
 
+  const tabConnectionId = $derived(ctx.getActiveTab()?.connectionId ?? null);
+  const tabConnection = $derived(
+    tabConnectionId ? (db.state.connections.find((c) => c.id === tabConnectionId) ?? null) : null,
+  );
+  const tabConnectionSchema = $derived(
+    tabConnectionId ? (db.state.schemas[tabConnectionId] ?? []) : [],
+  );
   const liveStatementCount = $derived.by(() => {
     if (!currentQuery?.trim()) return 0;
-    const dbType = db.state.activeConnection?.type ?? "postgres";
+    const dbType = tabConnection?.type ?? "postgres";
     return splitSqlStatements(currentQuery, dbType).length;
   });
 
@@ -134,11 +141,11 @@ export function createViewState(ctx: QueryEditorContext, onCloseDiff?: () => voi
   });
 
   const queryBuilderSchema = $derived(
-    db.state.activeSchema ? schemaToQueryBuilder(db.state.activeSchema) : [],
+    tabConnectionSchema.length > 0 ? schemaToQueryBuilder(tabConnectionSchema) : [],
   );
 
   const activeSampleQueries = $derived(
-    sampleQueries[db.state.activeConnection?.type ?? "postgres"]?.slice(0, 2) ?? [],
+    sampleQueries[tabConnection?.type ?? "postgres"]?.slice(0, 2) ?? [],
   );
 
   // View mode

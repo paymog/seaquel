@@ -16,6 +16,13 @@ import type { SharedDashboardManager } from "./shared-dashboard-manager.svelte.j
 import type { StarterTabManager } from "./starter-tabs.svelte.js";
 import { MigrationManager } from "./migration.svelte.js";
 import { isTauri } from "$lib/utils/environment";
+import {
+  loadQueryWorkspace,
+  saveQueryWorkspace,
+  isQueryWorkspaceMigrated,
+  markQueryWorkspaceMigrated,
+} from "$lib/utils/query-workspace-storage.js";
+import type { PersistedQueryTab } from "$lib/types/persisted";
 import { log } from "$lib/utils/logger";
 import { mkdir, rename as renameFs, exists, writeTextFile, join } from "$lib/utils/tauri-fs";
 import { nameToFilename, serializeProjectFile } from "$lib/services/config-file-parser";
@@ -696,6 +703,47 @@ export class ProjectManager {
     };
   }
 
+  private restoreQueryWorkspace(
+    projectId: string,
+    legacy?: { tabs: PersistedQueryTab[]; activeTabId: string | null },
+  ): void {
+    const local = loadQueryWorkspace(projectId);
+    if (local) {
+      this.state.queryTabsByProject[projectId] = local.tabs.map((t) => ({
+        id: t.id,
+        name: t.name,
+        query: t.query,
+        queryId: t.queryId,
+        connectionId: t.connectionId,
+        isExecuting: false,
+      }));
+      this.state.activeQueryTabIdByProject[projectId] = local.activeTabId;
+      return;
+    }
+
+    if (legacy && legacy.tabs.length > 0 && !isQueryWorkspaceMigrated(projectId)) {
+      const tabs = legacy.tabs.map((t) => ({
+        id: t.id,
+        name: t.name,
+        query: t.query,
+        queryId: t.queryId,
+        isExecuting: false,
+      }));
+      saveQueryWorkspace(projectId, {
+        tabs: tabs.map(({ id, name, query, queryId }) => ({ id, name, query, queryId })),
+        activeTabId: legacy.activeTabId,
+      });
+      markQueryWorkspaceMigrated(projectId);
+      this.state.queryTabsByProject[projectId] = tabs;
+      this.state.activeQueryTabIdByProject[projectId] = legacy.activeTabId;
+      this.persistence.scheduleProject(projectId);
+      return;
+    }
+
+    this.state.queryTabsByProject[projectId] = [];
+    this.state.activeQueryTabIdByProject[projectId] = null;
+  }
+
   private async loadProjectState(projectId: string): Promise<void> {
     // Load saved queries and dashboards FIRST, before any state assignments
     // that trigger UI re-renders via $derived. This ensures queriesByProject
@@ -735,17 +783,9 @@ export class ProjectManager {
       this.state.activeExtensionsDuckdbTabIdByProject[projectId] = null;
       // Initialize starter tabs for new projects
       this.starterTabManager?.initializeDefaults(projectId);
+      this.restoreQueryWorkspace(projectId);
       return;
     }
-
-    // Restore tabs - query tabs
-    this.state.queryTabsByProject[projectId] = persistedState.queryTabs.map((t) => ({
-      id: t.id,
-      name: t.name,
-      query: t.query,
-      queryId: t.queryId,
-      isExecuting: false,
-    }));
 
     // Restore schema tabs (we'll need to look up the table info later)
     // For now, create placeholder tabs that will be populated when the connection loads
@@ -810,7 +850,6 @@ export class ProjectManager {
     // Restore tab order and active IDs
     this.state.tabOrderByProject[projectId] = persistedState.tabOrder;
     this.state.connectionOrderByProject[projectId] = persistedState.connectionOrder ?? [];
-    this.state.activeQueryTabIdByProject[projectId] = persistedState.activeQueryTabId;
     this.state.activeSchemaTabIdByProject[projectId] = persistedState.activeSchemaTabId;
     this.state.activeExplainTabIdByProject[projectId] = persistedState.activeExplainTabId;
     this.state.activeErdTabIdByProject[projectId] = persistedState.activeErdTabId;
@@ -821,6 +860,11 @@ export class ProjectManager {
     // Connections load after project state, so don't require them in memory yet.
     // Auto-reconnect runs after load and fills in providerConnectionId.
     this.state.activeConnectionIdByProject[projectId] = persistedState.activeConnectionId ?? null;
+
+    this.restoreQueryWorkspace(projectId, {
+      tabs: persistedState.queryTabs ?? [],
+      activeTabId: persistedState.activeQueryTabId ?? null,
+    });
     this.state.activeView = persistedState.activeView;
 
     // Restore starter tabs

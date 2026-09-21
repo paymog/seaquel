@@ -61,11 +61,19 @@
         Math.max(editingInitialWidth, measureTextWidth(editingTabName, editingFont) + 22)
     );
 
-    const startEditing = (tabId: string, currentName: string, spanEl: HTMLElement) => {
-        editingInitialWidth = spanEl.offsetWidth;
-        editingFont = getComputedStyle(spanEl).font;
+    const startEditing = (tabId: string, currentName: string, spanEl?: HTMLElement) => {
+        editingInitialWidth = spanEl?.offsetWidth ?? 80;
+        editingFont = spanEl ? getComputedStyle(spanEl).font : '';
         editingTabId = tabId;
         editingTabName = currentName;
+    };
+
+    const queryConnectionLabel = (tab: QueryTab) => {
+        if (!tab.connectionId) return { text: 'Unassigned', offline: true };
+        const connection = db.state.connections.find((c) => c.id === tab.connectionId);
+        if (!connection) return { text: 'Missing', offline: true };
+        if (!connection.providerConnectionId) return { text: connection.name, offline: true };
+        return { text: connection.name, offline: false };
     };
 
     const finishEditing = () => {
@@ -112,6 +120,7 @@
             icon: FileCodeIcon,
             label: (t: QueryTab) => t.name,
             renameable: true,
+            switchesConnection: true,
             unsavedIndicator: (id) => db.queryTabs.hasUnsavedChanges(id) ? " *" : "",
         },
         schema: {
@@ -453,13 +462,27 @@
                                             />
                                         {:else if isRenameable}
                                             <span
-                                                class="pe-4"
+                                                class="pe-4 flex items-center gap-1.5 min-w-0"
                                                 ondblclick={(e) => {
                                                     e.stopPropagation();
                                                     startEditing(id, label, e.currentTarget);
                                                 }}
                                             >
-                                                {label}{unsaved}
+                                                <span class="truncate">{label}{unsaved}</span>
+                                                {#if type === 'query'}
+                                                    {@const conn = queryConnectionLabel(tab as QueryTab)}
+                                                    <span
+                                                        class={[
+                                                            "shrink-0 rounded px-1 py-0.5 text-[10px] leading-none max-w-20 truncate",
+                                                            conn.offline
+                                                                ? "bg-muted text-muted-foreground"
+                                                                : "bg-background/80 text-muted-foreground border border-border/60",
+                                                        ]}
+                                                        title={conn.text}
+                                                    >
+                                                        {conn.text}
+                                                    </span>
+                                                {/if}
                                             </span>
                                         {:else}
                                             <span class="pe-4">{label}</span>
@@ -481,6 +504,10 @@
                                 </ContextMenu.Trigger>
                                 <ContextMenu.Portal>
                                     <ContextMenu.Content class="w-40">
+                                        {#if type === 'query' && isRenameable}
+                                            <ContextMenu.Item onclick={() => startEditing(id, label)}>Rename</ContextMenu.Item>
+                                            <ContextMenu.Separator />
+                                        {/if}
                                         <ContextMenu.Item onclick={() => closeTab(id, type)}>Close</ContextMenu.Item>
                                         <ContextMenu.Item onclick={() => closeOtherTabs(id)}>Close Others</ContextMenu.Item>
                                         <ContextMenu.Item onclick={() => closeTabsToRight(id)}>Close Right</ContextMenu.Item>

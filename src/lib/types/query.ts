@@ -175,6 +175,8 @@ export interface QueryTab {
   isExecuting: boolean;
   /** ID of the query this tab was loaded from, if any */
   queryId?: string;
+  /** Bound connection; omitted for legacy/unassigned tabs */
+  connectionId?: string;
   /** Embedded explain result displayed below the editor */
   explainResult?: EmbeddedExplainResult;
   /** Embedded visualize result displayed below the editor */

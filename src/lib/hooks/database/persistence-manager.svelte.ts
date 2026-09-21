@@ -169,14 +169,8 @@ export class PersistenceManager {
 
   // === SERIALIZATION METHODS ===
 
-  serializeQueryTabs(projectId: string): PersistedQueryTab[] {
-    const tabs = this.state.queryTabsByProject[projectId] ?? [];
-    return tabs.map((tab) => ({
-      id: tab.id,
-      name: tab.name,
-      query: tab.query,
-      queryId: tab.queryId,
-    }));
+  serializeQueryTabs(_projectId: string): PersistedQueryTab[] {
+    return [];
   }
 
   serializeSchemaTabs(projectId: string): PersistedSchemaTab[] {
@@ -396,7 +390,7 @@ export class PersistenceManager {
         workflowTabs: this.serializeWorkflowTabs(projectId),
         tabOrder: this.state.tabOrderByProject[projectId] ?? [],
         connectionOrder: this.state.connectionOrderByProject[projectId] ?? [],
-        activeQueryTabId: this.state.activeQueryTabIdByProject[projectId] ?? null,
+        activeQueryTabId: null,
         activeSchemaTabId: this.state.activeSchemaTabIdByProject[projectId] ?? null,
         activeExplainTabId: this.state.activeExplainTabIdByProject[projectId] ?? null,
         activeErdTabId: this.state.activeErdTabIdByProject[projectId] ?? null,
