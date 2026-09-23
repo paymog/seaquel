@@ -1,20 +1,57 @@
 import * as monaco from "monaco-editor";
-import type { SchemaTable } from "$lib/types";
+import type { DatabaseType, SchemaTable } from "$lib/types";
+import { getAdapter } from "$lib/db";
 
 interface TableReference {
   table: SchemaTable;
   alias?: string;
 }
 
-function quoteIdent(id: string): string {
-  return /^[a-z_][a-z0-9_]*$/.test(id) ? id : `"${id.replace(/"/g, '""')}"`;
+/** Unquoted lowercase identifiers need no quoting; mixed case and special chars do. */
+const SIMPLE_UNQUOTED_IDENT = /^[a-z_][a-z0-9_]*$/;
+
+export function needsSchemaIdentQuoting(id: string): boolean {
+  return !SIMPLE_UNQUOTED_IDENT.test(id);
 }
 
-function unquoteIdent(id: string): string {
-  return id.startsWith('"') && id.endsWith('"') ? id.slice(1, -1).replace(/""/g, '"') : id;
+export interface IdentifierQuoter {
+  quoteSchemaIdent(id: string): string;
+  /** Unquoted table aliases from the query — never wrap (avoids case-sensitive alias names). */
+  quoteAlias(alias: string): string;
 }
 
-const IDENT = String.raw`(?:"[^"]+"|\w+)`;
+export function createIdentifierQuoter(databaseType: DatabaseType): IdentifierQuoter {
+  const quoteFull = (id: string) => getAdapter(databaseType).quoteIdentifier(id);
+  return {
+    quoteSchemaIdent(id: string): string {
+      return needsSchemaIdentQuoting(id) ? quoteFull(id) : id;
+    },
+    quoteAlias(alias: string): string {
+      return alias;
+    },
+  };
+}
+
+/** Matches double-quoted, backtick-quoted, bracket-quoted, or bare word identifiers. */
+export const QUOTED_IDENT = '(?:\\[[^\\]]+\\]|`[^`]+`|"[^"]+"|\\w+)';
+
+export function unquoteIdent(id: string): string {
+  if (id.startsWith('"') && id.endsWith('"')) {
+    return id.slice(1, -1).replace(/""/g, '"');
+  }
+  if (id.startsWith("`") && id.endsWith("`")) {
+    return id.slice(1, -1).replace(/``/g, "`");
+  }
+  if (id.startsWith("[") && id.endsWith("]")) {
+    return id.slice(1, -1).replace(/\]\]/g, "]");
+  }
+  return id;
+}
+
+function tableColumnPrefix(ref: TableReference, quote: IdentifierQuoter): string {
+  if (ref.alias) return quote.quoteAlias(ref.alias);
+  return quote.quoteSchemaIdent(ref.table.name);
+}
 
 /**
  * Find all tables referenced in FROM and JOIN clauses
@@ -24,7 +61,7 @@ function findTablesInQuery(queryText: string, schema: SchemaTable[]): TableRefer
 
   // FROM clause: FROM [schema.]table [AS] [alias]
   const fromRegex = new RegExp(
-    String.raw`FROM\s+(?:(${IDENT})\.)?(${IDENT})(?:\s+(?:AS\s+)?(\w+))?`,
+    String.raw`FROM\s+(?:(${QUOTED_IDENT})\.)?(${QUOTED_IDENT})(?:\s+(?:AS\s+)?(\w+))?`,
     "gi",
   );
   let match;
@@ -68,7 +105,7 @@ function findTablesInQuery(queryText: string, schema: SchemaTable[]): TableRefer
 
   // JOIN clause: [LEFT|RIGHT|...] JOIN [schema.]table [AS] [alias]
   const joinRegex = new RegExp(
-    String.raw`JOIN\s+(?:(${IDENT})\.)?(${IDENT})(?:\s+(?:AS\s+)?(\w+))?`,
+    String.raw`JOIN\s+(?:(${QUOTED_IDENT})\.)?(${QUOTED_IDENT})(?:\s+(?:AS\s+)?(\w+))?`,
     "gi",
   );
 
@@ -143,6 +180,7 @@ function isColumnContext(textBeforeCursor: string): boolean {
 
 export function createSchemaCompletionProvider(
   getSchema: () => SchemaTable[],
+  getDatabaseType: () => DatabaseType = () => "postgres",
 ): monaco.languages.CompletionItemProvider {
   return {
     triggerCharacters: [".", " ", ","],
@@ -152,6 +190,7 @@ export function createSchemaCompletionProvider(
       position: monaco.Position,
     ): monaco.languages.ProviderResult<monaco.languages.CompletionList> {
       const schema = getSchema();
+      const quote = createIdentifierQuoter(getDatabaseType());
       const word = model.getWordUntilPosition(position);
       const range = {
         startLineNumber: position.lineNumber,
@@ -176,7 +215,7 @@ export function createSchemaCompletionProvider(
       const suggestions: monaco.languages.CompletionItem[] = [];
 
       // Check if we're after a table name or alias with dot (for column completion)
-      const dotMatch = textBeforeCursor.match(/("(?:[^"]*)"|\w+)\.\s*$/);
+      const dotMatch = new RegExp(String.raw`(${QUOTED_IDENT})\.\s*$`).exec(textBeforeCursor);
       if (dotMatch) {
         const prefix = unquoteIdent(dotMatch[1]).toLowerCase();
         const referencedTables = findTablesInQuery(fullQuery, schema);
@@ -199,7 +238,7 @@ export function createSchemaCompletionProvider(
               label: col.name,
               kind: monaco.languages.CompletionItemKind.Field,
               detail: `${col.type}${markers.length ? ` (${markers.join(", ")})` : ""}`,
-              insertText: quoteIdent(col.name),
+              insertText: quote.quoteSchemaIdent(col.name),
               range,
             });
           });
@@ -224,7 +263,8 @@ export function createSchemaCompletionProvider(
 
         // Add columns from all referenced tables
         referencedTables.forEach((ref) => {
-          const prefix = ref.alias ?? ref.table.name;
+          const prefixLabel = ref.alias ?? ref.table.name;
+          const prefixInsert = tableColumnPrefix(ref, quote);
           const showPrefix = referencedTables.length > 1;
 
           ref.table.columns.forEach((col, idx) => {
@@ -233,10 +273,10 @@ export function createSchemaCompletionProvider(
             if (col.isForeignKey) markers.push("FK");
             if (!col.nullable) markers.push("NOT NULL");
 
-            const label = showPrefix ? `${prefix}.${col.name}` : col.name;
+            const label = showPrefix ? `${prefixLabel}.${col.name}` : col.name;
             const insertText = showPrefix
-              ? `${quoteIdent(prefix)}.${quoteIdent(col.name)}`
-              : quoteIdent(col.name);
+              ? `${prefixInsert}.${quote.quoteSchemaIdent(col.name)}`
+              : quote.quoteSchemaIdent(col.name);
             suggestions.push({
               label,
               kind: monaco.languages.CompletionItemKind.Field,
@@ -263,7 +303,7 @@ export function createSchemaCompletionProvider(
           label: schemaName,
           kind: monaco.languages.CompletionItemKind.Folder,
           detail: "schema",
-          insertText: quoteIdent(schemaName),
+          insertText: quote.quoteSchemaIdent(schemaName),
           range,
           sortText: `0-schema-${String(idx).padStart(3, "0")}`,
         });
@@ -280,7 +320,7 @@ export function createSchemaCompletionProvider(
               ? monaco.languages.CompletionItemKind.Interface
               : monaco.languages.CompletionItemKind.Struct,
           detail: `${table.schema}.${table.name} (${table.type})`,
-          insertText: quoteIdent(table.name),
+          insertText: quote.quoteSchemaIdent(table.name),
           range,
           sortText: `1-table-${String(idx).padStart(3, "0")}`,
         });
@@ -293,7 +333,7 @@ export function createSchemaCompletionProvider(
               ? monaco.languages.CompletionItemKind.Interface
               : monaco.languages.CompletionItemKind.Struct,
           detail: table.columns.length ? `${table.columns.length} columns` : "",
-          insertText: `${quoteIdent(table.schema)}.${quoteIdent(table.name)}`,
+          insertText: `${quote.quoteSchemaIdent(table.schema)}.${quote.quoteSchemaIdent(table.name)}`,
           range,
           sortText: `1-table-${String(idx).padStart(3, "0")}-qualified`,
         });

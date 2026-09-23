@@ -48,6 +48,12 @@ import {
   AuthRequiredError,
 } from "$lib/services/server-connections";
 import { log } from "$lib/utils/logger";
+import {
+  saveQueryWorkspace,
+  serializeQueryWorkspaceSnapshot,
+  isQueryWorkspacePersistenceAvailable,
+  isQueryWorkspaceMigrated,
+} from "$lib/utils/query-workspace-storage.js";
 
 /**
  * Manages persistence of projects, connections, and their state to SQLite.
@@ -142,6 +148,7 @@ export class PersistenceManager {
       clearTimeout(timer);
     }
     this.aiChatTimers.clear();
+    this.flushQueryWorkspaces();
     // Persist all projects that have data
     for (const projectId of Object.keys(this.state.queryTabsByProject)) {
       await this.persistProjectState(projectId);
@@ -160,6 +167,19 @@ export class PersistenceManager {
     }
   }
 
+  private flushQueryWorkspaces(): void {
+    for (const projectId of Object.keys(this.state.queryTabsByProject)) {
+      const tabs = this.state.queryTabsByProject[projectId] ?? [];
+      saveQueryWorkspace(
+        projectId,
+        serializeQueryWorkspaceSnapshot(
+          tabs,
+          this.state.activeQueryTabIdByProject[projectId] ?? null,
+        ),
+      );
+    }
+  }
+
   /**
    * Clean up resources. Should be called when component unmounts.
    */
@@ -169,8 +189,22 @@ export class PersistenceManager {
 
   // === SERIALIZATION METHODS ===
 
-  serializeQueryTabs(_projectId: string): PersistedQueryTab[] {
-    return [];
+  serializeQueryTabs(projectId: string): PersistedQueryTab[] {
+    // Workspace localStorage is canonical after migration. Until then — or when
+    // server mode has no auth (no workspace key) — mirror in-memory tabs into
+    // SQLite so persistProjectState never DELETE+INSERT an empty query tab set.
+    const workspaceCanonical =
+      isQueryWorkspacePersistenceAvailable() && isQueryWorkspaceMigrated(projectId);
+    if (workspaceCanonical) {
+      return [];
+    }
+    const tabs = this.state.queryTabsByProject[projectId] ?? [];
+    return tabs.map((tab) => ({
+      id: tab.id,
+      name: tab.name,
+      query: tab.query,
+      queryId: tab.queryId,
+    }));
   }
 
   serializeSchemaTabs(projectId: string): PersistedSchemaTab[] {
@@ -390,7 +424,10 @@ export class PersistenceManager {
         workflowTabs: this.serializeWorkflowTabs(projectId),
         tabOrder: this.state.tabOrderByProject[projectId] ?? [],
         connectionOrder: this.state.connectionOrderByProject[projectId] ?? [],
-        activeQueryTabId: null,
+        activeQueryTabId:
+          isQueryWorkspacePersistenceAvailable() && isQueryWorkspaceMigrated(projectId)
+            ? null
+            : (this.state.activeQueryTabIdByProject[projectId] ?? null),
         activeSchemaTabId: this.state.activeSchemaTabIdByProject[projectId] ?? null,
         activeExplainTabId: this.state.activeExplainTabIdByProject[projectId] ?? null,
         activeErdTabId: this.state.activeErdTabIdByProject[projectId] ?? null,

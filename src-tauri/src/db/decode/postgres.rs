@@ -78,7 +78,7 @@ pub fn to_json(v: PgValueRef) -> Result<JsonValue, DbError> {
                 JsonValue::Null
             }
         }
-        "XID" => match v.format() {
+        "XID" | "xid" => match v.format() {
             PgValueFormat::Text => v
                 .as_str()
                 .ok()
@@ -91,7 +91,7 @@ pub fn to_json(v: PgValueRef) -> Result<JsonValue, DbError> {
                 .map(JsonValue::String)
                 .unwrap_or(JsonValue::Null),
         },
-        "PG_LSN" => match v.format() {
+        "PG_LSN" | "pg_lsn" => match v.format() {
             PgValueFormat::Text => v
                 .as_str()
                 .ok()

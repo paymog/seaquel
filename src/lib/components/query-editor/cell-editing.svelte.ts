@@ -66,6 +66,7 @@ export function createCellEditing(ctx: QueryEditorContext) {
     const result = await db.queries.deleteRow(
       activeResult.sourceTable,
       rowToObject(pendingDeleteRow.row, activeResult.columns),
+      activeTabId,
     );
 
     if (result.success) {

@@ -10,14 +10,16 @@
 	import { mode } from "mode-watcher";
 	import { initMonaco, monaco, createSchemaCompletionProvider } from "$lib/monaco";
 	import { editorSettingsStore } from "$lib/stores/editor-settings.svelte.js";
-	import type { SchemaTable } from "$lib/types";
+	import type { DatabaseType, SchemaTable } from "$lib/types";
 
 	let {
 		value = $bindable(""),
 		ref = $bindable<MonacoEditorRef | null>(null),
 		schema = [] as SchemaTable[],
+		databaseType = "postgres" as DatabaseType,
 		onExecute = () => {},
 		onExecuteAll,
+		onFocus,
 		onToggleSidebar = () => {},
 		onChange = (_value: string) => {},
 		onAIInlinePrompt,
@@ -26,8 +28,10 @@
 		value?: string;
 		ref?: MonacoEditorRef | null;
 		schema?: SchemaTable[];
+		databaseType?: DatabaseType;
 		onExecute?: () => void;
 		onExecuteAll?: () => void;
+		onFocus?: () => void;
 		onToggleSidebar?: () => void;
 		onChange?: (value: string) => void;
 		onAIInlinePrompt?: (pos: { lineNumber: number; column: number }) => void;
@@ -145,7 +149,7 @@
 		// Register schema-aware completion provider
 		completionDisposable = monaco.languages.registerCompletionItemProvider(
 			"pgsql",
-			createSchemaCompletionProvider(() => schema)
+			createSchemaCompletionProvider(() => schema, () => databaseType)
 		);
 
 		// Sync editor content to bound value and notify parent
@@ -183,6 +187,10 @@
 				editorForWorkaround.trigger("keyboard", "type", { text: e.browserEvent.key });
 			}
 		});
+
+		if (onFocus) {
+			editor.onDidFocusEditorWidget(() => onFocus());
+		}
 
 		// Add Cmd/Ctrl+Enter keybinding for current statement
 		editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {

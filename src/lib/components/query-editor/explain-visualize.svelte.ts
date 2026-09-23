@@ -32,7 +32,8 @@ export function createExplainVisualize(
 
     const query = activeTab.query;
     const cursorOffset = ctx.getMonacoRef()?.getCursorOffset() ?? 0;
-    const dbType = db.state.activeConnection?.type ?? "postgres";
+    const dbType =
+      db.state.connections.find((c) => c.id === activeTab.connectionId)?.type ?? "postgres";
     const currentStatement = getStatementAtOffset(query, cursorOffset, dbType);
     const queryToCheck = currentStatement?.sql ?? query;
 

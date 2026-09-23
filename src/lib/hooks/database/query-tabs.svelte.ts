@@ -3,7 +3,11 @@ import type { DatabaseState } from "./state.svelte.js";
 import type { TabOrderingManager } from "./tab-ordering.svelte.js";
 import type { ConnectionManager } from "./connection-manager.svelte.js";
 import { BaseTabManager, type TabStateAccessors } from "./base-tab-manager.svelte.js";
-import { saveQueryWorkspace } from "$lib/utils/query-workspace-storage.js";
+import {
+  saveQueryWorkspace,
+  serializeQueryWorkspaceSnapshot,
+} from "$lib/utils/query-workspace-storage.js";
+import { errorToast } from "$lib/utils/toast";
 
 /**
  * Manages query tabs: add, remove, rename, update content.
@@ -15,9 +19,9 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
   constructor(
     state: DatabaseState,
     tabOrdering: TabOrderingManager,
-    _scheduleProjectPersistence: (projectId: string | null) => void,
+    scheduleProjectPersistence: (projectId: string | null) => void,
   ) {
-    super(state, tabOrdering, () => {});
+    super(state, tabOrdering, scheduleProjectPersistence);
   }
 
   setConnectionManager(manager: ConnectionManager): void {
@@ -37,21 +41,10 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     const id = projectId ?? this.state.activeProjectId;
     if (!id) return;
     const tabs = this.state.queryTabsByProject[id] ?? [];
-    saveQueryWorkspace(id, {
-      tabs: tabs.map((tab) => ({
-        id: tab.id,
-        name: tab.name,
-        query: tab.query,
-        queryId: tab.queryId,
-        connectionId: tab.connectionId,
-      })),
-      activeTabId: this.state.activeQueryTabIdByProject[id] ?? null,
-    });
-  }
-
-  /** @deprecated Query tabs no longer use shared project persistence */
-  private scheduleLocalPersistence(): void {
-    this.persistWorkspace();
+    saveQueryWorkspace(
+      id,
+      serializeQueryWorkspaceSnapshot(tabs, this.state.activeQueryTabIdByProject[id] ?? null),
+    );
   }
 
   remove(id: string): void {
@@ -71,8 +64,32 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
   assignConnection(tabId: string, connectionId: string): void {
     if (!this.state.activeProjectId) return;
     const tabs = this.getProjectTabs();
-    if (!tabs.some((t) => t.id === tabId)) return;
-    this.updateTab(tabId, (t) => ({ ...t, connectionId }));
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    if ((tab.connectionId ?? null) === (connectionId ?? null)) return;
+
+    const queryStillRunning =
+      tab.isExecuting ||
+      tab.explainResult?.isExecuting ||
+      (tab.results?.some((r) => r.isStreaming) ?? false);
+    if (queryStillRunning) {
+      errorToast(
+        "Wait for the query on this tab to finish before assigning a different connection.",
+      );
+      return;
+    }
+
+    // Results/explain/visualize are tied to the prior connection; drop them so
+    // stale grids and inline edits cannot run against the new target.
+    this.updateTab(tabId, (t) => ({
+      ...t,
+      connectionId,
+      results: undefined,
+      activeResultIndex: undefined,
+      isExecuting: false,
+      explainResult: undefined,
+      visualizeResult: undefined,
+    }));
     this.persistWorkspace();
   }
 
@@ -132,10 +149,13 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
 
     const tabs = this.getProjectTabs();
     const tab = tabs.find((t) => t.id === id);
-    if (tab && tab.query !== query) {
+    if (!tab) return;
+
+    // Monaco bind:value may update tab.query before onChange runs.
+    if (tab.query !== query) {
       this.updateTab(id, (t) => ({ ...t, query }));
-      this.persistWorkspace();
     }
+    this.persistWorkspace();
   }
 
   focusOrCreate(query: string, name?: string, setActiveView?: () => void): string | null {
@@ -204,7 +224,11 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     if (!item) return;
 
     const tabs = this.getProjectTabs();
-    const existingTab = tabs.find((t) => t.query.trim() === item.query.trim());
+    const existingTab = tabs.find(
+      (t) =>
+        t.query.trim() === item.query.trim() &&
+        (t.connectionId ?? null) === (item.connectionId ?? null),
+    );
 
     if (existingTab) {
       this.setActive(existingTab.id);

@@ -4,8 +4,72 @@ import { isMac } from "./platform.js";
 
 type ShortcutHandler = () => void;
 
+export type QueryEditorExecuteHandlers = {
+  executeCurrent: () => void;
+  executeAll: () => void;
+};
+
+/** Routes execute shortcuts to the focused split-pane query editor. */
+class QueryEditorExecuteHandlerRegistry {
+  private byTabId = new Map<string, QueryEditorExecuteHandlers>();
+  private focusedTabId: string | null = null;
+
+  register(tabId: string, handlers: QueryEditorExecuteHandlers): void {
+    this.byTabId.set(tabId, handlers);
+  }
+
+  unregister(tabId: string): void {
+    this.byTabId.delete(tabId);
+    if (this.focusedTabId === tabId) {
+      this.focusedTabId = this.resolveDefaultTabId();
+    }
+  }
+
+  setFocusedTab(tabId: string): void {
+    if (this.byTabId.has(tabId)) {
+      this.focusedTabId = tabId;
+    }
+  }
+
+  getTargetTabId(): string | null {
+    return this.resolveTargetTabId();
+  }
+
+  invokeCurrent(): boolean {
+    return this.invoke("executeCurrent");
+  }
+
+  invokeAll(): boolean {
+    return this.invoke("executeAll");
+  }
+
+  private invoke(kind: keyof QueryEditorExecuteHandlers): boolean {
+    const tabId = this.resolveTargetTabId();
+    if (!tabId) return false;
+    const handlers = this.byTabId.get(tabId);
+    if (!handlers) return false;
+    handlers[kind]();
+    return true;
+  }
+
+  private resolveTargetTabId(): string | null {
+    if (this.focusedTabId && this.byTabId.has(this.focusedTabId)) {
+      return this.focusedTabId;
+    }
+    return this.resolveDefaultTabId();
+  }
+
+  private resolveDefaultTabId(): string | null {
+    if (this.byTabId.size === 1) {
+      return this.byTabId.keys().next().value ?? null;
+    }
+    return null;
+  }
+}
+
 class ShortcutManager {
   private handlers = new Map<string, ShortcutHandler>();
+  private queryEditorExecute = new QueryEditorExecuteHandlerRegistry();
   showHelp = $state(false);
 
   registerHandler(id: string, handler: ShortcutHandler) {
@@ -16,7 +80,30 @@ class ShortcutManager {
     this.handlers.delete(id);
   }
 
+  registerQueryEditorExecute(tabId: string, handlers: QueryEditorExecuteHandlers) {
+    this.queryEditorExecute.register(tabId, handlers);
+  }
+
+  unregisterQueryEditorExecute(tabId: string) {
+    this.queryEditorExecute.unregister(tabId);
+  }
+
+  setFocusedQueryEditorTab(tabId: string) {
+    this.queryEditorExecute.setFocusedTab(tabId);
+  }
+
+  getFocusedQueryEditorTabId(): string | null {
+    return this.queryEditorExecute.getTargetTabId();
+  }
+
   invoke(id: string): boolean {
+    if (id === "executeQuery") {
+      return this.queryEditorExecute.invokeCurrent();
+    }
+    if (id === "executeAll") {
+      return this.queryEditorExecute.invokeAll();
+    }
+
     const handler = this.handlers.get(id);
     if (!handler) return false;
     handler();
@@ -46,11 +133,15 @@ class ShortcutManager {
         // Check if we should skip input fields for this shortcut
         if (isInInput && !this.isGlobalShortcut(shortcut)) continue;
 
-        const handler = this.handlers.get(shortcut.id);
-        if (handler) {
-          e.preventDefault();
-          handler();
-          return;
+        if (
+          this.handlers.has(shortcut.id) ||
+          shortcut.id === "executeQuery" ||
+          shortcut.id === "executeAll"
+        ) {
+          if (this.invoke(shortcut.id)) {
+            e.preventDefault();
+            return;
+          }
         }
       }
     }

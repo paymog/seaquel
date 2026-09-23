@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { setQueryBuilder, QueryBuilderState } from '$lib/hooks/query-builder.svelte';
-	import type { QueryBuilderTable, SchemaTable } from '$lib/types';
+	import type { DatabaseType, QueryBuilderTable, SchemaTable } from '$lib/types';
 	import QueryBuilderCanvas from '$lib/components/query-builder/canvas.svelte';
 	import FilterPanel from '$lib/components/query-builder/filter-panel.svelte';
 	import TablePalette from '$lib/components/query-builder/table-palette.svelte';
@@ -16,13 +16,15 @@
 		schema: QueryBuilderTable[];
 		/** Original schema for Monaco autocomplete (SchemaTable format) */
 		monacoSchema?: SchemaTable[];
+		/** Connection dialect for Monaco identifier quoting */
+		databaseType?: DatabaseType;
 		/** Initial SQL value to load into the builder */
 		initialSql: string;
 		/** Callback to get the current SQL (called by parent to read current value) */
 		getSql?: () => string;
 	}
 
-	let { schema, monacoSchema, initialSql, getSql = $bindable() }: Props = $props();
+	let { schema, monacoSchema, databaseType = "postgres" as DatabaseType, initialSql, getSql = $bindable() }: Props = $props();
 
 	// Create a new QueryBuilderState instance for this panel
 	const qb = new QueryBuilderState();
@@ -87,7 +89,7 @@
 
 			<!-- SQL Editor (uses the same component as Learn sandbox) -->
 			<Resizable.Pane defaultSize={30} minSize={20}>
-				<SqlEditor schema={monacoSchema} />
+				<SqlEditor schema={monacoSchema} {databaseType} />
 			</Resizable.Pane>
 		</Resizable.PaneGroup>
 	</DndProvider>

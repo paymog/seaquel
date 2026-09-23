@@ -14,6 +14,7 @@
 	import * as Resizable from "$lib/components/ui/resizable";
 	import VirtualResultsTable from "$lib/components/virtual-results-table.svelte";
 	import { m } from "$lib/paraglide/messages.js";
+	import type { DatabaseType } from "$lib/types";
 	import { aiSettingsStore } from "$lib/stores/ai-settings.svelte";
 	import QueryExampleCard from "$lib/components/empty-states/query-example-card.svelte";
 	import PlusIcon from "@lucide/svelte/icons/plus";
@@ -63,6 +64,11 @@
 		if (!connectionId) return [];
 		return db.state.schemas[connectionId] ?? [];
 	});
+	const tabDatabaseType = $derived.by((): DatabaseType => {
+		const connectionId = activeTab?.connectionId;
+		if (!connectionId) return "postgres";
+		return db.state.connections.find((c) => c.id === connectionId)?.type ?? "postgres";
+	});
 	const resultKey = $derived(
 		activeTabId && activeResultIndex !== undefined
 			? `${activeTabId}-${activeResultIndex}`
@@ -98,18 +104,46 @@
 		}
 	}
 
+	const isActivePaneEditor = $derived.by(() => {
+		const projectId = db.state.activeProjectId;
+		if (!projectId || !activeTabId) return true;
+		const layout = db.state.paneLayoutByProject[projectId];
+		if (!layout?.panes?.length || layout.panes.length <= 1) return true;
+		const pane = layout.panes.find((p) => p.tabIds.includes(activeTabId));
+		if (!pane) return false;
+		return layout.activePaneId === pane.id;
+	});
+
+	function handleEditorFocus() {
+		if (activeTabId) {
+			shortcuts.setFocusedQueryEditorTab(activeTabId);
+		}
+	}
+
+	$effect(() => {
+		const tabId = activeTabId;
+		if (!tabId) return;
+		shortcuts.registerQueryEditorExecute(tabId, {
+			executeCurrent: exec.handleExecuteCurrent,
+			executeAll: exec.handleExecute,
+		});
+		return () => shortcuts.unregisterQueryEditorExecute(tabId);
+	});
+
+	$effect(() => {
+		if (isActivePaneEditor && activeTabId) {
+			shortcuts.setFocusedQueryEditorTab(activeTabId);
+		}
+	});
+
 	onMount(() => {
 		shortcuts.registerHandler('saveQuery', saveExport.handleSave);
 		shortcuts.registerHandler('formatSql', saveExport.handleFormat);
-		shortcuts.registerHandler('executeQuery', exec.handleExecuteCurrent);
-		shortcuts.registerHandler('executeAll', exec.handleExecute);
 	});
 
 	onDestroy(() => {
 		shortcuts.unregisterHandler('saveQuery');
 		shortcuts.unregisterHandler('formatSql');
-		shortcuts.unregisterHandler('executeQuery');
-		shortcuts.unregisterHandler('executeAll');
 	});
 </script>
 
@@ -272,6 +306,7 @@
 							<VisualQueryPanel
 								schema={viewState.queryBuilderSchema}
 								monacoSchema={tabConnectionSchema.length > 0 ? tabConnectionSchema : undefined}
+								databaseType={tabDatabaseType}
 								initialSql={activeTab.query}
 								bind:getSql={viewState.visualPanelGetSql}
 							/>
@@ -291,8 +326,10 @@
 								bind:value={activeTab.query}
 								bind:ref={monacoRef}
 								schema={tabConnectionSchema}
+								databaseType={tabDatabaseType}
 								onExecute={exec.handleExecuteCurrent}
 								onExecuteAll={exec.handleExecute}
+								onFocus={handleEditorFocus}
 								onToggleSidebar={() => sidebar.toggle()}
 								onAIInlinePrompt={aiSettingsStore.settings.enabled ? ai.handleOpen : undefined}
 								onChange={(newValue) => {

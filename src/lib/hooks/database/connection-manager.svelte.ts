@@ -32,6 +32,22 @@ type ConnectionInput = Omit<DatabaseConnection, "id" | "projectId" | "labelIds">
   saveSshKeyPassphrase?: boolean;
 };
 
+type ReconnectOptions = {
+  reuseExistingTunnel?: boolean;
+  setActive?: boolean;
+  createInitialTab?: boolean;
+};
+
+type ReconnectSideEffects = {
+  setActive: boolean;
+  createInitialTab: boolean;
+};
+
+/** Mutable flags merged across concurrent autoReconnect() callers. */
+type AutoReconnectCoalesce = {
+  setActive: boolean;
+};
+
 /**
  * Manages database connections: add, reconnect, remove, test.
  * Handles SSH tunnel lifecycle and schema loading.
@@ -42,6 +58,20 @@ export class ConnectionManager {
 
   // Track which connections are currently being connected (for UI loading indicators)
   readonly connectingIds = new SvelteSet<string>();
+
+  /** Coalesce concurrent reconnect() / autoReconnect() for the same connection ID. */
+  private reconnectInflight = new Map<
+    string,
+    { promise: Promise<string>; sideEffects: ReconnectSideEffects }
+  >();
+
+  /** Coalesce autoReconnect through keyring credential resolution and reconnect. */
+  private autoReconnectInflight = new Map<
+    string,
+    { promise: Promise<boolean>; coalesce: AutoReconnectCoalesce }
+  >();
+
+  private connectingRefCounts = new Map<string, number>();
 
   private sharedRepos: SharedRepoManager | null = null;
 
@@ -65,6 +95,22 @@ export class ConnectionManager {
     private onCreateInitialTab: () => void,
     private onActiveConnectionChanged: () => void = () => {},
   ) {}
+
+  private beginConnecting(connectionId: string): void {
+    const next = (this.connectingRefCounts.get(connectionId) ?? 0) + 1;
+    this.connectingRefCounts.set(connectionId, next);
+    this.connectingIds.add(connectionId);
+  }
+
+  private endConnecting(connectionId: string): void {
+    const next = (this.connectingRefCounts.get(connectionId) ?? 1) - 1;
+    if (next <= 0) {
+      this.connectingRefCounts.delete(connectionId);
+      this.connectingIds.delete(connectionId);
+    } else {
+      this.connectingRefCounts.set(connectionId, next);
+    }
+  }
 
   /**
    * Initialize persisted connections on app startup.
@@ -247,7 +293,7 @@ export class ConnectionManager {
   async add(connection: ConnectionInput): Promise<string> {
     void log.info(`Adding connection: type=${connection.type}`);
     const connectionId = `conn-${crypto.randomUUID()}`;
-    this.connectingIds.add(connectionId);
+    this.beginConnecting(connectionId);
 
     try {
       const { effectiveConnectionString, tunnelLocalPort } = await this.setupSshTunnel(
@@ -367,7 +413,7 @@ export class ConnectionManager {
       void log.info(`Connection established: ${newConnection.id}`);
       return newConnection.id;
     } finally {
-      this.connectingIds.delete(connectionId);
+      this.endConnecting(connectionId);
     }
   }
 
@@ -377,7 +423,40 @@ export class ConnectionManager {
   async reconnect(
     connectionId: string,
     connection: ConnectionInput,
-    options?: { reuseExistingTunnel?: boolean; setActive?: boolean },
+    options?: ReconnectOptions,
+  ): Promise<string> {
+    const wantsActive = options?.setActive !== false;
+    const wantsInitialTab = options?.createInitialTab ?? wantsActive;
+
+    const inflight = this.reconnectInflight.get(connectionId);
+    if (inflight) {
+      inflight.sideEffects.setActive ||= wantsActive;
+      inflight.sideEffects.createInitialTab ||= wantsInitialTab;
+      return inflight.promise;
+    }
+
+    const sideEffects: ReconnectSideEffects = {
+      setActive: wantsActive,
+      createInitialTab: wantsInitialTab,
+    };
+
+    const promise = this.performReconnect(connectionId, connection, options, sideEffects);
+    this.reconnectInflight.set(connectionId, { promise, sideEffects });
+
+    try {
+      return await promise;
+    } finally {
+      if (this.reconnectInflight.get(connectionId)?.promise === promise) {
+        this.reconnectInflight.delete(connectionId);
+      }
+    }
+  }
+
+  private async performReconnect(
+    connectionId: string,
+    connection: ConnectionInput,
+    options: ReconnectOptions | undefined,
+    sideEffects: ReconnectSideEffects,
   ): Promise<string> {
     void log.info(`Reconnecting: ${connectionId}`);
     const existingConnection = this.state.connections.find((c) => c.id === connectionId);
@@ -385,7 +464,7 @@ export class ConnectionManager {
       throw new Error(`Connection with id ${connectionId} not found`);
     }
 
-    this.connectingIds.add(connectionId);
+    this.beginConnecting(connectionId);
     try {
       // When switching logical databases within the same server, the existing SSH
       // tunnel (a forward to the server's host:port) is still valid — reuse it so
@@ -491,10 +570,6 @@ export class ConnectionManager {
           ...this.state.schemas,
           [connectionId]: cachedSchemas,
         };
-        if (options?.setActive !== false) {
-          this.setActiveForProject(connectionId, existingConnection.projectId);
-        }
-
         // Fetch fresh schema in the background
         void (async () => {
           try {
@@ -528,16 +603,6 @@ export class ConnectionManager {
         }
 
         void this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
-        if (options?.setActive !== false) {
-          this.setActiveForProject(connectionId, existingConnection.projectId);
-        }
-      }
-
-      // Create initial query tab if no tabs exist for the project
-      const projectId = existingConnection.projectId;
-      const tabs = this.state.queryTabsByProject[projectId] ?? [];
-      if (tabs.length === 0) {
-        this.onCreateInitialTab();
       }
 
       // Persist the connection to store (password saved to keyring if enabled)
@@ -549,9 +614,11 @@ export class ConnectionManager {
         sshKeyPassphrase: connection.sshKeyPassphrase,
       });
 
+      this.applyReconnectSideEffects(connectionId, existingConnection.projectId, sideEffects);
+
       return connectionId;
     } finally {
-      this.connectingIds.delete(connectionId);
+      this.endConnecting(connectionId);
     }
   }
 
@@ -787,6 +854,27 @@ export class ConnectionManager {
   }
 
   /**
+   * Apply UI side effects after a reconnect completes. Deferred so concurrent
+   * callers can merge explicit (foreground) intent with background startup work.
+   */
+  private applyReconnectSideEffects(
+    connectionId: string,
+    projectId: string,
+    sideEffects: ReconnectSideEffects,
+  ): void {
+    if (sideEffects.setActive) {
+      this.setActiveForProject(connectionId, projectId);
+    }
+
+    if (!sideEffects.createInitialTab) return;
+
+    const tabs = this.state.queryTabsByProject[projectId] ?? [];
+    if (tabs.length === 0 && projectId === this.state.activeProjectId) {
+      this.onCreateInitialTab();
+    }
+  }
+
+  /**
    * Set the active connection for a specific project.
    */
   setActiveForProject(connectionId: string | null, projectId: string): void {
@@ -857,8 +945,10 @@ export class ConnectionManager {
     // Load column metadata asynchronously
     void this.onSchemaLoaded(connectionId, schemasWithTables, adapter, providerConnectionId);
 
-    // Create initial query tab
-    this.onCreateInitialTab();
+    const tabs = this.state.queryTabsByProject[projectId] ?? [];
+    if (tabs.length === 0 && projectId === this.state.activeProjectId) {
+      this.onCreateInitialTab();
+    }
 
     return connectionId;
   }
@@ -874,19 +964,46 @@ export class ConnectionManager {
       return false;
     }
 
-    void log.info(`Auto-reconnect attempt: ${connectionId}`);
-    this.connectingIds.add(connectionId);
-    try {
-      return await this._autoReconnect(connectionId, connection, options);
-    } finally {
-      this.connectingIds.delete(connectionId);
+    const wantsActive = options?.setActive !== false;
+
+    const inflight = this.autoReconnectInflight.get(connectionId);
+    if (inflight) {
+      inflight.coalesce.setActive ||= wantsActive;
+      const reconnecting = this.reconnectInflight.get(connectionId);
+      if (reconnecting) {
+        reconnecting.sideEffects.setActive ||= wantsActive;
+        reconnecting.sideEffects.createInitialTab ||= wantsActive;
+      }
+      return inflight.promise;
     }
+
+    void log.info(`Auto-reconnect attempt: ${connectionId}`);
+    this.beginConnecting(connectionId);
+
+    const coalesce: AutoReconnectCoalesce = { setActive: wantsActive };
+    const promise = this._autoReconnect(connectionId, connection, coalesce);
+    const entry = { promise, coalesce };
+    this.autoReconnectInflight.set(connectionId, entry);
+
+    try {
+      return await promise;
+    } finally {
+      if (this.autoReconnectInflight.get(connectionId) === entry) {
+        this.autoReconnectInflight.delete(connectionId);
+      }
+      this.endConnecting(connectionId);
+    }
+  }
+
+  private autoReconnectReconnectOptions(coalesce: AutoReconnectCoalesce): ReconnectOptions {
+    const wantsActive = coalesce.setActive;
+    return { setActive: wantsActive, createInitialTab: wantsActive };
   }
 
   private async _autoReconnect(
     connectionId: string,
     connection: DatabaseConnection,
-    options?: { setActive?: boolean },
+    coalesce: AutoReconnectCoalesce,
   ): Promise<boolean> {
     // SQLite and DuckDB don't require passwords, always auto-reconnect
     if (connection.type === "sqlite" || connection.type === "duckdb") {
@@ -904,7 +1021,7 @@ export class ConnectionManager {
             sslMode: connection.sslMode,
             connectionString: connection.connectionString,
           },
-          options,
+          this.autoReconnectReconnectOptions(coalesce),
         );
         return true;
       } catch {
@@ -988,7 +1105,7 @@ export class ConnectionManager {
           saveSshPassword: connection.saveSshPassword,
           saveSshKeyPassphrase: connection.saveSshKeyPassphrase,
         },
-        options,
+        this.autoReconnectReconnectOptions(coalesce),
       );
 
       void log.info(`Auto-reconnect successful: ${connectionId}`);

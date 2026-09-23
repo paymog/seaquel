@@ -80,9 +80,9 @@ export function createViewState(ctx: QueryEditorContext, onCloseDiff?: () => voi
   const qePendingChangesForTable = $derived.by(() => {
     const st = ctx.getActiveResult()?.sourceTable;
     if (!st) return [];
-    return db.state.activePendingChanges.filter(
-      (c) => c.target?.schema === st.schema && c.target?.table === st.name,
-    );
+    return (
+      tabConnectionId ? (db.state.pendingChangesByConnection[tabConnectionId] ?? []) : []
+    ).filter((c) => c.target?.schema === st.schema && c.target?.table === st.name);
   });
 
   const qePendingCellEdits = $derived.by(() => {

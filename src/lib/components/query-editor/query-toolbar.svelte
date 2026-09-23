@@ -99,7 +99,7 @@
 
 <div class="flex items-center justify-between p-2 shrink-0">
 	<div class="flex items-center gap-3 text-xs">
-		<ConnectionSelector />
+		<ConnectionSelector queryTabId={tabId} />
 
 		{#if liveStatementCount > 1}
 			<span class="flex items-center gap-1">

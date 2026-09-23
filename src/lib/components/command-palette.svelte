@@ -62,8 +62,17 @@
 	const activeResult = $derived(db.state.activeQueryResult);
 	const hasResults = $derived((activeResult?.rows?.length ?? 0) > 0);
 	const isConnected = $derived(!!db.state.activeConnectionId && !!(db.state.activeConnection?.providerConnectionId));
-	const hasActiveQueryTab = $derived(isConnected && !!db.state.activeQueryTab);
-	const hasQueryContent = $derived(hasActiveQueryTab && !!db.state.activeQueryTab?.query?.trim());
+	const activePaneQueryTab = $derived.by(() => {
+		const projectId = db.state.activeProjectId;
+		if (!projectId) return db.state.activeQueryTab;
+		const layout = db.state.paneLayoutByProject[projectId];
+		if (!layout?.panes?.length) return db.state.activeQueryTab;
+		const activePane = layout.panes.find((pane) => pane.id === layout.activePaneId) ?? layout.panes[0];
+		const tabId = activePane?.activeTabId;
+		if (!tabId || db.panes.getTabViewType(tabId) !== "query") return null;
+		return db.state.queryTabs.find((tab) => tab.id === tabId) ?? null;
+	});
+	const hasQueryContent = $derived(isConnected && !!activePaneQueryTab?.query?.trim());
 	const dashboards = $derived(db.state.projectDashboards);
 	const hasConnections = $derived(connections.length > 0);
 
@@ -86,22 +95,14 @@
 	}
 
 	function executeQuery() {
-		const tab = db.state.activeQueryTab;
-		if (!tab) return;
 		runAndClose(() => {
-			if (!shortcuts.invoke("executeQuery")) {
-				void db.queries.executeCurrent(tab.id, 0);
-			}
+			shortcuts.invoke("executeQuery");
 		});
 	}
 
 	function executeAllQueries() {
-		const tab = db.state.activeQueryTab;
-		if (!tab) return;
 		runAndClose(() => {
-			if (!shortcuts.invoke("executeAll")) {
-				void db.queries.execute(tab.id);
-			}
+			shortcuts.invoke("executeAll");
 		});
 	}
 

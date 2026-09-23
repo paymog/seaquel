@@ -25,8 +25,11 @@ export class QueryCrudManager {
    * Build a CastLookup callback for a given table, used by parameterized adapters
    * (e.g. Postgres) to wrap bind placeholders in CAST($N AS type).
    */
-  buildCastLookup(schema: string, tableName: string): CastLookup | undefined {
-    const connectionId = this.state.activeConnectionId;
+  buildCastLookup(
+    schema: string,
+    tableName: string,
+    connectionId = this.state.activeConnectionId,
+  ): CastLookup | undefined {
     if (!connectionId) return undefined;
     const tables = this.state.schemas[connectionId] ?? [];
     const table = tables.find((t) => t.name === tableName && t.schema === schema);
@@ -50,13 +53,15 @@ export class QueryCrudManager {
     row: Record<string, unknown>,
     column: string,
     newValue: unknown,
-    options?: { deduplicatePending?: boolean },
+    options?: { deduplicatePending?: boolean; connectionId?: string },
   ): Promise<CrudResult> {
     if (sourceTable.primaryKeys.length === 0) {
       return { success: false, error: "No primary key found" };
     }
 
-    const connection = this.state.activeConnection;
+    const connection = options?.connectionId
+      ? this.state.connections.find((c) => c.id === options.connectionId)
+      : this.state.activeConnection;
     if (!connection?.providerConnectionId) {
       return { success: false, error: "No connection established" };
     }
@@ -64,7 +69,7 @@ export class QueryCrudManager {
     try {
       const provider = await this.providers.getForType(connection.type);
       const adapter = getAdapter(connection.type);
-      const castLookup = this.buildCastLookup(sourceTable.schema, sourceTable.name);
+      const castLookup = this.buildCastLookup(sourceTable.schema, sourceTable.name, connection.id);
       const { sql: query, bindValues } = adapter.buildUpdateSql(
         sourceTable.schema,
         sourceTable.name,
@@ -131,13 +136,15 @@ export class QueryCrudManager {
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
     row: Record<string, unknown>,
     column: string,
-    options?: { deduplicatePending?: boolean },
+    options?: { deduplicatePending?: boolean; connectionId?: string },
   ): Promise<CrudResult> {
     if (sourceTable.primaryKeys.length === 0) {
       return { success: false, error: "No primary key found" };
     }
 
-    const connection = this.state.activeConnection;
+    const connection = options?.connectionId
+      ? this.state.connections.find((c) => c.id === options.connectionId)
+      : this.state.activeConnection;
     if (!connection?.providerConnectionId) {
       return { success: false, error: "No connection established" };
     }
@@ -260,12 +267,15 @@ export class QueryCrudManager {
   async deleteRow(
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
     row: Record<string, unknown>,
+    connectionId?: string,
   ): Promise<CrudResult> {
     if (sourceTable.primaryKeys.length === 0) {
       return { success: false, error: "No primary key found" };
     }
 
-    const connection = this.state.activeConnection;
+    const connection = connectionId
+      ? this.state.connections.find((c) => c.id === connectionId)
+      : this.state.activeConnection;
     if (!connection?.providerConnectionId) {
       return { success: false, error: "No connection established" };
     }

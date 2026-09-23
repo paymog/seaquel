@@ -12,7 +12,7 @@ import type { ProviderRegistry } from "$lib/providers";
 import type { DatabaseProvider } from "$lib/providers/types";
 import { extractErrorMessage } from "$lib/errors";
 import { log } from "$lib/utils/logger";
-import { resolveQuery } from "./resolve-query.js";
+import { resolveQuery, getQueryTabConnection } from "./resolve-query.js";
 import type { PendingChangesManager } from "./pending-changes.svelte.js";
 import type { PendingChangeOrigin } from "$lib/types";
 import { getAdapter } from "$lib/db";
@@ -1050,12 +1050,15 @@ export class QueryExecutionManager {
     if (!editTarget) return { success: false, error: "Row not found" };
     if (editTarget.error) return { success: false, error: editTarget.error };
 
-    void log.debug(`Cell update on ${this.state.activeConnection?.id}`);
+    const connection = getQueryTabConnection(this.state, tabId);
+    if (!connection?.providerConnectionId)
+      return { success: false, error: "No connection established" };
     const result = await this.crud.updateCellDirect(
       editTarget.sourceTable,
       editTarget.row,
       editTarget.column,
       newValue,
+      { connectionId: connection.id },
     );
     if (result.success) {
       // Write the new value back into the columnar store so the UI reflects
@@ -1097,11 +1100,14 @@ export class QueryExecutionManager {
     if (!editTarget) return { success: false, error: "Row not found" };
     if (editTarget.error) return { success: false, error: editTarget.error };
 
-    void log.debug(`Cell set default on ${this.state.activeConnection?.id}`);
+    const connection = getQueryTabConnection(this.state, tabId);
+    if (!connection?.providerConnectionId)
+      return { success: false, error: "No connection established" };
     const result = await this.crud.setCellDefaultDirect(
       editTarget.sourceTable,
       editTarget.row,
       editTarget.column,
+      { connectionId: connection.id },
     );
     if (result.success && !result.queued) {
       // Re-fetch the row to get the actual default value
@@ -1116,11 +1122,17 @@ export class QueryExecutionManager {
     return this.crud.insertRow(sourceTable, values);
   }
 
-  deleteRow(
+  async deleteRow(
     sourceTable: { schema: string; name: string; primaryKeys: string[] },
     row: Record<string, unknown>,
-  ) {
-    return this.crud.deleteRow(sourceTable, row);
+    tabId?: string,
+  ): Promise<{ success: boolean; error?: string; queued?: boolean }> {
+    const connection = tabId
+      ? getQueryTabConnection(this.state, tabId)
+      : this.state.activeConnection;
+    if (!connection?.providerConnectionId)
+      return { success: false, error: "No connection established" };
+    return this.crud.deleteRow(sourceTable, row, connection.id);
   }
 
   updateCellDirect(

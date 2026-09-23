@@ -190,6 +190,7 @@
 					<MonacoEditor
 						value={localQuery}
 						schema={db.state.activeSchema ?? []}
+						databaseType={db.state.activeConnection?.type ?? "postgres"}
 						onExecute={handleExecuteAndClose}
 						onChange={handleQueryChange}
 					/>

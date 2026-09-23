@@ -8,15 +8,16 @@
 	import { parseSql } from '$lib/tutorial/sql-parser';
 	import { getTutorialSchema } from '$lib/tutorial/database';
 	import { TUTORIAL_SCHEMA } from '$lib/tutorial/schema';
-	import type { SchemaTable } from '$lib/types';
+	import type { DatabaseType, SchemaTable } from '$lib/types';
 	import { m } from '$lib/paraglide/messages.js';
 
 	interface Props {
 		/** Optional schema for Monaco autocomplete (for Manage section with real databases) */
 		schema?: SchemaTable[];
+		databaseType?: DatabaseType;
 	}
 
-	let { schema: externalSchema }: Props = $props();
+	let { schema: externalSchema, databaseType = "postgres" as DatabaseType }: Props = $props();
 
 	const qb = useQueryBuilder();
 
@@ -297,6 +298,6 @@
 
 	<!-- Editor using shared MonacoEditor component -->
 	<div class="flex-1 min-h-0">
-		<MonacoEditor bind:value={editorValue} schema={monacoSchema} onChange={handleChange} />
+		<MonacoEditor bind:value={editorValue} schema={monacoSchema} {databaseType} onChange={handleChange} />
 	</div>
 </div>

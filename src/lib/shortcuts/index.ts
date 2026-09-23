@@ -9,4 +9,4 @@ export {
   type ShortcutKeys,
   type ShortcutDefinition,
 } from "./registry.js";
-export { setShortcuts, useShortcuts } from "./shortcuts.svelte.js";
+export { setShortcuts, useShortcuts, type QueryEditorExecuteHandlers } from "./shortcuts.svelte.js";

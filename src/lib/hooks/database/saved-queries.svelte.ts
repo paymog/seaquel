@@ -3,6 +3,10 @@ import type { ResolvedQueryVersion } from "$lib/types";
 import { createVersionEntry, resolveVersions } from "$lib/utils/query-versions";
 import type { DatabaseState } from "./state.svelte.js";
 import type { PersistenceManager } from "./persistence-manager.svelte.js";
+import {
+  saveQueryWorkspace,
+  serializeQueryWorkspaceSnapshot,
+} from "$lib/utils/query-workspace-storage.js";
 
 /**
  * Manages queries (both local and shared): save, delete, share, unshare.
@@ -30,6 +34,17 @@ export class SavedQueryManager {
   }) {
     this.writeQueryFile = fns.writeQueryFile;
     this.deleteQueryFile = fns.deleteQueryFile;
+  }
+
+  private persistLinkedQueryWorkspace(projectId: string): void {
+    const tabs = this.state.queryTabsByProject[projectId] ?? [];
+    saveQueryWorkspace(
+      projectId,
+      serializeQueryWorkspaceSnapshot(
+        tabs,
+        this.state.activeQueryTabIdByProject[projectId] ?? null,
+      ),
+    );
   }
 
   saveQuery(
@@ -133,6 +148,7 @@ export class SavedQueryManager {
         }
 
         this.scheduleProjectPersistence(projectId);
+        this.persistLinkedQueryWorkspace(projectId);
         return existingQueryId;
       }
     }
@@ -168,6 +184,7 @@ export class SavedQueryManager {
     }
 
     this.scheduleProjectPersistence(projectId);
+    this.persistLinkedQueryWorkspace(projectId);
     return newQuery.id;
   }
 

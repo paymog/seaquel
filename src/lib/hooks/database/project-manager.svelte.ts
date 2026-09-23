@@ -21,6 +21,8 @@ import {
   saveQueryWorkspace,
   isQueryWorkspaceMigrated,
   markQueryWorkspaceMigrated,
+  isQueryWorkspacePersistenceAvailable,
+  serializeQueryWorkspaceSnapshot,
 } from "$lib/utils/query-workspace-storage.js";
 import type { PersistedQueryTab } from "$lib/types/persisted";
 import { log } from "$lib/utils/logger";
@@ -406,6 +408,7 @@ export class ProjectManager {
 
     // Save current project state before switching
     if (this.state.activeProjectId) {
+      this.flushQueryWorkspace(this.state.activeProjectId);
       await this.persistence.persistProjectState(this.state.activeProjectId);
     }
 
@@ -703,6 +706,17 @@ export class ProjectManager {
     };
   }
 
+  private flushQueryWorkspace(projectId: string): void {
+    const tabs = this.state.queryTabsByProject[projectId] ?? [];
+    saveQueryWorkspace(
+      projectId,
+      serializeQueryWorkspaceSnapshot(
+        tabs,
+        this.state.activeQueryTabIdByProject[projectId] ?? null,
+      ),
+    );
+  }
+
   private restoreQueryWorkspace(
     projectId: string,
     legacy?: { tabs: PersistedQueryTab[]; activeTabId: string | null },
@@ -721,7 +735,7 @@ export class ProjectManager {
       return;
     }
 
-    if (legacy && legacy.tabs.length > 0 && !isQueryWorkspaceMigrated(projectId)) {
+    if (legacy && legacy.tabs.length > 0) {
       const tabs = legacy.tabs.map((t) => ({
         id: t.id,
         name: t.name,
@@ -729,14 +743,19 @@ export class ProjectManager {
         queryId: t.queryId,
         isExecuting: false,
       }));
-      saveQueryWorkspace(projectId, {
-        tabs: tabs.map(({ id, name, query, queryId }) => ({ id, name, query, queryId })),
-        activeTabId: legacy.activeTabId,
-      });
-      markQueryWorkspaceMigrated(projectId);
+      if (!isQueryWorkspaceMigrated(projectId) && isQueryWorkspacePersistenceAvailable()) {
+        const saved = saveQueryWorkspace(
+          projectId,
+          serializeQueryWorkspaceSnapshot(tabs, legacy.activeTabId),
+        );
+        if (saved) {
+          markQueryWorkspaceMigrated(projectId);
+          // Clear legacy SQLite query tabs now that workspace is canonical.
+          this.persistence.scheduleProject(projectId);
+        }
+      }
       this.state.queryTabsByProject[projectId] = tabs;
       this.state.activeQueryTabIdByProject[projectId] = legacy.activeTabId;
-      this.persistence.scheduleProject(projectId);
       return;
     }
 
