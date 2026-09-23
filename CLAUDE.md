@@ -105,10 +105,6 @@ Version format: `YYYY.month.patch` (e.g., `2026.1.1`)
 - For error toasts, always use `errorToast` from `$lib/utils/toast` — never `toast.error(...)` from `svelte-sonner`. `errorToast` renders an `ErrorToast` component that includes a copy button so users can copy the error message.
 - For success/info toasts, continue using `toast.success(...)` / `toast.info(...)` from `svelte-sonner`.
 
-## AI behaviour
-
-Never commit any changes to git.
-
 ## Tools
 
 You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
