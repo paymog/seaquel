@@ -12,9 +12,12 @@
 
 	const db = useDatabase();
 	let { queryTabId }: { queryTabId?: string } = $props();
+	const boundConnectionId = $derived(
+		queryTabId ? db.state.queryTabs.find((t) => t.id === queryTabId)?.connectionId : undefined
+	);
 	const selectedConnection = $derived(
 		queryTabId
-			? db.state.connections.find((c) => c.id === db.state.queryTabs.find((t) => t.id === queryTabId)?.connectionId)
+			? db.state.connections.find((c) => c.id === boundConnectionId)
 			: db.state.activeConnection
 	);
 
@@ -59,46 +62,56 @@
 	};
 </script>
 
-{#if db.state.projectConnections.length > 0}
+{#snippet connectionDisplay()}
+	<DatabaseIcon class="size-3 text-muted-foreground" />
+	{#if selectedConnection}
+		<span
+			class={[
+				"size-2 rounded-full shrink-0",
+				isConnected(selectedConnection) ? "bg-green-500" : "bg-gray-400"
+			]}
+		></span>
+		<span class="max-w-24 truncate">{selectedConnection.name}</span>
+		{#if getConnectionLabels(selectedConnection.id).length > 0}
+			<Tooltip.Root>
+				<Tooltip.Trigger class="flex items-center">
+					{#each getConnectionLabels(selectedConnection.id) as label, i (label.id)}
+						<span
+							class="size-2.5 rounded-full shrink-0 ring-1 ring-background"
+							style="background-color: {label.color}; {i > 0 ? 'margin-left: -4px;' : ''}"
+						></span>
+					{/each}
+				</Tooltip.Trigger>
+				<Tooltip.Content>
+					<div class="flex flex-col gap-1">
+						{#each getConnectionLabels(selectedConnection.id) as label (label.id)}
+							<div class="flex items-center gap-1.5 text-xs">
+								<span
+									class="size-2 rounded-full"
+									style="background-color: {label.color};"
+								></span>
+								{label.name}
+							</div>
+						{/each}
+					</div>
+				</Tooltip.Content>
+			</Tooltip.Root>
+		{/if}
+	{:else}
+		<span class="max-w-24 truncate text-muted-foreground">
+			{boundConnectionId ?? m.query_select_connection()}
+		</span>
+	{/if}
+{/snippet}
+
+{#if boundConnectionId}
+	<div class="flex items-center gap-2 px-2 h-7 text-xs rounded-md bg-background border">
+		{@render connectionDisplay()}
+	</div>
+{:else if db.state.projectConnections.length > 0}
 	<DropdownMenu.Root>
 		<DropdownMenu.Trigger class="flex items-center gap-2 px-2 h-7 text-xs rounded-md bg-background border hover:bg-muted transition-colors">
-			<DatabaseIcon class="size-3 text-muted-foreground" />
-			{#if selectedConnection}
-				<span
-					class={[
-						"size-2 rounded-full shrink-0",
-						isConnected(selectedConnection) ? "bg-green-500" : "bg-gray-400"
-					]}
-				></span>
-				<span class="max-w-24 truncate">{selectedConnection.name}</span>
-				{#if getConnectionLabels(selectedConnection.id).length > 0}
-					<Tooltip.Root>
-						<Tooltip.Trigger class="flex items-center">
-							{#each getConnectionLabels(selectedConnection.id) as label, i (label.id)}
-								<span
-									class="size-2.5 rounded-full shrink-0 ring-1 ring-background"
-									style="background-color: {label.color}; {i > 0 ? 'margin-left: -4px;' : ''}"
-								></span>
-							{/each}
-						</Tooltip.Trigger>
-						<Tooltip.Content>
-							<div class="flex flex-col gap-1">
-								{#each getConnectionLabels(selectedConnection.id) as label (label.id)}
-									<div class="flex items-center gap-1.5 text-xs">
-										<span
-											class="size-2 rounded-full"
-											style="background-color: {label.color};"
-										></span>
-										{label.name}
-									</div>
-								{/each}
-							</div>
-						</Tooltip.Content>
-					</Tooltip.Root>
-				{/if}
-			{:else}
-				<span class="text-muted-foreground">{m.query_select_connection()}</span>
-			{/if}
+			{@render connectionDisplay()}
 			<ChevronDownIcon class="size-3 text-muted-foreground" />
 		</DropdownMenu.Trigger>
 		<DropdownMenu.Content class="w-56" align="start">

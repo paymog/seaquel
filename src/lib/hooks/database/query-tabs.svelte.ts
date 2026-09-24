@@ -66,21 +66,18 @@ export class QueryTabManager extends BaseTabManager<QueryTab> {
     const tabs = this.getProjectTabs();
     const tab = tabs.find((t) => t.id === tabId);
     if (!tab) return;
-    if ((tab.connectionId ?? null) === (connectionId ?? null)) return;
+    if (tab.connectionId) return;
 
     const queryStillRunning =
       tab.isExecuting ||
       tab.explainResult?.isExecuting ||
       (tab.results?.some((r) => r.isStreaming) ?? false);
     if (queryStillRunning) {
-      errorToast(
-        "Wait for the query on this tab to finish before assigning a different connection.",
-      );
+      errorToast("Wait for the query on this tab to finish before assigning a connection.");
       return;
     }
 
-    // Results/explain/visualize are tied to the prior connection; drop them so
-    // stale grids and inline edits cannot run against the new target.
+    // Drop results from unassigned legacy tabs before binding them.
     this.updateTab(tabId, (t) => ({
       ...t,
       connectionId,
