@@ -114,7 +114,9 @@ class UseDatabase {
 
     // Core infrastructure
     this.persistence = new PersistenceManager(this.state);
-    this.panes = new PaneManager(this.state, scheduleProjectPersistence);
+    this.panes = new PaneManager(this.state, scheduleProjectPersistence, (connectionId) =>
+      this.connections.setActive(connectionId),
+    );
     this.tabs = new TabOrderingManager(this.state, scheduleProjectPersistence, this.panes);
     this._stateRestoration = new StateRestorationManager(this.state, this.persistence);
 
