@@ -11,6 +11,7 @@ export class PaneManager {
   constructor(
     private state: DatabaseState,
     private schedulePersistence: (projectId: string | null) => void,
+    private setActiveConnection: (connectionId: string) => void,
   ) {}
 
   /**
@@ -452,6 +453,10 @@ export class PaneManager {
           ...this.state.activeQueryTabIdByProject,
           [projectId]: id,
         };
+        const tab = this.state.queryTabs.find((t) => t.id === id);
+        if (tab?.connectionId) {
+          this.setActiveConnection(tab.connectionId);
+        }
       },
       schema: (id) => {
         this.state.activeSchemaTabIdByProject = {

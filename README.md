@@ -23,6 +23,7 @@ Works with 6 database engines. No account required. Free and open source.<br>
 
 - **SQL editor** — Syntax highlighting, formatting, parameter support, and Monaco-based editing
 - **Inline result editing** — INSERT, UPDATE, and DELETE rows directly from the results table
+- **Pending Changes** — Review write queries before executing them. The panel follows the focused query tab's connection, including in split panes.
 - **Visual query builder** — Drag-and-drop canvas for building queries without SQL
 - **AI assistant** — Get help writing and understanding SQL queries
 - **SQL learning sandbox** — Interactive challenges to practice SQL
