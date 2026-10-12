@@ -602,6 +602,41 @@ async fn handle_login(
     }))
 }
 
+#[derive(serde::Deserialize)]
+struct ChangePasswordRequest {
+    current_password: String,
+    new_password: String,
+}
+
+/// Any signed-in user may change their own password by proving the current one.
+async fn handle_change_password(
+    State(state): State<AppState>,
+    claims: AuthClaims,
+    Json(req): Json<ChangePasswordRequest>,
+) -> StatusCode {
+    if req.new_password.is_empty() {
+        return StatusCode::BAD_REQUEST;
+    }
+    if state
+        .auth
+        .verify_credentials(&claims.username, &req.current_password)
+        .await
+        .is_none()
+    {
+        return StatusCode::UNAUTHORIZED;
+    }
+    if state
+        .auth
+        .users()
+        .update(&claims.username, Some(&req.new_password), None)
+        .await
+    {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
 // ── User management ──────────────────────────────────────────────────────────
 
 #[derive(serde::Deserialize)]
@@ -1360,6 +1395,7 @@ pub fn build_router(
 
     Router::new()
         .route("/api/auth/login", post(handle_login))
+        .route("/api/auth/password", post(handle_change_password))
         .route("/api/users", get(handle_list_users))
         .route("/api/users", post(handle_create_user))
         .route("/api/users/{username}", put(handle_update_user))

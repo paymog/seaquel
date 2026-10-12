@@ -2,7 +2,7 @@
  * Auth API — login/logout against the self-hosted server.
  */
 
-import { setAuthToken, clearAuthToken, setAuthUser } from "./token";
+import { setAuthToken, clearAuthToken, setAuthUser, authHeaders } from "./token";
 
 export interface LoginResult {
   ok: boolean;
@@ -22,6 +22,16 @@ export async function login(username: string, password: string): Promise<LoginRe
   setAuthToken(data.token);
   setAuthUser(data.username, data.role);
   return { ok: true };
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const res = await fetch("/api/auth/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  if (res.status === 401) throw new Error("Current password is incorrect");
+  if (!res.ok) throw new Error("Failed to change password");
 }
 
 export function logout(): void {

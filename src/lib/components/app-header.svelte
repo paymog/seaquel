@@ -10,9 +10,10 @@
     import { useDatabase } from "$lib/hooks/database.svelte.js";
     import { isServer } from "$lib/utils/environment";
     import { roleStore } from "$lib/auth/role.svelte";
-    import { logout } from "$lib/auth/api";
+    import { logout, changePassword } from "$lib/auth/api";
     import UsersIcon from "@lucide/svelte/icons/users";
     import LogOutIcon from "@lucide/svelte/icons/log-out";
+    import KeyRoundIcon from "@lucide/svelte/icons/key-round";
 
     import PlusIcon from "@lucide/svelte/icons/plus";
     import SparklesIcon from "@lucide/svelte/icons/sparkles";
@@ -121,6 +122,35 @@
             projectToRemoveName = "";
         }
         showRemoveProjectDialog = false;
+    };
+
+    let showChangePasswordDialog = $state(false);
+    let currentPassword = $state("");
+    let newPassword = $state("");
+    let confirmPassword = $state("");
+    let changingPassword = $state(false);
+    const passwordMismatch = $derived(confirmPassword !== "" && newPassword !== confirmPassword);
+
+    const resetPasswordForm = () => {
+        currentPassword = "";
+        newPassword = "";
+        confirmPassword = "";
+    };
+
+    const handleChangePassword = async (e: SubmitEvent) => {
+        e.preventDefault();
+        if (!currentPassword || !newPassword || newPassword !== confirmPassword) return;
+        changingPassword = true;
+        try {
+            await changePassword(currentPassword, newPassword);
+            toast.success("Password changed");
+            resetPasswordForm();
+            showChangePasswordDialog = false;
+        } catch (error) {
+            errorToast(error instanceof Error ? error.message : String(error));
+        } finally {
+            changingPassword = false;
+        }
     };
 
     const handleImportFromRepo = async () => {
@@ -323,6 +353,10 @@
                         </DropdownMenu.Item>
                     {/if}
                     {#if isServer()}
+                        <DropdownMenu.Item onclick={() => (showChangePasswordDialog = true)}>
+                            <KeyRoundIcon class="size-4" />
+                            Change password
+                        </DropdownMenu.Item>
                         <DropdownMenu.Item
                             class="text-destructive focus:text-destructive"
                             onclick={() => { logout(); window.location.assign("/login"); }}
@@ -373,6 +407,55 @@
                 {m.project_create()}
             </Button>
         </Dialog.Footer>
+    </Dialog.Content>
+</Dialog.Root>
+
+<!-- Change Password Dialog -->
+<Dialog.Root bind:open={showChangePasswordDialog} onOpenChange={(open) => !open && resetPasswordForm()}>
+    <Dialog.Content class="max-w-md">
+        <Dialog.Header>
+            <Dialog.Title>Change password</Dialog.Title>
+        </Dialog.Header>
+        <form class="space-y-3 py-2" onsubmit={handleChangePassword}>
+            <input
+                type="password"
+                autocomplete="current-password"
+                class="w-full px-3 py-2 border rounded-md bg-background"
+                placeholder="Current password"
+                aria-label="Current password"
+                bind:value={currentPassword}
+            />
+            <input
+                type="password"
+                autocomplete="new-password"
+                class="w-full px-3 py-2 border rounded-md bg-background"
+                placeholder="New password"
+                aria-label="New password"
+                bind:value={newPassword}
+            />
+            <input
+                type="password"
+                autocomplete="new-password"
+                class="w-full px-3 py-2 border rounded-md bg-background"
+                placeholder="Confirm new password"
+                aria-label="Confirm new password"
+                bind:value={confirmPassword}
+            />
+            {#if passwordMismatch}
+                <p class="text-sm text-destructive">Passwords don't match</p>
+            {/if}
+            <Dialog.Footer class="gap-2 pt-2">
+                <Button type="button" variant="outline" onclick={() => (showChangePasswordDialog = false)}>
+                    {m.header_button_cancel()}
+                </Button>
+                <Button
+                    type="submit"
+                    disabled={changingPassword || !currentPassword || !newPassword || newPassword !== confirmPassword}
+                >
+                    Change password
+                </Button>
+            </Dialog.Footer>
+        </form>
     </Dialog.Content>
 </Dialog.Root>
 
