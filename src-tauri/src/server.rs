@@ -282,6 +282,10 @@ impl ConnectionStore {
         self.inner.read().await.values().cloned().collect()
     }
 
+    pub async fn get(&self, id: &str) -> Option<serde_json::Value> {
+        self.inner.read().await.get(id).cloned()
+    }
+
     pub async fn save(&self, id: String, connection: serde_json::Value) {
         let mut inner = self.inner.write().await;
         inner.insert(id, connection);
@@ -766,14 +770,125 @@ async fn connect_driver(config: &ConnectConfig) -> Result<Box<dyn Driver>, DbErr
     Ok(driver)
 }
 
+// ── Saved-connection credentials ──────────────────────────────────────────────
+
+fn default_port(driver: &DriverType) -> Option<u16> {
+    match driver {
+        DriverType::Postgres => Some(5432),
+        DriverType::Mysql => Some(3306),
+        DriverType::Mssql => Some(1433),
+        DriverType::Sqlite | DriverType::Duckdb => None,
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct Target {
+    host: String,
+    port: u16,
+    username: String,
+}
+
+fn url_target(url: &url::Url, default_port: u16) -> Target {
+    Target {
+        host: url.host_str().unwrap_or_default().to_ascii_lowercase(),
+        port: url.port().unwrap_or(default_port),
+        username: percent_encoding::percent_decode_str(url.username())
+            .decode_utf8_lossy()
+            .into_owned(),
+    }
+}
+
+fn saved_target(saved: &serde_json::Value, default_port: u16) -> Option<Target> {
+    let host = saved.get("host").and_then(|v| v.as_str()).unwrap_or_default();
+    let port = saved
+        .get("port")
+        .and_then(|v| v.as_u64())
+        .and_then(|p| u16::try_from(p).ok())
+        .unwrap_or(default_port);
+    let username = saved.get("username").and_then(|v| v.as_str()).unwrap_or_default();
+    if !host.is_empty() && !username.is_empty() {
+        return Some(Target {
+            host: host.to_ascii_lowercase(),
+            port,
+            username: username.to_string(),
+        });
+    }
+    let conn_str = saved.get("connectionString")?.as_str()?;
+    let url = url::Url::parse(&conn_str.replace("postgresql://", "postgres://")).ok()?;
+    Some(url_target(&url, default_port))
+}
+
+/// Fill in a saved connection's stored password, but only when the request targets the same host, port and user
+/// the saved connection points at — otherwise a caller could redirect the secret to a server it controls.
+fn inject_saved_password(
+    config: &mut ConnectConfig,
+    saved: &serde_json::Value,
+    secret: &str,
+) -> Result<(), DbError> {
+    let Some(port) = default_port(&config.driver) else {
+        return Ok(());
+    };
+    let expected = saved_target(saved, port);
+    let mismatch = || DbError::connection_error("connection target does not match the saved connection");
+    if matches!(config.driver, DriverType::Mssql) {
+        if config.password.as_deref().is_some_and(|p| !p.is_empty()) {
+            return Ok(());
+        }
+        let requested = Target {
+            host: config.host.as_deref().unwrap_or_default().to_ascii_lowercase(),
+            port: config.port.unwrap_or(port),
+            username: config.username.clone().unwrap_or_default(),
+        };
+        if expected.as_ref() != Some(&requested) {
+            return Err(mismatch());
+        }
+        config.password = Some(secret.to_string());
+        return Ok(());
+    }
+    let Some(conn_str) = config.connection_string.as_deref() else {
+        return Ok(());
+    };
+    let mut url = url::Url::parse(conn_str).map_err(DbError::connection_error)?;
+    if url.password().is_some_and(|p| !p.is_empty()) {
+        return Ok(());
+    }
+    if expected.as_ref() != Some(&url_target(&url, port)) {
+        return Err(mismatch());
+    }
+    url.set_password(Some(secret))
+        .map_err(|_| DbError::connection_error("connection string cannot carry a password"))?;
+    config.connection_string = Some(url.to_string());
+    Ok(())
+}
+
+async fn fill_saved_password(
+    config: &mut ConnectConfig,
+    connections: &ConnectionStore,
+    secrets: &SecretStore,
+) -> Result<(), DbError> {
+    let Some(id) = config.saved_connection_id.clone() else {
+        return Ok(());
+    };
+    let Some(saved) = connections.get(&id).await else {
+        return Ok(());
+    };
+    let Some(secret) = secrets.get(&format!("db:{id}")).await else {
+        return Ok(());
+    };
+    inject_saved_password(config, &saved, &secret)
+}
+
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 async fn handle_connect(
     State(manager): State<Arc<ConnectionManager>>,
     State(sessions): State<Arc<SessionRegistry>>,
+    State(saved_connections): State<Arc<ConnectionStore>>,
+    State(secrets): State<Arc<SecretStore>>,
     session: SessionId,
-    Json(config): Json<ConnectConfig>,
+    Json(mut config): Json<ConnectConfig>,
 ) -> Result<Json<ConnectResult>, ApiError> {
+    fill_saved_password(&mut config, &saved_connections, &secrets).await?;
     let driver_name = format!("{:?}", config.driver);
     let connection_id = format!("{}-{}", driver_name.to_lowercase(), uuid::Uuid::new_v4());
     let driver = connect_driver(&config).await?;
@@ -825,7 +940,12 @@ async fn handle_execute(
     Ok(Json(result))
 }
 
-async fn handle_test(Json(config): Json<ConnectConfig>) -> Result<Json<()>, ApiError> {
+async fn handle_test(
+    State(saved_connections): State<Arc<ConnectionStore>>,
+    State(secrets): State<Arc<SecretStore>>,
+    Json(mut config): Json<ConnectConfig>,
+) -> Result<Json<()>, ApiError> {
+    fill_saved_password(&mut config, &saved_connections, &secrets).await?;
     let driver = connect_driver(&config).await?;
     driver.close().await?;
     Ok(Json(()))
@@ -1469,4 +1589,58 @@ async fn shutdown_signal() {
         .await
         .expect("failed to install Ctrl-C handler");
     log::info!("shutdown signal received");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pg_config(conn_str: &str) -> ConnectConfig {
+        serde_json::from_value(serde_json::json!({
+            "driver": "postgres",
+            "connection_string": conn_str,
+            "saved_connection_id": "control-plane",
+        }))
+        .unwrap()
+    }
+
+    fn saved() -> serde_json::Value {
+        serde_json::json!({
+            "id": "control-plane",
+            "host": "db.internal",
+            "port": 5432,
+            "username": "read only@x",
+        })
+    }
+
+    #[test]
+    fn injects_password_into_matching_target_and_keeps_query() {
+        let mut config = pg_config("postgres://read%20only%40x@DB.internal/other_db?sslmode=require");
+        inject_saved_password(&mut config, &saved(), "p@ss/word").unwrap();
+        let url = url::Url::parse(config.connection_string.as_deref().unwrap()).unwrap();
+        assert_eq!(percent_encoding::percent_decode_str(url.password().unwrap()).decode_utf8().unwrap(), "p@ss/word");
+        assert_eq!(url.path(), "/other_db");
+        assert_eq!(url.query(), Some("sslmode=require"));
+    }
+
+    #[test]
+    fn rejects_redirect_to_another_host_port_or_user() {
+        for conn_str in [
+            "postgres://read%20only%40x@attacker.example/db",
+            "postgres://read%20only%40x@db.internal:6543/db",
+            "postgres://postgres@db.internal/db",
+        ] {
+            let mut config = pg_config(conn_str);
+            let err = inject_saved_password(&mut config, &saved(), "secret").unwrap_err();
+            assert_eq!(err.code, "CONNECTION_ERROR", "{conn_str}");
+            assert!(!config.connection_string.unwrap().contains("secret"), "{conn_str}");
+        }
+    }
+
+    #[test]
+    fn caller_supplied_password_wins() {
+        let mut config = pg_config("postgres://someone:theirs@elsewhere/db");
+        inject_saved_password(&mut config, &saved(), "secret").unwrap();
+        assert_eq!(config.connection_string.as_deref(), Some("postgres://someone:theirs@elsewhere/db"));
+    }
 }

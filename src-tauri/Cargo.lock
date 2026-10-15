@@ -6124,6 +6124,7 @@ dependencies = [
  "image",
  "log",
  "opener",
+ "percent-encoding",
  "plist",
  "rand 0.8.5",
  "reqwest 0.12.28",
@@ -6155,6 +6156,7 @@ dependencies = [
  "tokio-util",
  "tower",
  "tower-http",
+ "url",
  "uuid",
  "whoami",
 ]

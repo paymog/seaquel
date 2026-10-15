@@ -307,6 +307,7 @@ export class HttpDatabaseProvider implements DatabaseProvider {
         password: config.password,
         encrypt: config.sslMode !== "disable",
         trust_cert: config.sslMode !== "require",
+        saved_connection_id: config.savedConnectionId,
       };
     }
 
@@ -321,6 +322,7 @@ export class HttpDatabaseProvider implements DatabaseProvider {
     return {
       driver: config.type === "mariadb" ? "mysql" : config.type,
       connection_string: config.connectionString,
+      saved_connection_id: config.savedConnectionId,
     };
   }
 }

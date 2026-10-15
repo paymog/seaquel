@@ -128,6 +128,8 @@ pub struct ConnectConfig {
     pub trust_cert: Option<bool>,
     /// File path for DuckDB
     pub path: Option<String>,
+    /// Server mode: saved connection whose stored password the server fills in when none is supplied
+    pub saved_connection_id: Option<String>,
 }
 
 /// A single statement in a batch/transaction

@@ -535,6 +535,7 @@ export class ConnectionManager {
         password: connection.password,
         sslMode: connection.sslMode,
         connectionString: effectiveConnectionString,
+        savedConnectionId: connectionId,
       });
 
       // Create updated connection object to ensure Svelte reactivity sees the change

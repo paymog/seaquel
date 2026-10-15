@@ -25,6 +25,8 @@ export interface ConnectionConfig {
   connectionString?: string;
   /** SSL mode */
   sslMode?: string;
+  /** Server mode: saved connection whose stored password the server supplies when none is given */
+  savedConnectionId?: string;
 }
 
 /**
