@@ -13,6 +13,8 @@
 	import { isDemo, getFeatures } from "$lib/features";
 	import ConnectionLabelPicker from "$lib/components/connection-label-picker.svelte";
 	import { LinkIcon } from "@lucide/svelte";
+	import { isServer } from "$lib/utils/environment";
+	import { roleStore } from "$lib/auth/role.svelte";
 
 	interface Props {
 		oncopyShareLink: (resource: { repoId?: string; filePath?: string; name?: string; folder?: string; id?: string }, resourceType: "connection") => Promise<void>;
@@ -22,6 +24,7 @@
 
 	const db = useDatabase();
 	const features = getFeatures();
+	const canManageConnections = $derived(!isServer() || roleStore.isAdmin);
 
 	let connectionsExpanded = $state(true);
 
@@ -276,10 +279,12 @@
 									<PencilIcon class="size-4 me-2" />
 									{m.sidebar_connection_edit()}
 								</ContextMenu.Item>
-								<ContextMenu.Item onclick={() => openLabelsDialog(connection.id, connection.name)}>
-									<TagIcon class="size-4 me-2" />
-									{m.sidebar_connection_labels()}
-								</ContextMenu.Item>
+								{#if canManageConnections}
+									<ContextMenu.Item onclick={() => openLabelsDialog(connection.id, connection.name)}>
+										<TagIcon class="size-4 me-2" />
+										{m.sidebar_connection_labels()}
+									</ContextMenu.Item>
+								{/if}
 								{#if connection.sharedConnectionId}
 									{@const sharedConn = db.state.allSharedConnections.find((c) => c.id === connection.sharedConnectionId)}
 									{#if sharedConn}
@@ -289,7 +294,7 @@
 										</ContextMenu.Item>
 									{/if}
 								{/if}
-								{#if !(isDemo() && connection.id === "demo-connection")}
+								{#if canManageConnections && !(isDemo() && connection.id === "demo-connection")}
 									<ContextMenu.Separator />
 									<ContextMenu.Item
 										class="text-destructive focus:text-destructive"

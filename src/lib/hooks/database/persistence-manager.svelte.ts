@@ -41,6 +41,7 @@ import {
 } from "$lib/storage";
 import { getKeyringService } from "$lib/services/keyring";
 import { isServer } from "$lib/utils/environment";
+import { isAdmin } from "$lib/auth/token";
 import {
   serverLoadConnections,
   serverSaveConnection,
@@ -837,6 +838,11 @@ export class PersistenceManager {
       sshKeyPassphrase?: string;
     },
   ): Promise<void> {
+    // The server only lets admins write connections and secrets.
+    if (isServer() && !isAdmin()) return;
+    const savePassword = options?.savePassword ?? connection.savePassword;
+    const saveSshPassword = options?.saveSshPassword ?? connection.saveSshPassword;
+    const saveSshKeyPassphrase = options?.saveSshKeyPassphrase ?? connection.saveSshKeyPassphrase;
     await withErrorHandling(
       async () => {
         const db = isServer() ? null : await getDatabase();
@@ -853,9 +859,9 @@ export class PersistenceManager {
           connectionString: this.stripPasswordFromConnectionString(connection.connectionString),
           lastConnected: connection.lastConnected,
           sshTunnel: connection.sshTunnel,
-          savePassword: options?.savePassword,
-          saveSshPassword: options?.saveSshPassword,
-          saveSshKeyPassphrase: options?.saveSshKeyPassphrase,
+          savePassword,
+          saveSshPassword,
+          saveSshKeyPassphrase,
           projectId: connection.projectId,
           labelIds: connection.labelIds,
           isLocalOnly: connection.isLocalOnly,
@@ -877,21 +883,21 @@ export class PersistenceManager {
         if (keyring.isAvailable()) {
           await withErrorHandling(
             async () => {
-              if (options?.savePassword && connection.password) {
+              if (savePassword && connection.password) {
                 await keyring.setDbPassword(connection.id, connection.password);
-              } else if (!options?.savePassword) {
+              } else if (!savePassword) {
                 await keyring.deleteDbPassword(connection.id);
               }
 
-              if (options?.saveSshPassword && options.sshPassword) {
+              if (saveSshPassword && options?.sshPassword) {
                 await keyring.setSshPassword(connection.id, options.sshPassword);
-              } else if (!options?.saveSshPassword) {
+              } else if (!saveSshPassword) {
                 await keyring.deleteSshPassword(connection.id);
               }
 
-              if (options?.saveSshKeyPassphrase && options.sshKeyPassphrase) {
+              if (saveSshKeyPassphrase && options?.sshKeyPassphrase) {
                 await keyring.setSshKeyPassphrase(connection.id, options.sshKeyPassphrase);
-              } else if (!options?.saveSshKeyPassphrase) {
+              } else if (!saveSshKeyPassphrase) {
                 await keyring.deleteSshKeyPassphrase(connection.id);
               }
             },
