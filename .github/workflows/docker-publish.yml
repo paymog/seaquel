@@ -41,14 +41,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: cargo-${{ matrix.arch }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          workspaces: src-tauri
+          key: ${{ matrix.arch }}
 
       - name: Build server binary
         working-directory: src-tauri
