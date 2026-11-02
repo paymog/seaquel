@@ -6,8 +6,10 @@
 # glibc baseline. No compilation happens inside Docker, keeping ARM packaging
 # fast under QEMU.
 FROM ubuntu:24.04
+ARG CA_CERTIFICATES_MIN_VERSION=20260816ubuntu0.24.04.1
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates libssl3t64 libgcc-s1 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge "$CA_CERTIFICATES_MIN_VERSION" && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
