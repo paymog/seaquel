@@ -129,6 +129,18 @@ npm run check           # Type checking
 npm run check:watch     # Type checking (watch mode)
 ```
 
+### Server image trust stores
+
+The published server uses `Dockerfile.prebuilt` and Ubuntu 24.04. Its build
+requires `ca-certificates` version `20260816ubuntu0.24.04.1` or newer.
+The source-build `Dockerfile` uses Debian 12 and requires
+`20250419~deb12u2` or newer. Both builds fail if their minimum is not met.
+
+The server also embeds Rust trust roots. Keep `src-tauri/Cargo.lock` in the
+build context and use the locked `webpki-roots` and `rustls-webpki` versions.
+After a certificate-store update, rebuild and publish the image, then
+replace running containers with the new image digest.
+
 ## Tech Stack
 
 - [Tauri](https://tauri.app/) — Native app shell with Rust backend

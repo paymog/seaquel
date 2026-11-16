@@ -17,12 +17,14 @@ WORKDIR /app
 # Docker layer caching ensures rebuilds are fast when only source changes.
 COPY src-tauri/ ./src-tauri/
 WORKDIR /app/src-tauri
-RUN cargo build --release --no-default-features --features server --bin seaquel-server
+RUN cargo build --locked --release --no-default-features --features server --bin seaquel-server
 
 # ── Stage 3: Runtime ──────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
+ARG CA_CERTIFICATES_MIN_VERSION=20250419~deb12u2
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates libssl3 && \
+    dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge "$CA_CERTIFICATES_MIN_VERSION" && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
